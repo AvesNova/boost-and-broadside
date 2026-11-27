@@ -1,57 +1,60 @@
-"""The league: its members, the network slots that play them, PFSP draws within row
-capacities, decaying win-rate tallies, v2's snapshot schedule and retention.
+"""The league, in two levels: a pool of members with their tallies, the slots that play them
+(level 1 loads members into slots between updates), and each game's draw of a slot (level 2).
+Also v2's snapshot schedule and retention.
 
-Members (fixed indices, `League.kinds`): the scripted agent (member 0), the EMA and the
-uniform average of the live weights (lean.learn.weights), and up to `snapshot_members`
-snapshots. A member is present (drawable) when it exists: the scripted agent always; the
-snapshots from their step on; the EMA from the first snapshot (before it every league game
-is against the scripted agent, decided 8.1 (5)); the uniform average from the first
-snapshot once it holds an update (its warm-up has ended). The cheese agents (step C) go
-after the snapshots as more members of kind "scripted": no slot (member_slot -1), a
-capacity and tallies like any member; their rows will need their own scripted call (today
-every scripted row takes the one scripted agent's action).
+The pool (host memory). Members have fixed indices (`League.kinds`): the yardstick scripted
+agent (member 0), the EMA and the uniform average of the live weights (lean.learn.weights),
+up to `snapshot_members` snapshots, then the scripted personas (LearnConfig.league_personas:
+named points of the scripted agent's parameters). Scripted members and networks are sampled
+alike. A member is present (sampled) when it exists: the yardstick always; the personas and
+the EMA from RL's start (`open`); the uniform average once it holds an update; each snapshot
+from its step until retention drops it. A snapshot's weights stay in host memory (and on
+disk once, `snapshot_directory`); the averages' come from lean.learn.weights.
 
-Draws: each league environment whose game ended draws its next member from the
-probabilities (1 - floor) * (1 - p)^2 / sum + floor / present (AlphaStar's `squared`, floor
-1/8), p the live policy's win rate against the member, over the members present. Every
-network member has a fixed row capacity for the whole run, C = ceil(capacity_factor * L /
-members) of the L league environments (1.25 times an even share of all the league's
-members); the scripted agent's capacity is L (it takes the rows the network members cannot
-while fewer than all members are present: its rows cost no network). The capacity rule
-(`League.draw`): each ended game draws independently from the probabilities over the members
-with a free row; on a member, the draws past its free rows (the later environments) are
-drawn again the same way over the members still free after the accepted ones; what is still
-left takes the free rows in member order (the scripted agent first, so a row is always
-found). When no member is full, the draws are plain PFSP draws.
+Win rates are kept as in AlphaStar's pseudocode (`Payoff`): per member, decaying tallies of
+games, wins and draws; each game first decays its member's tallies by `decay` (0.99) and then
+adds itself; p = (wins + draws / 2) / games, an unplayed member reading 0.5. The target
+shares are PFSP: (1 - floor) * (1 - p)^2 / sum + floor / present (AlphaStar's `squared`,
+floor 1/8), over the members present. A game whose member left the pool (RETIRED) is not
+tallied.
 
-Win rates are kept as in AlphaStar's pseudocode (`Payoff`): per member, decaying tallies
-of games, wins and draws; each game first decays that member's tallies by `decay` (0.99)
-and then adds itself; p = (wins + draws / 2) / games, and an unplayed member reads 0.5.
-A game whose member left the league (member RETIRED) is not tallied.
+Slots. There are K + R of them (LearnConfig.league_slots, league_spare_slots) and an overflow
+slot. A slot is free, loaded (takes new games) or draining (takes none; its running games
+finish there). It holds a member: a network slot a copy of its weights on the device (weights
+are graph inputs, so a load is a copy and never a compile), a scripted slot the index of its
+parameter row (`persona_table`; row 0 the yardstick). A member may hold several slots.
 
-Network slots: each network member (the averages, the snapshots) is played by a slot of
-weights; there are K = 2 + snapshot_members + retiring_slots of them. A snapshot that
-retention drops gives up its member index at once, but its slot keeps its weights and plays
-on the games it is in (`retiring`) until they end; then the slot is free. A slot is freed,
-and the next segment's network table built (`prepare`), between segments, with one host
-read of the rows per slot. The averages' slots take the averages' new weights after every
-update: an average is one moving player, its running games continue with the new weights
-(as the live policy's do). The table's shapes are fixed for the run (a training run is
-static): every slot runs on W = C rows (no slot ever holds more: a draw never takes a member
-past C, and a retiring slot keeps the rows it had), so one routing graph serves every slot
-and compiles once, when the first network member joins. A segment's table lists only the
-slots holding weights (members and retiring slots; the others can have no rows that
-segment), so the tick calls the graph once per such slot and skips the empty ones; the
-merge still takes K entries, a skipped slot's a zero filler no row reads (NetworkTable).
+Level 1 (`allocate`, between updates, host side): member m's target is q_m K slots (q the
+PFSP shares). Its debt d_m carries the rounding: v_m = d_m + q_m K - (slots it holds loaded);
+while a slot is free and some present member is short by more than one slot against another
+(v_u - v_o > 1), one slot of the most served member o (its loaded slot with the fewest rows)
+is unloaded and the most short member u is loaded into a free slot; then d = v. So each
+update changes at most as many slots as are free, the loaded slots always number K, and over
+many updates each member's slot share follows its target share (the debt stays bounded).
+An unloaded slot drains (a game lasts at most about 4 updates) and frees once its last game
+has ended (`free_drained`, at every segment's start and after every update). A member that
+leaves the pool (retention) unloads every slot it holds; its running games are RETIRED.
+
+Level 2 (`draw`, at every game's end, in the tick: no host reads): the game draws uniformly
+over the loaded slots with a free row (capacity C = ceil(capacity_factor * L / K) per slot,
+fixed for the run): one draw, accepted within the free rows (earlier environments first), a
+second draw for the rest over the slots still free, then the free rows in slot order. So a
+member's share of games is about its share of the loaded slots. Only if no loaded slot has a
+free row does the game go to the overflow slot, a yardstick slot with no capacity
+(`overflow_games` counts them; it should stay 0).
+
+The tick: each network slot holding weights (loaded or draining) runs once on W = C rows (one
+routing graph for every slot; empty slots skipped); every scripted slot's rows take the one
+scripted call over all ships with per-row parameters (lean.learn.rollout.scripted_rows); the
+merge takes K + R entries (a skipped slot's a zero filler no row reads). The shapes are fixed
+for the run, and the EMA is present from RL's first tick, so the routing compiles there once.
 
 Snapshot schedule (`SnapshotSchedule`, v2's src/bnb/runtime/snapshots.py): v2's
 LEAGUE_SNAPSHOTS, 5, 10, 15, 20, 25, 30, 40, 50, 60, 75, 90, 110, 130 and 160M environment
 steps, then every 30M (the last gap). Retention (`retained`, v2's src/bnb/league/pool.py):
 the newest `recent_snapshots` (8) snapshots, plus of the older ones the snapshot nearest
 each age 2^k snapshots back for k >= `snapshot_history_from` (3); then at most
-`snapshot_members` (12), the oldest dropped past it. Run on v2's schedule the rule keeps at
-most 11 snapshots to 500M steps (25 taken) and 12 to about 1.5B; it drops at most 2
-snapshots at one addition.
+`snapshot_members` (12), the oldest dropped past it.
 """
 
 import dataclasses
@@ -65,13 +68,22 @@ from torch.nn import functional
 from lean.contract import random_keywords
 from lean.learn.config import LearnConfig
 from lean.model.agent import Stepper, split_weights, stepper_weights, template
+from lean.scripted import ScriptedConfig
+from lean.scripted.parameters import PARAMETERS, SAMPLED
 
 SCRIPTED = 0
 EMA = 1
 UNIFORM = 2
 FIRST_SNAPSHOT = 3
 RETIRED = -1  # the member of a league game whose member has left the league (not tallied)
-SCRIPTED_KIND, EMA_KIND, UNIFORM_KIND, SNAPSHOT_KIND = "scripted", "ema", "uniform", "snapshot"
+SCRIPTED_KIND, EMA_KIND, UNIFORM_KIND, SNAPSHOT_KIND, PERSONA_KIND = (
+    "scripted",
+    "ema",
+    "uniform",
+    "snapshot",
+    "persona",
+)
+FREE, LOADED, DRAINING = "free", "loaded", "draining"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -138,17 +150,26 @@ def retained(ordinals, recent: int, history_from: int, cap: int) -> set[int]:
     return set(sorted(keep)[-cap:])
 
 
+def persona_rows(personas) -> tuple[str, ...]:
+    """The scripted parameter rows the league's per-row table holds: the sampled rows and any
+    other row a persona names, in the table's order (lean.scripted.PARAMETERS)."""
+    named = {name for _, rows in personas for name, _ in rows}
+    unknown = named - set(PARAMETERS)
+    if unknown:
+        raise ValueError(f"league personas name rows not in the table: {sorted(unknown)}")
+    return tuple(name for name in PARAMETERS if name in SAMPLED or name in named)
+
+
 @dataclasses.dataclass
 class NetworkTable:
-    """One segment's network table (League.prepare): the slots holding weights, each as
-    (index, slot, parameters, buffers) with `index` the slot's int and `slot` the same as a
+    """One segment's network table (League.prepare): the network slots holding weights, each
+    as (index, slot, parameters, buffers) with `index` the slot's int and `slot` the same as a
     0-d long tensor (a tensor, so that one compiled graph serves every slot); `positions` (W,)
-    arange of the rows a slot runs on (W = the network members' capacity, fixed for the run);
-    `count` K, the merge's entries. `fillers` (built by the segment's first tick,
-    lean.learn.rollout.network_actions): per slot not in `slots`, a zero action and carry
-    shaped as a slot's output, so the merge always takes K entries of the same shapes (one
-    graph) though only the listed slots run; no row reads a filler (no row has a slot that
-    holds no weights)."""
+    arange of the rows a slot runs on (W = C, fixed for the run); `count` K + R, the merge's
+    entries. `fillers` (built by the segment's first tick, lean.learn.rollout.network_actions):
+    per slot not in `slots`, a zero action and carry shaped as a slot's output, so the merge
+    always takes K + R entries of the same shapes (one graph) though only the listed slots
+    run; no row reads a filler (the merge reads network slots only)."""
 
     slots: list[tuple[int, Tensor, dict[str, Tensor], dict[str, Tensor]]]
     positions: Tensor
@@ -160,11 +181,20 @@ class League:
     """The opponents of league games (see the module's docstring).
 
     Device tensors read in the tick (no host reads there): `present` (members,) bool,
-    `games`, `wins`, `draws` (members,) the tallies, `member_slot` (members,) long the slot
-    playing each member (-1: none, the scripted agent), `capacity` (members,) long (set by the
-    first `prepare`, fixed for the run). Host-side
-    bookkeeping: `kinds`, `slot_member` (the member each slot plays, None when retiring or
-    free), `slot_weights`, `retiring`, the snapshots' ordinals and steps.
+    `games`, `wins`, `draws` (members,) the tallies, `dealt` (members,) the games dealt to
+    each member (not decayed: the realised shares), `overflow_games` () the games dealt to
+    the overflow slot; per slot (K + R + 1, the overflow last) `slot_member` long,
+    `slot_loaded` bool (takes new games), `slot_network` bool (a network plays it),
+    `slot_persona` long (its scripted parameter row; 0 for networks); `capacity` () long (C,
+    set by the first `prepare`); `persona_table` (1 + personas, rows) float32 (row 0 the
+    yardstick), None until `open` (the BC stage: every scripted ship plays the yardstick's
+    numbers).
+
+    Host side: `kinds`, `slot_state`, `slot_holder` (the member a slot holds, None when free),
+    `slot_source` (what its weights or parameters are: ("ema",), ("uniform",), ("snapshot",
+    steps), ("scripted", row)), `slot_weights` (device buffers, allocated once per slot and
+    reused), `debt` (per member), the snapshots' ordinals and steps, `stored` (snapshot steps
+    -> host weights).
     """
 
     def __init__(self, config: LearnConfig, device=None):
@@ -177,34 +207,56 @@ class League:
         )
         self.recent, self.history_from = config.recent_snapshots, config.snapshot_history_from
         self.snapshot_members = config.snapshot_members
-        self.kinds = [SCRIPTED_KIND, EMA_KIND, UNIFORM_KIND] + [
-            SNAPSHOT_KIND
-        ] * config.snapshot_members
-        self.members = len(self.kinds)
-        self.slot_count = 2 + config.snapshot_members + config.retiring_slots
-        self.present = torch.zeros(self.members, dtype=torch.bool, device=self.device)
-        self.present[SCRIPTED] = True
-        self.games = torch.zeros(self.members, device=self.device)
-        self.wins = torch.zeros(self.members, device=self.device)
-        self.draws = torch.zeros(self.members, device=self.device)
-        self.member_slot = torch.full((self.members,), -1, dtype=torch.long, device=self.device)
-        self.capacity = torch.zeros(self.members, dtype=torch.long, device=self.device)
-        self.width = 0  # W, the network members' capacity (prepare)
-        self.slot_member: list[int | None] = [None] * self.slot_count
-        self.slot_weights: list[dict[str, Tensor] | None] = [None] * self.slot_count
-        self.slot_snapshot: list[int | None] = [
-            None
-        ] * self.slot_count  # the snapshot (its steps) a slot holds
-        self.snapshot_directory: Path | None = (
-            None  # where each snapshot's weights are written once
+        self.personas = tuple(config.league_personas)
+        self.first_persona = FIRST_SNAPSHOT + config.snapshot_members
+        self.kinds = (
+            [SCRIPTED_KIND, EMA_KIND, UNIFORM_KIND]
+            + [SNAPSHOT_KIND] * config.snapshot_members
+            + [PERSONA_KIND] * len(self.personas)
         )
-        self.retiring: set[int] = set()
-        self.ordinal: dict[int, int] = {}  # snapshot member -> its ordinal (0 the first snapshot)
+        self.labels = (
+            ["yardstick", "ema", "uniform"]
+            + [f"snapshot{index}" for index in range(config.snapshot_members)]
+            + [label for label, _ in self.personas]
+        )
+        self.members = len(self.kinds)
+        self.loaded_slots = config.league_slots
+        self.slot_count = config.league_slots + config.league_spare_slots
+        self.overflow = self.slot_count  # the overflow slot's index
+        if self.loaded_slots < 1:
+            raise ValueError("the league needs at least one slot")
+        device = self.device
+        self.present = torch.zeros(self.members, dtype=torch.bool, device=device)
+        self.present[SCRIPTED] = True
+        self.games = torch.zeros(self.members, device=device)
+        self.wins = torch.zeros(self.members, device=device)
+        self.draws = torch.zeros(self.members, device=device)
+        self.dealt = torch.zeros(self.members, device=device)
+        self.overflow_games = torch.zeros((), device=device)
+        entries = self.slot_count + 1
+        self.slot_member = torch.full((entries,), SCRIPTED, dtype=torch.long, device=device)
+        self.slot_loaded = torch.zeros(entries, dtype=torch.bool, device=device)
+        self.slot_network = torch.zeros(entries, dtype=torch.bool, device=device)
+        self.slot_persona = torch.zeros(entries, dtype=torch.long, device=device)
+        self.capacity = torch.zeros((), dtype=torch.long, device=device)
+        self.persona_table: Tensor | None = None
+        self.parameter_rows: tuple[str, ...] = ()
+        self.width = 0  # W = C, the slots' row capacity (prepare)
+        self.slot_state = [FREE] * self.slot_count
+        self.slot_holder: list[int | None] = [None] * self.slot_count
+        self.slot_source: list[tuple | None] = [None] * self.slot_count
+        self.slot_weights: list[dict[str, Tensor] | None] = [None] * self.slot_count
+        self.debt = [0.0] * self.members
+        self.snapshot_directory: Path | None = None  # where each snapshot is written once
+        self.ordinal: dict[int, int] = {}  # snapshot member -> its ordinal (0 the first)
         self.snapshot_step: dict[int, int] = {}  # snapshot member -> its environment steps
+        self.stored: dict[int, dict[str, Tensor]] = {}  # snapshot steps -> host weights
         self.taken = 0  # snapshots taken so far
-        self.abandoned = 0  # games re-dealt because no slot was free (should stay 0)
+        self.loads = 0  # slot loads so far (level 1)
+        self.opened = False
         self.template: Stepper | None = None  # the network the slots' weights fill
         self.table: NetworkTable | None = None
+        self.allocate([0] * (self.slot_count + 1))  # every loaded slot the yardstick
 
     # ---- members
 
@@ -213,18 +265,8 @@ class League:
         """Snapshot members present."""
         return len(self.ordinal)
 
-    @property
-    def networks(self) -> int:
-        """Slots holding weights (members and retiring): the next table's K at most."""
-        return sum(weights is not None for weights in self.slot_weights)
-
     def present_count(self) -> int:
-        return (
-            1
-            + self.snapshots
-            + (self.slot_member[0] is not None)
-            + (self.slot_member[1] is not None)
-        )
+        return int(self.present.sum())
 
     def win_rates(self) -> Tensor:
         """(members,) the live policy's win rate against each member, draws as half,
@@ -234,32 +276,38 @@ class League:
         return torch.where(played, rate, torch.full_like(rate, 0.5))
 
     def scripted_win_rate(self) -> float:
-        """Win rate against the scripted agent for the BC gate; 0 until a game is played
-        (so the BC term starts at full weight), not the sampler's 0.5 prior."""
+        """Win rate against the yardstick for the BC gate; 0 until a game is played (so the BC
+        term starts at full weight), not the sampler's 0.5 prior."""
         if float(self.games[SCRIPTED]) <= 0.0:
             return 0.0
         return float(self.win_rates()[SCRIPTED])
 
     def probabilities(self) -> Tensor:
-        """(members,) PFSP probabilities: (1 - floor) by (1 - p)^2, floor uniform, both over
-        the members present. Uniform in place of the first part when its weights sum below
-        1e-10 (AlphaStar's rule)."""
+        """(members,) the PFSP target shares: (1 - floor) by (1 - p)^2, floor uniform, both
+        over the members present. Uniform in place of the first part when its weights sum
+        below 1e-10 (AlphaStar's rule)."""
         return pfsp(self.win_rates(), self.present, self.floor)
 
-    # ---- draws and tallies (in the tick: no host reads)
+    def held(self) -> list[int]:
+        """Loaded slots per member (host)."""
+        counts = [0] * self.members
+        for slot, state in enumerate(self.slot_state):
+            if state == LOADED:
+                counts[self.slot_holder[slot]] += 1
+        return counts
+
+    # ---- level 2 and the tallies (in the tick: no host reads)
 
     def draw(self, member: Tensor, slot: Tensor, done: Tensor, generator) -> tuple[Tensor, Tensor]:
-        """New members for the league environments in `done` (L,) bool, the rest keeping
-        `member` and `slot` (L,) long; returns (member, slot), slot the network slot playing
-        it (-1 for the scripted agent). A game that did not end keeps its slot: a RETIRED
-        game plays on in its retiring slot. The capacity rule is in the module's docstring."""
-        drawn = capacity_draws(
-            self.probabilities(), self.present, self.capacity, member, done, generator, self.members
-        )
-        member = torch.where(done, drawn, member)
-        return member, torch.where(
-            done, self.member_slot.index_select(0, member.clamp(min=0)), slot
-        )
+        """New slots, and their members, for the league environments in `done` (L,) bool; the
+        rest keep `member` and `slot` (L,) long (a game never changes its slot: a draining
+        slot plays its games to the end). Level 2 (module docstring)."""
+        drawn = slot_draws(self.slot_loaded, self.capacity, slot, done, generator, self.slot_count)
+        new_member = self.slot_member.index_select(0, drawn)
+        counted = done.to(self.dealt.dtype)
+        self.dealt = self.dealt.index_add(0, new_member, counted)
+        self.overflow_games = self.overflow_games + (counted * (drawn == self.overflow)).sum()
+        return torch.where(done, new_member, member), torch.where(done, drawn, slot)
 
     def record(self, member: Tensor, finished: Tensor, won: Tensor, drawn: Tensor) -> None:
         """Add the league games that ended: member, finished, won, drawn are (L,) over the
@@ -280,124 +328,245 @@ class League:
         self.wins = self.wins * factor + wins * per_game
         self.draws = self.draws * factor + draws * per_game
 
-    # ---- between updates and segments (host side)
+    # ---- slots (host side)
+
+    def slot_rows(self, slot: Tensor) -> list[int]:
+        """Rows (league environments) per slot, the overflow last, from the carry's `slot`
+        (L,): one host read."""
+        counts = torch.zeros(self.slot_count + 1, dtype=torch.long, device=slot.device)
+        counts.index_add_(0, slot.clamp(min=0), (slot >= 0).long())
+        return counts.tolist()
+
+    def _sync(self, slot: int) -> None:
+        """The device entries of one slot from its host state."""
+        holder, source = self.slot_holder[slot], self.slot_source[slot]
+        network = source is not None and source[0] != "scripted"
+        self.slot_member[slot] = SCRIPTED if holder is None else holder
+        self.slot_loaded[slot] = self.slot_state[slot] == LOADED
+        self.slot_network[slot] = network
+        self.slot_persona[slot] = source[1] if source is not None and not network else 0
+
+    def free_drained(self, rows: list[int]) -> None:
+        """Free the draining slots no game plays any more."""
+        for slot in range(self.slot_count):
+            if self.slot_state[slot] == DRAINING and rows[slot] == 0:
+                self._free(slot)
+        self._collect_stored()
+
+    def _free(self, slot: int) -> None:
+        self.slot_state[slot] = FREE
+        self.slot_holder[slot] = None
+        self.slot_source[slot] = None
+        self._sync(slot)
+
+    def _unload(self, slot: int, rows: list[int]) -> None:
+        """Stop a loaded slot taking games: it drains, or frees at once without games."""
+        if rows[slot] == 0:
+            self._free(slot)
+        else:
+            self.slot_state[slot] = DRAINING
+            self._sync(slot)
+
+    def _source(self, member: int) -> tuple:
+        kind = self.kinds[member]
+        if kind == SCRIPTED_KIND:
+            return ("scripted", 0)
+        if kind == PERSONA_KIND:
+            return ("scripted", 1 + member - self.first_persona)
+        if kind == SNAPSHOT_KIND:
+            return ("snapshot", self.snapshot_step[member])
+        return (kind,)
+
+    def _fill(self, slot: int, weights: dict[str, Tensor]) -> None:
+        """Copy `weights` into the slot's device buffers (allocated on its first network)."""
+        if self.slot_weights[slot] is None:
+            self.slot_weights[slot] = {
+                name: value.to(self.device, copy=True) for name, value in weights.items()
+            }
+            return
+        for name, value in weights.items():
+            self.slot_weights[slot][name].copy_(value)
+
+    def _load(self, member: int, slot: int, averages, policy) -> None:
+        source = self._source(member)
+        if source[0] == "snapshot":
+            self._fill(slot, self.stored[source[1]])
+        elif source[0] != "scripted":
+            self._fill(slot, stepper_weights(policy, getattr(averages, source[0])))
+        self.slot_state[slot] = LOADED
+        self.slot_holder[slot] = member
+        self.slot_source[slot] = source
+        self.loads += 1
+        self._sync(slot)
+
+    def allocate(self, rows: list[int], averages=None, policy=None) -> None:
+        """Level 1 (module docstring): the loaded slots follow the PFSP targets, at most one
+        load per free slot. `rows` per slot (slot_rows); `averages` and `policy` give the
+        averages' weights to a slot that loads one."""
+        present = self.present.tolist()
+        share = self.probabilities().tolist()
+        members = [member for member in range(self.members) if present[member]]
+        held = self.held()
+        value = {
+            member: self.debt[member] + share[member] * self.loaded_slots - held[member]
+            for member in members
+        }
+        free = [slot for slot in range(self.slot_count) if self.slot_state[slot] == FREE]
+        loaded = sum(held)
+        while loaded < self.loaded_slots and free:
+            short = max(members, key=lambda member: (value[member], -member))
+            self._load(short, free.pop(0), averages, policy)
+            value[short] -= 1.0
+            held[short] += 1
+            loaded += 1
+        while free:
+            short = max(members, key=lambda member: (value[member], -member))
+            served = [member for member in members if held[member] > 0]
+            most = min(served, key=lambda member: (value[member], -member))
+            if value[short] - value[most] <= 1.0 + 1e-9:
+                break
+            slots = [
+                slot
+                for slot in range(self.slot_count)
+                if self.slot_state[slot] == LOADED and self.slot_holder[slot] == most
+            ]
+            unloaded = min(slots, key=lambda slot: (rows[slot], slot))
+            self._unload(unloaded, rows)
+            if self.slot_state[unloaded] == FREE:
+                free = sorted(free + [unloaded])
+            self._load(short, free.pop(0), averages, policy)
+            value[short] -= 1.0
+            value[most] += 1.0
+            held[short] += 1
+            held[most] -= 1
+        self.debt = [value.get(member, 0.0) for member in range(self.members)]
 
     def _start_member(self, member: int) -> None:
         self.present[member] = True
         self.games[member] = 0.0
         self.wins[member] = 0.0
         self.draws[member] = 0.0
+        self.debt[member] = 0.0
 
-    def _free_slot(self) -> int | None:
-        for slot in range(2, self.slot_count):
-            if self.slot_weights[slot] is None:
-                return slot
-        return None
+    def _drop(self, member: int, rows: list[int]) -> None:
+        """A member leaves the pool: its loaded slots unload (their games play on, RETIRED)."""
+        self.present[member] = False
+        self.debt[member] = 0.0
+        for slot in range(self.slot_count):
+            if self.slot_holder[slot] == member and self.slot_state[slot] == LOADED:
+                self._unload(slot, rows)
 
-    def _place(self, member: int, slot: int, weights: dict[str, Tensor]) -> None:
-        self.slot_member[slot] = member
-        self.slot_weights[slot] = weights
-        self.member_slot[member] = slot
+    def _collect_stored(self) -> None:
+        """Forget the host weights of snapshots neither in the pool nor held by a slot."""
+        used = set(self.snapshot_step.values()) | {
+            source[1]
+            for source in self.slot_source
+            if source is not None and source[0] == "snapshot"
+        }
+        for steps in [steps for steps in self.stored if steps not in used]:
+            del self.stored[steps]
 
-    def slot_rows(self, slot: Tensor) -> list[int]:
-        """Rows (league environments) per slot, from the carry's `slot` (L,): one host read."""
-        valid = slot >= 0
-        counts = torch.zeros(self.slot_count + 1, dtype=torch.long, device=slot.device)
-        counts.index_add_(0, torch.where(valid, slot, self.slot_count), valid.long())
-        return counts[:-1].tolist()
-
-    def free_retired(self, slot: Tensor) -> list[int]:
-        """Free the retiring slots no game plays any more; returns the rows per slot."""
-        rows = self.slot_rows(slot)
-        for retiring in sorted(self.retiring):
-            if rows[retiring] == 0:
-                self.retiring.discard(retiring)
-                self.slot_weights[retiring] = None
-        return rows
+    def open(self, policy, averages, scripted_config: ScriptedConfig | None = None, slot=None):
+        """RL's start: the personas and the EMA join the pool (the uniform average too once it
+        holds an update), the per-row parameter table is built (row 0 the yardstick,
+        `scripted_config`, then the personas), and level 1 loads the slots. `slot` the carry's
+        (L,) when games are running (default: none, so every slot can be reloaded)."""
+        if self.opened:
+            raise RuntimeError("the league is already open")
+        self.template = template(policy)
+        scripted_config = scripted_config or ScriptedConfig()
+        self.parameter_rows = persona_rows(self.personas)
+        table = [[scripted_config.values[name] for name in self.parameter_rows]]
+        for _, named in self.personas:
+            values = {**scripted_config.values, **dict(named)}
+            table.append([values[name] for name in self.parameter_rows])
+        self.persona_table = torch.tensor(table, dtype=torch.float32, device=self.device)
+        for index in range(len(self.personas)):
+            self._start_member(self.first_persona + index)
+        self._start_member(EMA)
+        if averages.count > 0:
+            self._start_member(UNIFORM)
+        self.opened = True
+        rows = [0] * (self.slot_count + 1) if slot is None else self.slot_rows(slot)
+        self.free_drained(rows)
+        self.allocate(rows, averages, policy)
 
     def after_update(
         self, policy, averages, steps_before: int, steps_after: int, member: Tensor, slot: Tensor
-    ):
+    ) -> Tensor:
         """After an RL update that took the run from `steps_before` to `steps_after`
-        environment steps: a snapshot of the live weights when the schedule has one due, with
-        retention; the averages' slots take their new weights (the EMA from the first
-        snapshot, the uniform average once it holds an update). `member`, `slot` the carry's
-        (L,). Returns (member, abandon): member with the games of dropped members RETIRED,
-        and the slot (or None) whose games the caller must re-deal (lean.learn.rollout.
-        abandon) because no slot was free for the new snapshot (counted in `abandoned`)."""
-        if self.template is None:
-            self.template = template(policy)
-        abandon = None
+        environment steps: the drained slots free; a snapshot of the live weights joins the
+        pool when the schedule has one due, with retention (a dropped member's games RETIRED
+        in the returned `member`); the uniform average joins once it holds an update; every
+        slot holding an average takes its new weights (an average is one moving player); then
+        level 1. `member`, `slot` the carry's (L,). One host read of the rows per slot and one
+        of the tallies."""
+        if not self.opened:
+            raise RuntimeError("League.open comes before the first after_update (RL's start)")
+        rows = self.slot_rows(slot)
+        self.free_drained(rows)
         if self.schedule.due(steps_before, steps_after):
-            rows = self.free_retired(slot)
             ordinals = [*self.ordinal.values(), self.taken]  # the new snapshot's ordinal last
             kept = retained(ordinals, self.recent, self.history_from, self.snapshot_members)
             for dropped in [m for m, ordinal in self.ordinal.items() if ordinal not in kept]:
-                old = int(self.member_slot[dropped])
-                self.present[dropped] = False
-                self.member_slot[dropped] = -1
+                self._drop(dropped, rows)
                 del self.ordinal[dropped], self.snapshot_step[dropped]
-                self.slot_member[old] = None
-                if rows[old] > 0:
-                    self.retiring.add(old)
-                else:
-                    self.slot_weights[old] = None
                 member = torch.where(member == dropped, torch.full_like(member, RETIRED), member)
-            new = self._free_slot()
-            if new is None:  # every slot busy: the retiring slot with the fewest games goes
-                new = min(self.retiring, key=lambda retiring: rows[retiring])
-                self.retiring.discard(new)
-                self.abandoned += rows[new]
-                abandon = new
-            index = next(m for m in range(FIRST_SNAPSHOT, self.members) if m not in self.ordinal)
-            self._place(index, new, stepper_weights(policy))
-            self.slot_snapshot[new] = steps_after
+            index = next(
+                m for m in range(FIRST_SNAPSHOT, self.first_persona) if m not in self.ordinal
+            )
+            weights = {
+                name: value.to("cpu", copy=True) for name, value in stepper_weights(policy).items()
+            }
+            self.stored[steps_after] = weights
             if self.snapshot_directory is not None:
-                save_snapshot(self.snapshot_directory, steps_after, self.slot_weights[new])
+                save_snapshot(self.snapshot_directory, steps_after, weights)
             self.ordinal[index] = self.taken
             self.snapshot_step[index] = steps_after
             self.taken += 1
             self._start_member(index)
-        if self.taken > 0:
-            for which, index, ready in (
-                ("ema", EMA, True),
-                ("uniform", UNIFORM, averages.count > 0),
-            ):
-                if not ready:
-                    continue
+            self._collect_stored()
+        if averages.count > 0 and not bool(self.present[UNIFORM]):
+            self._start_member(UNIFORM)
+        for which in ("ema", "uniform"):
+            slots = [index for index, source in enumerate(self.slot_source) if source == (which,)]
+            if slots:
                 weights = stepper_weights(policy, getattr(averages, which))
-                slot_index = index - EMA  # slots 0 and 1 belong to the averages
-                if self.slot_weights[slot_index] is None:
-                    self._place(index, slot_index, weights)
-                    self._start_member(index)
-                else:
-                    for name, tensor in weights.items():
-                        self.slot_weights[slot_index][name].copy_(tensor)
-        return member, abandon
+                for held in slots:
+                    self._fill(held, weights)
+        self.allocate(rows, averages, policy)
+        return member
 
     def prepare(self, league_envs: int, slot: Tensor) -> None:
-        """Before a segment: free the retiring slots without games, set the capacities (the
-        network members' C = ceil(capacity_factor * L / members), the scripted agent's L:
-        the same every segment of a run) and build the network table (NetworkTable) of the
-        slots holding weights on W = C rows (None while no slot holds any: every league game
-        is scripted). One host read (the rows per slot)."""
-        rows = self.free_retired(slot)
-        width = min(league_envs, math.ceil(self.capacity_factor * league_envs / self.members))
+        """Before a segment: free the drained slots, set the capacity (C = ceil(capacity_factor
+        * L / K), the same every segment of a run) and build the network table (NetworkTable)
+        of the network slots holding weights on W = C rows (None while there are none: every
+        league game scripted). One host read (the rows per slot)."""
+        rows = self.slot_rows(slot)
+        self.free_drained(rows)
+        width = min(league_envs, math.ceil(self.capacity_factor * league_envs / self.loaded_slots))
         self.width = width
         self.capacity.fill_(width)
-        self.capacity[SCRIPTED] = league_envs
-        held = [index for index, weights in enumerate(self.slot_weights) if weights is not None]
-        orphans = [index for index in range(self.slot_count) if rows[index] and index not in held]
+        orphans = [
+            index
+            for index in range(self.slot_count)
+            if rows[index] and self.slot_state[index] == FREE
+        ]
         if orphans:
-            raise RuntimeError(f"league slots {orphans} have games but no weights")
-        if not held or league_envs == 0:
+            raise RuntimeError(f"league slots {orphans} have games but are free")
+        networks = [
+            index
+            for index in range(self.slot_count)
+            if self.slot_state[index] != FREE and self.slot_source[index][0] != "scripted"
+        ]
+        if not networks or league_envs == 0:
             self.table = None
             return
-        over = [index for index in range(self.slot_count) if rows[index] > width]
+        over = [index for index in networks if rows[index] > width]
         if over:
             raise RuntimeError(
                 f"league slots {over} hold {[rows[index] for index in over]} rows, more than "
-                f"the table width {width} (the capacity draws never do)"
+                f"the table width {width} (level 2 never deals past it)"
             )
         slots = [
             (
@@ -405,79 +574,111 @@ class League:
                 torch.tensor(index, device=self.device),
                 *split_weights(self.template, self.slot_weights[index]),
             )
-            for index in held
+            for index in networks
         ]
         self.table = NetworkTable(slots, torch.arange(width, device=self.device), self.slot_count)
 
+    def summary(self) -> dict:
+        """Host numbers for the update's line: loaded slots by kind, draining slots, the
+        scripted (yardstick and personas) share of the loaded slots and of the games dealt
+        so far, the overflow's games and the loads so far."""
+        by_kind: dict[str, int] = {}
+        for member, count in enumerate(self.held()):
+            by_kind[self.kinds[member]] = by_kind.get(self.kinds[member], 0) + count
+        dealt = self.dealt.tolist()
+        scripted = sum(
+            count
+            for member, count in enumerate(dealt)
+            if self.kinds[member] in (SCRIPTED_KIND, PERSONA_KIND)
+        )
+        return {
+            "loaded": by_kind,
+            "draining": sum(state == DRAINING for state in self.slot_state),
+            "scripted_slots": (by_kind.get(SCRIPTED_KIND, 0) + by_kind.get(PERSONA_KIND, 0))
+            / self.loaded_slots,
+            "scripted_dealt": scripted / max(1.0, sum(dealt)),
+            "overflow_games": float(self.overflow_games),
+            "loads": self.loads,
+        }
+
     # ---- checkpoints
 
+    TENSORS = (
+        "present",
+        "games",
+        "wins",
+        "draws",
+        "dealt",
+        "overflow_games",
+        "slot_member",
+        "slot_loaded",
+        "slot_network",
+        "slot_persona",
+        "capacity",
+    )
+
     def state(self) -> dict:
-        """The league's checkpoint state. The weights of a snapshot written to
-        `snapshot_directory` are not in it (the slot's entry is None, its snapshot id in
-        `slot_snapshot`); nor are the averages' slots (entry None, rebuilt from the averages on
-        load: a checkpoint follows after_update, which sets them from the averages); any
-        snapshot not on disk is."""
-        names = ("present", "games", "wins", "draws", "member_slot")
-        on_disk = [
-            self.snapshot_directory is not None
-            and slot >= 2
-            and weights is not None
-            and self.slot_snapshot[slot] is not None
-            for slot, weights in enumerate(self.slot_weights)
-        ]
-        rebuilt = [slot < 2 for slot in range(self.slot_count)]
+        """The league's checkpoint state. Slot weights are not in it (rebuilt on load: the
+        averages' from the averages, a snapshot's from its host weights); the snapshots'
+        host weights are, unless written to `snapshot_directory` (then None: read back from
+        there)."""
         return {
-            **{name: getattr(self, name) for name in names},
-            "slot_member": list(self.slot_member),
-            "slot_weights": [
-                None if disk or derived else weights
-                for weights, disk, derived in zip(self.slot_weights, on_disk, rebuilt)
-            ],
-            "slot_from_averages": [
-                slot < 2 and weights is not None for slot, weights in enumerate(self.slot_weights)
-            ],
-            "slot_snapshot": [
-                snapshot if disk else None for snapshot, disk in zip(self.slot_snapshot, on_disk)
-            ],
-            "retiring": sorted(self.retiring),
+            **{name: getattr(self, name) for name in self.TENSORS},
+            "persona_table": self.persona_table,
+            "parameter_rows": self.parameter_rows,
+            "slot_state": list(self.slot_state),
+            "slot_holder": list(self.slot_holder),
+            "slot_source": list(self.slot_source),
+            "debt": list(self.debt),
             "ordinal": dict(self.ordinal),
             "snapshot_step": dict(self.snapshot_step),
+            "stored": {
+                steps: None if self.snapshot_directory is not None else weights
+                for steps, weights in self.stored.items()
+            },
             "taken": self.taken,
-            "abandoned": self.abandoned,
+            "loads": self.loads,
+            "opened": self.opened,
+            "width": self.width,
         }
 
     def load(self, state: dict, policy, averages, directory: Path | None = None) -> None:
-        """Restore a state(); the snapshots it references are read from `directory`, and
-        written to `snapshot_directory` when that lacks them (a resume into another run directory).
-        `averages` (already loaded) give the averages' slots back."""
-        for name in ("present", "games", "wins", "draws", "member_slot"):
+        """Restore a state(); the snapshots it names without weights are read from `directory`
+        (and written to `snapshot_directory` when that lacks them: a resume into another run
+        directory). `averages` (already loaded) give the averages' slots back."""
+        for name in self.TENSORS:
             setattr(self, name, state[name].to(self.device).clone())
-        self.slot_member = list(state["slot_member"])
-        referenced = state.get("slot_snapshot", [None] * self.slot_count)
-        self.slot_snapshot = list(referenced)
-        self.slot_weights = []
-        derived = state.get("slot_from_averages", [False] * self.slot_count)
-        for slot, (weights, snapshot) in enumerate(zip(state["slot_weights"], referenced)):
-            if derived[slot]:
-                weights = stepper_weights(
-                    policy, getattr(averages, "ema" if slot == EMA - 1 else "uniform")
-                )
-            if weights is None and snapshot is not None:
-                weights = load_snapshot(directory, snapshot, self.device)
-                if (
-                    self.snapshot_directory is not None
-                    and not snapshot_path(self.snapshot_directory, snapshot).exists()
-                ):
-                    save_snapshot(self.snapshot_directory, snapshot, weights)
-            self.slot_weights.append(
-                None
-                if weights is None
-                else {name: value.to(self.device) for name, value in weights.items()}
-            )
-        self.retiring = set(state["retiring"])
+        table = state["persona_table"]
+        self.persona_table = None if table is None else table.to(self.device).clone()
+        self.parameter_rows = tuple(state["parameter_rows"])
+        self.slot_state = list(state["slot_state"])
+        self.slot_holder = list(state["slot_holder"])
+        self.slot_source = [
+            None if source is None else tuple(source) for source in state["slot_source"]
+        ]
+        self.debt = list(state["debt"])
         self.ordinal, self.snapshot_step = dict(state["ordinal"]), dict(state["snapshot_step"])
-        self.taken, self.abandoned = state["taken"], state["abandoned"]
+        self.taken, self.loads = state["taken"], state["loads"]
+        self.opened, self.width = state["opened"], state["width"]
         self.template = template(policy)
+        self.stored = {}
+        for steps, weights in state["stored"].items():
+            if weights is None:
+                weights = load_snapshot(directory, steps, "cpu")
+            if (
+                self.snapshot_directory is not None
+                and not snapshot_path(self.snapshot_directory, steps).exists()
+            ):
+                save_snapshot(self.snapshot_directory, steps, weights)
+            self.stored[steps] = weights
+        self.slot_weights = [None] * self.slot_count
+        for slot, source in enumerate(self.slot_source):
+            if source is None or source[0] == "scripted":
+                continue
+            if source[0] == "snapshot":
+                self._fill(slot, self.stored[source[1]])
+            else:
+                self._fill(slot, stepper_weights(policy, getattr(averages, source[0])))
 
 
 SNAPSHOTS = "snapshots"
@@ -488,7 +689,7 @@ def snapshot_path(directory: Path, steps: int) -> Path:
 
 
 def save_snapshot(directory: Path, steps: int, weights: dict[str, Tensor]) -> None:
-    """A snapshot's weights (a slot's, in their training dtype), written once, atomically."""
+    """A snapshot's weights (in their training dtype), written once, atomically."""
     path = snapshot_path(directory, steps)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(".tmp")
@@ -524,43 +725,37 @@ def sample_categorical(weight: Tensor, count: int, generator) -> Tensor:
     return torch.searchsorted(cumulative, point, right=True).clamp(max=weight.shape[0] - 1)
 
 
-def accept(draw: Tensor, wanted: Tensor, free: Tensor, members: int) -> tuple[Tensor, Tensor]:
-    """Of the draws `draw` (L,) where `wanted` (L,) bool, those within their member's `free`
-    rows (members,), earlier environments first: (accepted (L,) bool, rows taken (members,))."""
-    one_hot = functional.one_hot(draw, members) * wanted[:, None].long()
-    rank = one_hot.cumsum(0).gather(1, draw[:, None]).squeeze(1)  # 1 for a member's first draw
+def accept(draw: Tensor, wanted: Tensor, free: Tensor, slots: int) -> tuple[Tensor, Tensor]:
+    """Of the draws `draw` (L,) where `wanted` (L,) bool, those within their slot's `free`
+    rows (slots,), earlier environments first: (accepted (L,) bool, rows taken (slots,))."""
+    one_hot = functional.one_hot(draw, slots) * wanted[:, None].long()
+    rank = one_hot.cumsum(0).gather(1, draw[:, None]).squeeze(1)  # 1 for a slot's first draw
     accepted = wanted & (rank <= free.index_select(0, draw))
-    taken = (functional.one_hot(draw, members) * accepted[:, None].long()).sum(0)
+    taken = (functional.one_hot(draw, slots) * accepted[:, None].long()).sum(0)
     return accepted, taken
 
 
-def capacity_draws(
-    probability: Tensor,
-    present: Tensor,
-    capacity: Tensor,
-    member: Tensor,
-    done: Tensor,
-    generator,
-    members: int,
+def slot_draws(
+    loaded: Tensor, capacity: Tensor, slot: Tensor, done: Tensor, generator, slots: int
 ) -> Tensor:
-    """(L,) a member for every league environment (meaningful where `done`) by the capacity
-    rule (module docstring): PFSP `probability` over the members with a free row, the
-    overflow drawn once more over those still free, then the free rows in member order. The
-    rows held are the environments not `done` (RETIRED ones belong to no member)."""
-    holding = ~done & (member >= 0)
-    held = (functional.one_hot(member.clamp(min=0), members) * holding[:, None].long()).sum(0)
-    free = (capacity - held).clamp(min=0) * present.long()
-    count = member.shape[0]
-    chosen = torch.zeros_like(member)
+    """(L,) a slot for every league environment (meaningful where `done`), level 2: uniform
+    over the `loaded` (slots + 1,) slots with a free row of their `capacity` (the rows held
+    are the environments not `done`), the rest drawn once more over those still free, then
+    the free rows in slot order; past every free row, the overflow slot (index `slots`)."""
+    holding = ~done & (slot >= 0)
+    held = (functional.one_hot(slot.clamp(min=0), slots + 1) * holding[:, None].long()).sum(0)
+    free = (capacity - held[:slots]).clamp(min=0) * loaded[:slots].long()
+    count = slot.shape[0]
+    chosen = torch.zeros_like(slot)
     wanted = done
     for _ in range(2):
-        draw = sample_categorical(probability * (free > 0).to(probability.dtype), count, generator)
-        accepted, taken = accept(draw, wanted, free, members)
+        draw = sample_categorical((free > 0).float(), count, generator)
+        accepted, taken = accept(draw, wanted, free, slots)
         chosen = torch.where(accepted, draw, chosen)
         free = free - taken
         wanted = wanted & ~accepted
-    # What is left takes the free rows in order: the j-th left over (from 1) the member
-    # holding free row j when the members' free rows are laid end to end.
+    # What is left takes the free rows in order: the j-th left over (from 1) the slot holding
+    # free row j when the slots' free rows are laid end to end; past them all, the overflow.
     order = wanted.long().cumsum(0)
-    fill = torch.searchsorted(free.cumsum(0), order, right=False).clamp(max=members - 1)
+    fill = torch.searchsorted(free.cumsum(0), order, right=False)
     return torch.where(wanted, fill, chosen)

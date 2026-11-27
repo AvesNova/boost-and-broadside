@@ -19,9 +19,11 @@ from lean.learn import rollout, training
 
 
 @functools.cache
-def graphs(shapes: str = "static") -> SimpleNamespace:
+def graphs(shapes: str = "static", stage: str = "") -> SimpleNamespace:
     """The compiled functions: act, advance, slot_actions, merge_league (lean.learn.rollout),
-    minibatch_values and minibatch_loss (lean.learn.training)."""
+    minibatch_values and minibatch_loss (lean.learn.training). `stage` keeps a stage's graphs
+    apart from another's in one process (collect: "league" once the league is open, RL, whose
+    scripted call takes per-row parameters; "" before, BC): each stage is static on its own."""
     return SimpleNamespace(
         act=compile_graph(rollout.act, shapes),
         advance=compile_graph(rollout.advance, shapes),

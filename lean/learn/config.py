@@ -10,6 +10,50 @@ from lean.contract import LEVELS
 DAMAGE, KILL_DEATH, OBJECTIVE_PROGRESS, OBJECTIVE, OUTCOME = range(LEVELS)
 
 
+# Placeholder league personas (LearnConfig.league_personas): round 1's spread-1 personas by
+# label, every sampled row (skill.json's values to 4 significant figures).
+# fmt: off
+PLACEHOLDER_PERSONAS: tuple = (
+    ("persona14", (
+        ("threat_weight", 0.8996), ("angles_weight", 0.3918), ("energy_weight", 0.2691),
+        ("aggression", 0.6698), ("speed_weight", 0.3253), ("collision_weight", 2.245),
+        ("boundary_weight", 1.675), ("field_weight", 0.3781), ("horizon", 1.649),
+        ("preferred_speed", 0.7812), ("reply_temperature", 0.1839), ("caution", 0.6477),
+        ("temperature", 0.0496), ("stickiness", 0.04844), ("store_weight", 0.6157),
+        ("power_horizon", 3.786), ("power_temperature", 0.03979), ("power_stickiness", 0.2119),
+        ("disengaged_energy_weight", 0.7228), ("seek_weight", 0.09279), ("fire_tolerance", 0.9744),
+    )),
+    ("persona21", (
+        ("threat_weight", 1.073), ("angles_weight", 0.3343), ("energy_weight", 0.2875),
+        ("aggression", 0.5946), ("speed_weight", 0.4091), ("collision_weight", 2.304),
+        ("boundary_weight", 2.002), ("field_weight", 0.4414), ("horizon", 1.231),
+        ("preferred_speed", 0.9202), ("reply_temperature", 0.2821), ("caution", -1.672),
+        ("temperature", 0.03741), ("stickiness", 0.06428), ("store_weight", 0.6364),
+        ("power_horizon", 3.544), ("power_temperature", 0.03567), ("power_stickiness", 0.3877),
+        ("disengaged_energy_weight", 0.5387), ("seek_weight", 0.07699), ("fire_tolerance", 1.109),
+    )),
+    ("persona27", (
+        ("threat_weight", 0.8968), ("angles_weight", 0.3951), ("energy_weight", 0.2277),
+        ("aggression", 0.3064), ("speed_weight", 0.2856), ("collision_weight", 2.485),
+        ("boundary_weight", 1.716), ("field_weight", 0.3017), ("horizon", 1.227),
+        ("preferred_speed", 0.917), ("reply_temperature", 0.1228), ("caution", -1.611),
+        ("temperature", 0.0495), ("stickiness", 0.05535), ("store_weight", 0.6149),
+        ("power_horizon", 3.437), ("power_temperature", 0.06214), ("power_stickiness", 0.2195),
+        ("disengaged_energy_weight", 0.3051), ("seek_weight", 0.1704), ("fire_tolerance", 1.242),
+    )),
+    ("persona09", (
+        ("threat_weight", 0.7911), ("angles_weight", 0.4138), ("energy_weight", 0.2779),
+        ("aggression", 0.7431), ("speed_weight", 0.3778), ("collision_weight", 2.505),
+        ("boundary_weight", 1.744), ("field_weight", 0.3421), ("horizon", 1.207),
+        ("preferred_speed", 0.9899), ("reply_temperature", 0.3288), ("caution", -0.7859),
+        ("temperature", 0.0345), ("stickiness", 0.04401), ("store_weight", 0.6504),
+        ("power_horizon", 3.741), ("power_temperature", 0.04244), ("power_stickiness", 0.224),
+        ("disengaged_energy_weight", 0.4842), ("seek_weight", 0.1532), ("fire_tolerance", 0.7681),
+    )),
+)
+# fmt: on
+
+
 @dataclass
 class LearnConfig:
     """Every number the learner uses.
@@ -162,15 +206,27 @@ class LearnConfig:
     recent_snapshots: int = 8
     snapshot_history_from: int = 3
     snapshot_members: int = 12
-    # Slots for dropped snapshots that still play their running games. Retention drops at
-    # most 2 snapshots at one addition, and drops start at the 11th snapshot (75M), from
-    # where additions are at least 15M steps (14 updates at parity) apart while a game lasts
-    # at most clock_ticks + segment_ticks = 1,928 ticks (4 updates): 2 suffice at parity; 4
-    # leave room for smaller updates. With none free, the games of the retiring slot with
-    # the fewest are re-dealt (League.abandoned counts them).
-    retiring_slots: int = 4
-    # Each member's row capacity: ceil(league_capacity_factor * L / members present).
+    # The two-level league (lean.learn.pool): K loaded slots take new games, R spare slots let
+    # level 1 load a member while an unloaded slot drains its running games (at most about 4
+    # updates at parity: a game lasts at most clock_ticks + segment_ticks = 1,928 ticks). Each
+    # slot holds a member: a network's weights or a scripted agent's parameters; a member may
+    # hold several. Level 1 (between updates) sets each member's slots to its PFSP share of K
+    # (the rounding carried from update to update, so the long-run share is exact), at most
+    # one load per free slot; level 2 (each game's end) draws uniformly over the loaded slots
+    # with a free row.
+    league_slots: int = 12
+    league_spare_slots: int = 4
+    # Each slot's row capacity C = ceil(league_capacity_factor * L / league_slots), fixed for
+    # the run: every network slot runs on C rows.
     league_capacity_factor: float = 1.25
+    # The scripted personas in the league from RL's start, each (label, ((row, value), ...)):
+    # named points of the scripted agent's parameters (lean.scripted.PARAMETERS; rows not
+    # named keep the yardstick's value). Placeholders (2026-11-27): four of round 1's
+    # spread-1 personas (docs/rewrite/sections/lookahead-personas/results.md, skill.json),
+    # the strongest in 1v1 (persona14, 1319 / 974 Elo 1v1 / 4v4), in 4v4 (persona21,
+    # 1079 / 1107), in both (persona27, 1248 / 1046) and persona09 (1284 / 1010), until the
+    # persona study picks the league's personas.
+    league_personas: tuple = PLACEHOLDER_PERSONAS
     league_floor: float = 0.125  # share of league draws uniform over the members
     league_decay: float = 0.99  # each game decays its member's win tallies by this first
     # Checkpoints to disk (lean.train): every this many environment steps, none deleted.
