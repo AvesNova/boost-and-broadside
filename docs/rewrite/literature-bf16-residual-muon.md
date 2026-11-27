@@ -1,0 +1,75 @@
+# Literature check: bf16 residual stream and Muon (2026-11-27)
+
+Online check, about 45 minutes. Evidence tags: **measured** = a source ran an experiment; **default** = a library or system does it, no published ablation; **inference** = ours. Several 2026 sources are arXiv preprints; where only the abstract was readable, that is stated.
+
+## Summary
+
+| Question | Finding | Tag | Bottom line for us |
+|---|---|---|---|
+| Q1 LLM stacks: residual dtype | LLaMA/Gemma-style norm computes in fp32 and casts back to the input dtype; OLMo-core does the same. Megatron-LM keeps the residual in the model dtype (bf16) unless `--fp32-residual-connection` is set (supported with fp16 or bf16). No default stack keeps an fp32 residual. | default | Our fp32 residual is the conservative, non-default choice. |
+| Q1 ablation, depth | No published ablation of bf16 vs fp32 residual by depth found. One measured data point: a DiT image model, bf16 inference with an fp32 stream (block linears stay bf16) cut error vs an fp32 reference 2.4-3.5x at +1.5% time; its training stays bf16. | measured (inference, one model, GitHub issue) | Error grows with how small updates are relative to the stream value; shallow nets should be less affected. |
+| Q1 RL | BF16 vs FP16 in LLM RL: FP16 removes most train/inference log-prob mismatch (24x on sequence level, authors' claim) and converges faster. A later paper finds a gap even at bit-exact parity, caused by bf16 *weight* rounding ("weight sticking") at low learning rates; fixed by stochastic rounding. Their residual adds stay bf16, norm/optimizer states fp32. | measured | Our fp32 master weights and fp32 params under autocast already avoid weight sticking. Nothing found on value-regression precision. |
+| Q2 Muon scope | Hidden 2D matrices only; embeddings, output head, norms, scalars/vectors, biases stay on AdamW. | measured / default | Apply to our attention, MLP and recurrent-block projection matrices; Adam for the rest. |
+| Q2 gains | LLM pretraining: about 1.35x NanoGPT speedrun (Jordan, Dec 2024); about 2x compute efficiency, 52% of FLOPs at 399M-1.5B (Moonshot, Feb 2025). Independent, tuned-baseline study: speedup shrinks from about 1.4x at 0.1B to about 1.1x at 1.2B. Diffusion benchmark: 18% lower final loss but advantage mostly gone in wall-clock. | measured | Small models are where gains are largest, but they are against modest baselines and are loss-speed gains, not final-quality gains. |
+| Q2 tuning | Needs weight decay and update-RMS matching (0.2*sqrt(max(rows, cols)) lets Muon reuse AdamW lr/wd). Moonshot: momentum 0.95, 5 Newton-Schulz steps, wd 0.1. Optimal lr about 2x Adam's in one diffusion benchmark. | measured | Use RMS matching; sweep lr over a factor of 4. |
+| Q2 RL | Mixed and thin. Agentic-RL study (0.5-3B, ALFWorld): Muon on hidden matrices helped, but the gain vanished under an RMS-matched control and tuned AdamW nearly matched it. An RLVR paper reports Muon collapsing to zero under GRPO. A "work in progress" long-horizon paper uses Muon with PPO-style clipping, no numbers retrieved. No PPO on small networks, no behaviour cloning found. | measured (LLM only) | No evidence for small PPO agents. |
+| Q2 BC then RL | Moonshot: optimizer mismatch between pretraining and SFT removes Muon's advantage. | measured | If BC uses Muon, RL should probably use Muon too (or test both). |
+| First test | A BC-stage A/B (Adam vs Muon on hidden matrices) is the right first test: supervised, low-noise gradient, closest to the pretraining regime where Muon is validated. | inference | RL second, only if BC shows a clear gain. |
+
+## Q1. Residual stream precision
+
+**What stacks do (default).** I read the sources directly.
+- LLaMA reference: `output = self._norm(x.float()).type_as(x)`; the residual `h` stays in the model dtype ([meta-llama/llama model.py](https://github.com/meta-llama/llama/blob/main/llama/model.py)).
+- Gemma 2 (HF): `_norm(x.float())`, weight multiply in fp32, then cast to the input dtype ([modeling_gemma2.py](https://github.com/huggingface/transformers/blob/main/src/transformers/models/gemma2/modeling_gemma2.py)).
+- OLMo-core: layer norm runs with autocast off, upcasts to fp32 if `full_precision`, returns `x.to(og_dtype)` ([layer_norm.py](https://github.com/allenai/OLMo-core/blob/main/src/olmo_core/nn/layer_norm.py)).
+- Megatron-LM: residual connection in fp32 is an opt-in flag `--fp32-residual-connection`, asserted to need fp16 or bf16 ([arguments.py](https://github.com/NVIDIA/Megatron-LM/blob/main/megatron/training/arguments.py), checked 2026-11-27). The flag dates to the 2021 commit that introduced it; no ablation is published with it.
+- torchtitan: I did not verify upstream code. A third-party doc (AMD Primus) lists its mixed-precision defaults as bf16 params, fp32 reduce ([Primus torchtitan parameters](https://rocm.docs.amd.com/projects/primus/en/latest/_sources/03-configuration-reference/torchtitan-parameters.md)); treat as unverified for the residual.
+- Our pattern (fp32 norm output, fp32 residual) is therefore stricter than all of these. Under autocast, matmul inputs are cast to bf16 anyway, so the norm-output dtype matters only for the elementwise path, not the matmuls (inference).
+
+**Measured ablations.** I found no study varying residual precision with depth. The closest: an OpenMOSS GitHub issue (2026-10-30, maintainer reply 2026-11-01) on a DiT image model, bf16 inference vs an fp32 stream with bf16 block linears: relative error vs an fp32 reference 4.81 / 1.93 / 2.08% (bf16) vs 1.64 / 0.81 / 0.59% (fp32 stream) at three noise levels; cost +1.5% time, +0.6 GB; reduced-precision GEMM reduction made no difference, so the error was in the stream; the author saw no consistent visual preference; training stays bf16 ([issue 31](https://github.com/OpenMOSS/MOSS-Image/issues/31)). A blog simulation argues a bf16 residual drops updates smaller than half the value spacing ([dev.to](https://dev.to/ai_openfree_b23025ef075cf/why-long-bf16-training-runs-stall-the-residual-stream-has-no-room-for-small-updates-i32)); it is illustrative, not a training result.
+
+**RL-specific.**
+- Qi et al., "Defeating the Training-Inference Mismatch via FP16" (2025-10-30): bf16 rounding is the main cause of rollout/trainer log-prob mismatch; FP16 reduces sequence-level mismatch about 24x and trains more stably (**measured**, authors' own runs; no independent replication found) ([arXiv 2510.26788](https://arxiv.org/abs/2510.26788)).
+- Nazemi et al., "Closing the BF16-FP16 Convergence Speed Gap in RL Post-Training with Stochastic Rounding" (2026-11-10): at RLVR learning rates (1e-6), bf16 mixed precision converges slower than FP16 even with bit-exact rollout/trainer parity. Cause: round-to-nearest of fp32 shadow weights to bf16 leaves small updates unchanged ("weight sticking"). Stochastic rounding fixes it, with lower drift than raising the lr. Models 1.5B, 14B, 30B-A3B. In their setup attention accumulation, RMS norm, log-softmax, optimizer states and gradient all-reduce are fp32, while matmuls and *residual additions* are bf16/fp16; so the residual was not the variable ([arXiv 2611.13545](https://arxiv.org/abs/2611.13545), full text read). They also report FP16 overflowing on a 397B agentic run.
+- Nothing found on value-regression or HL-Gauss precision, or on small PPO agents in bf16.
+
+**Bottom line (inference).** For a width-128, few-block model the residual accumulates only a handful of additions, so bf16 rounding there is likely small relative to other noise; the one measured case where it mattered was a deep DiT at inference. Cost of keeping fp32 here is negligible (stream is tiny, matmuls unchanged). Keep fp32 unless the A/B shows bf16 is free; the RL literature's real hazard, bf16 weight rounding, does not apply to us because master weights and parameters are fp32.
+
+**Own A/B.** (1) Forward-only, no training: on a fixed batch of real rollouts, compare logits, value expectation and log-probs of bf16-residual vs fp32-residual vs a full fp32 reference on the same weights; report relative error and max log-prob difference, and the rollout-vs-update log-ratio distribution (PPO ratio at epoch 0 should be 1). (2) Short BC and RL runs, 3+ seeds, arm = residual dtype only: final BC loss, PPO approx-KL and clip fraction, value loss, return/Elo, and wall-clock per update. Include the recurrent state path, where error can compound over time steps. Decide by seed-noise-level differences, not single runs.
+
+## Q2. Muon
+
+**Definition and scope.** Orthogonalizes the momentum matrix of each 2D hidden weight with a Newton-Schulz iteration (5 steps, coefficients 3.4445, -4.7750, 2.0315). Scalar/vector parameters and the input and output layers (embedding, classifier head) go to AdamW; Q, K, V optimized separately. Jordan's post (2024-12-08, measured): CIFAR-10 94% in 2.6 vs 3.3 A100-s; NanoGPT speedrun about 1.35x; 1.5B model to GPT-2-XL HellaSwag in 10 vs 13.3 8xH100-hours; FLOP overhead under 1% for LMs, wall-clock per step still slower; unknown for fine-tuning and RL ([post](https://kellerjordan.github.io/posts/muon/)).
+
+**Scale.** Moonshot, "Muon is Scalable" (2025-02-24, measured): weight decay (`W -= lr*(0.2*sqrt(max(A,B))*O + wd*W)`) and RMS matching so Muon reuses AdamW lr and wd; 399M-1.5B scaling law, about 52% of AdamW FLOPs; wd 0.1, momentum 0.95, 5 NS steps (10 gave no gain); optimizer cost 1-3% of forward-backward; one momentum buffer instead of two. Limitations they state: AdamW-pretrained then Muon-SFT (or reverse) is suboptimal, no clear Muon advantage in SFT when optimizers differ ([arXiv 2502.16982](https://arxiv.org/abs/2502.16982)). Independent: "Fantastic Pretraining Optimizers" (2025-09-02, rev. 2026-10-25): matrix optimizers' speedup over a *tuned* AdamW falls from about 1.4x at 0.1B to about 1.1x at 1.2B; per-optimizer tuning is required; rankings can flip during the lr decay, so compare at end of training ([arXiv 2509.02046](https://arxiv.org/abs/2509.02046), abstract). Diffusion-model benchmark: 18% lower final loss, epoch 1.45x slower, optimal lr about 2x AdamW's ([arXiv 2510.19376](https://arxiv.org/abs/2510.19376), via search summary).
+
+**Failure modes.** Without weight decay and RMS matching, gains shrink with scale and weights/outputs grow (Moonshot). Optimizer mismatch between stages (above). Cost: NS on each matrix every step; trivial for 128-wide matrices (inference), but not free per step in wall-clock.
+
+**RL / BC.**
+- "When Does Muon Help Agentic RL?" (2026-07-17, rev. 2026-08-02; abstract only): Qwen2.5 0.5-3B on ALFWorld, group-based objectives, same KL/clipping recipe for all arms. Muon on hidden matrices at lr 3e-5 beat AdamW at 1e-6 on late success (reported 0.290 to 0.546 in a search summary), but tuned AdamW nearly matched it at 3B, and an RMS-matched control (Muon at 3.53x AdamW's update RMS otherwise) removed the late gain; advantage shrinks near saturation. The authors conclude the gain is tied to Muon's update scale, not a universal advantage ([arXiv 2607.16169](https://arxiv.org/abs/2607.16169)).
+- "Muon collapses to zero" under GRPO/GMPO on Qwen3-1.7B/4B (2026-05-19; abstract only); the authors blame whitening of low-SNR gradients ([arXiv 2605.19282](https://arxiv.org/abs/2605.19282)). This is their explanation, not independently tested.
+- "Long-Horizon RL Needs Muon" (2026-10-14, 7 pages, work in progress): Muon plus token-averaged loss and truncated importance sampling; no numbers retrievable ([arXiv 2610.20256](https://arxiv.org/abs/2610.20256)).
+- NVIDIA NeMo RL docs: Muon supported for SFT and RL on Adam-pretrained models, "minor improvements" post-training only, experimental; Muon for linear layers, Adam for embeddings and norms ([docs](https://docs.nvidia.com/nemo/rl/latest/guides/muon-optimizer.html)). ZAYA1-8B reports Muon in actor updates without a controlled ablation (could not read the PDF text; unverified) ([arXiv 2605.05365](https://arxiv.org/abs/2605.05365)).
+- Not found: Muon in PPO on small networks, in behaviour cloning or imitation policies, or analysis of Muon with the PPO clip/KL.
+
+**PPO interaction (inference).** Muon's step size is set by lr and the RMS scale, almost independent of gradient magnitude, so per-minibatch policy movement is controlled by lr rather than by gradient size. With 32 minibatches x 4 epochs this makes clip fraction and approx-KL the quantities to watch; the trust region will bind earlier if the update RMS is larger than Adam's. Low-SNR RL gradients being whitened is the proposed failure mechanism (see above).
+
+**Bottom line (inference).** The BC-stage A/B is the right first test: supervised cross-entropy on a teacher distribution is the regime closest to LLM pretraining, where Muon is measured, and gains are largest for small models. But the evidence is loss-speed gains, shrinking with tuning, so the control must be a tuned Adam.
+- Setup: Muon on hidden 2D matrices (attention and MLP projections and the recurrent block's linear projections); Adam (current settings) for embeddings, heads, norms, gates, biases, recurrence parameters. Nesterov momentum 0.95, 5 NS steps, RMS matching 0.2*sqrt(max(rows, cols)) so the Adam lr and wd carry over, decoupled wd 0.1 as a start; NS in bf16 is standard, fp32 master weights stay.
+- Sweep: Muon lr at 0.5x, 1x, 2x, 4x the tuned Adam lr; Adam lr tuned on its own grid; same schedule; compare final BC loss, not intermediate; at least 3 seeds. Log update RMS per matrix and wall-clock per update.
+- RL afterwards, only if BC gains hold: run PPO with Muon from the Muon-BC checkpoint (optimizer match) and from Adam-BC; control is the RMS-matched variant (the agentic-RL study shows the update scale can explain the whole effect). Watch approx-KL, clip fraction, value loss; keep the critic's head on Adam. Expect no gain in the noisy-gradient regime; an Adam lr increase should also be in the comparison.
+
+## Sources
+- Jordan, Muon, 2024-12-08: https://kellerjordan.github.io/posts/muon/
+- Liu et al., Muon is Scalable for LLM Training, 2025-02-24: https://arxiv.org/abs/2502.16982
+- Wen et al., Fantastic Pretraining Optimizers and Where to Find Them, 2025-09-02 (v3 2026-10-25): https://arxiv.org/abs/2509.02046
+- Optimization Benchmark for Diffusion Models on Dynamical Systems, 2025-10: https://arxiv.org/abs/2510.19376
+- When Does Muon Help Agentic RL?, 2026-07-17: https://arxiv.org/abs/2607.16169
+- Muon collapse in RLVR (Pion), 2026-05-19: https://arxiv.org/abs/2605.19282
+- Long-Horizon RL Needs Muon, 2026-10-14: https://arxiv.org/abs/2610.20256
+- ZAYA1-8B Technical Report, 2026-05: https://arxiv.org/abs/2605.05365
+- NeMo RL Muon guide: https://docs.nvidia.com/nemo/rl/latest/guides/muon-optimizer.html
+- Qi et al., Defeating the Training-Inference Mismatch via FP16, 2025-10-30: https://arxiv.org/abs/2510.26788
+- Nazemi et al., BF16-FP16 gap and stochastic rounding, 2026-11-10: https://arxiv.org/abs/2611.13545
+- OpenMOSS fp32 residual stream issue, 2026-10-30: https://github.com/OpenMOSS/MOSS-Image/issues/31
+- LLaMA, Gemma 2 (HF), OLMo-core, Megatron-LM source files linked above (read 2026-11-27).
