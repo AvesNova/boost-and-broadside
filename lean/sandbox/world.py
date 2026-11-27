@@ -374,15 +374,16 @@ class HitRange(World):
         far = 2.0 * (math.hypot(x, y) + self.constant("egg_front", 1)) + 100.0
         mx, my = far * dx, far * dy
         heading = self.target_heading
-        half = self.constant("egg_half_width", 1)
+        inverse_half = self.constant("inverse_egg_half_width", 1)
         entry = core.egg_entry(
             t(x), t(y), t(mx), t(my), t(math.cos(heading)), t(math.sin(heading)),
-            self.constant("egg_front", 1), self.constant("egg_rear", 1), half,
+            self.constant("inverse_egg_front", 1), self.constant("inverse_egg_rear", 1),
+            inverse_half,
         )  # fmt: skip
         if not bool(entry < torch.inf):
             return straight
         turn = core.egg_turn(
-            t(x), t(y), t(mx), t(my), entry, half, t(self.constant("deflector_turn", 1))
+            t(x), t(y), t(mx), t(my), entry, inverse_half, t(self.constant("deflector_turn", 1))
         )
         cos, sin = float(turn.cos), float(turn.sin)
         px, py = x + float(entry) * mx, y + float(entry) * my
