@@ -1111,3 +1111,26 @@ Bullet deflector and the runtime hit model (PROPOSAL, branch `bullet-deflector`,
 - **Whole branch** (laptop 4070, performance profile): the update at E 2,048 129.7 -> 114.5 s
   (168.9 -> 149.1 ms per micro-batch); the BC loop 8,255 steps/s (127.0 s per update); the
   cold compile 135.4 -> 121.0 s.
+
+## The two-level league (PROPOSAL 2026-11-27, author ~20:15 "implement and test out the two level league"; branch `league-pool`)
+
+- **Why**: on core every network member had a fixed 86-row capacity and the scripted agent was
+  uncapped, so the league was mostly scripted until snapshots filled it (852 of 1,024 games with
+  one snapshot) and no network member could pass 8.4% whatever PFSP asked.
+- **Pool** (host memory): the yardstick, 4 scripted personas (`LearnConfig.league_personas`;
+  placeholders from round 1 until the persona study picks them), the EMA (from RL's first tick),
+  the uniform average (once it holds an update), snapshots by v2's schedule and retention. All
+  sampled alike by PFSP (1 - p)^2 with the 1/8 floor over decaying tallies, as decided.
+- **Level 1** (between updates): K = 12 loaded slots, R = 4 spare; a member's target is q K
+  slots, the rounding carried as a debt (long-run share exact); at most one load per free slot;
+  duplicates allowed; an unloaded slot drains its games (no deals) and frees when empty; no game
+  is ever re-dealt (the retiring-slot re-deal is gone).
+- **Level 2** (per game): uniform over the loaded slots with a free row, C = ceil(1.25 L / K) =
+  107 rows; an overflow yardstick slot only if no loaded slot has room (never seen).
+- **Compute**: each network slot one routed call on 107 rows (empty slots skipped); every scripted
+  slot in the one scripted call with per-row parameters (in both stages, one scripted graph); the
+  routing compiles at RL's start, no compile after (test).
+- **Numbers**: docs/rewrite/sections/league-pool/progress.md (share tracking against core, tick
+  times, smoke run). Open for the author: K and R (more spare slots track faster but run more
+  draining network slots), whether the 4 personas should share one member's PFSP share (early in
+  RL they and the yardstick hold most slots because the learner loses to them).

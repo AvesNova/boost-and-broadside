@@ -16,9 +16,11 @@ SMALL = dict(
     epochs=1,
     warmup_steps=1,
     self_play_share=0.5,
-    # Every network member's capacity the whole league (C = L): the tests place members on
-    # rows by hand; the capacity rule has its own tests (test_league's capacity draws).
-    league_capacity_factor=15.0,
+    # Every slot's capacity the whole league (C = L): the tests place members on rows by hand;
+    # level 2 has its own tests (test_league's slot draws).
+    league_capacity_factor=12.0,
+    # No personas: the tests that want them name them (test_league's persona tests).
+    league_personas=(),
 )
 
 
@@ -39,20 +41,37 @@ def small(envs: int = 4, *, game_config=None, league: bool = False, seed: int = 
 
 def add_snapshots(league: League, policies, member=None, slot=None, averages=None):
     """Snapshots of `policies` into `league` through League.after_update, each at the
-    schedule's next snapshot step (so the EMA, and the uniform average once `averages`
-    holds an update, join with the first). `member`, `slot`: a carry's (L,) (default: no
-    league environments). Returns the final member."""
+    schedule's next snapshot step, the league opened first if it is not (the EMA joins
+    there, the uniform average once `averages` holds an update). `member`, `slot`: a carry's
+    (L,) (default: no league environments, so every slot can be reloaded). Returns the final
+    member."""
     member = torch.zeros(0, dtype=torch.long) if member is None else member
     slot = torch.full_like(member, -1) if slot is None else slot
+    averages = averages or WeightAverages(policies[0], LearnConfig())
+    if not league.opened:
+        league.open(policies[0], averages, slot=slot)
     for policy in policies:
         step = league.schedule.points(
             league.schedule.steps[-1] + league.taken * league.schedule.period
         )[league.taken]
-        member, lost = league.after_update(
-            policy, averages or WeightAverages(policy, LearnConfig()), step - 1, step, member, slot
-        )
-        assert lost is None
+        member = league.after_update(policy, averages, step - 1, step, member, slot)
     return member
+
+
+def loaded_slots(league: League, member: int) -> list[int]:
+    """The loaded slots holding `member`, in slot order."""
+    return [
+        slot
+        for slot, (state, holder) in enumerate(zip(league.slot_state, league.slot_holder))
+        if state == "loaded" and holder == member
+    ]
+
+
+def place(league: League, carry, members):
+    """The carry with its league environments playing `members` (L,), each in its member's
+    first loaded slot."""
+    slots = torch.tensor([loaded_slots(league, int(member))[0] for member in members])
+    return dataclasses.replace(carry, member=torch.as_tensor(members), slot=slots)
 
 
 class StepRecorder:

@@ -10,8 +10,10 @@ The BC stage clones the scripted teacher's full distribution on the student's ow
 (half self-play, half against the scripted agent) and trains every head and the critics;
 its averaged weights (LearnConfig.handoff, the EMA by default) start RL, with a fresh
 optimiser and warm-up. RL is PPO with the teacher term shrinking every update until it
-switches off (lean.learn.training.TeacherTerm), against the league (lean.learn.pool.League:
-the scripted agent, the EMA and uniform averages, and snapshots on v2's schedule). Both
+switches off (lean.learn.training.TeacherTerm), against the league (lean.learn.pool.League,
+two levels: a pool of the yardstick scripted agent, its personas, the EMA and uniform averages
+and snapshots on v2's schedule, sampled by PFSP into K slots between updates; each game draws
+a slot). The league opens at RL's start, so the EMA plays from RL's first tick. Both
 stages keep an EMA and a uniform average of the weights (lean.learn.weights), saved with the
 live weights in DIR/<stage>.pt at the stage's end. Evaluation (the crossover) is its own
 command: python -m lean.eval.
@@ -48,7 +50,6 @@ from lean.learn import (
     RolloutStore,
     TeacherTerm,
     WeightAverages,
-    abandon,
     collect,
     load_checkpoint,
     make_optimiser,
@@ -107,10 +108,12 @@ def random_states(generator, device) -> dict:
 
 
 def set_random_states(states: dict, generator, device) -> None:
-    generator.set_state(states["generator"])
-    torch.set_rng_state(states["torch"])
+    """The generators' states back; a state is a CPU byte tensor (load_checkpoint maps the
+    checkpoint's tensors to the run's device, so a GPU resume reads them there)."""
+    generator.set_state(states["generator"].cpu())
+    torch.set_rng_state(states["torch"].cpu())
     if "cuda" in states:
-        torch.cuda.set_rng_state(states["cuda"], device)
+        torch.cuda.set_rng_state(states["cuda"].cpu(), device)
 
 
 def save_run(path: Path, stage: Stage, policy, config: LearnConfig, generator, plan: dict) -> None:
@@ -141,11 +144,16 @@ def save_run(path: Path, stage: Stage, policy, config: LearnConfig, generator, p
 def new_stage(
     name: str, updates: int, config: LearnConfig, game_config, policy, envs: int, generator
 ) -> Stage:
-    """A fresh optimiser, league, game and averages from the policy's current weights."""
+    """A fresh optimiser, league, game and averages from the policy's current weights; RL
+    opens the league (its personas and the EMA join before the first deal)."""
     device = next(policy.parameters()).device
     league = League(config, device)
+    averages = WeightAverages(policy, config)
+    scripted_config = scripted.ScriptedConfig()
+    if name == "rl":
+        league.open(policy, averages, scripted_config)
     state, carry = start(
-        config, game_config, policy, Opponent(scripted.ScriptedConfig(), league), envs, generator
+        config, game_config, policy, Opponent(scripted_config, league), envs, generator
     )
     return Stage(
         name,
@@ -154,7 +162,7 @@ def new_stage(
         0,
         0,
         make_optimiser(config, policy),
-        WeightAverages(policy, config),
+        averages,
         league,
         TeacherTerm(),
         state,
@@ -260,19 +268,10 @@ def run_stage(
         stage.adam_steps += metrics["adam_steps"]
         stage.averages.update(policy, stage.adam_steps)
         if stage.name == "rl":
-            member, lost = league.after_update(
+            member = league.after_update(
                 policy, stage.averages, before, stage.steps, stage.carry.member, stage.carry.slot
             )
             stage.carry = dataclasses.replace(stage.carry, member=member)
-            if lost is not None:
-                stage.state, stage.carry = abandon(
-                    config, game_config, policy, opponent, stage.state, stage.carry, lost, generator
-                )
-                print(
-                    f"{stage.name} update {index} WARNING no league slot free: slot {lost}'s games "
-                    "re-dealt",
-                    flush=True,
-                )
         stage.index += 1
         rate = update_steps / (time.perf_counter() - began)
         shown = " ".join(f"{name}={metrics[name]:.4g}" for name in SHOWN)
@@ -280,13 +279,16 @@ def run_stage(
             f"{value:.2f}" for name, value in metrics.items() if name.startswith("advantage_share_")
         )
         rates = " ".join(f"{value:.2f}" for value in league.win_rates()[league.present].tolist())
+        summary = league.summary()
+        loaded = " ".join(f"{kind}:{count}" for kind, count in summary["loaded"].items() if count)
         memory = ""
         if device.type == "cuda":
             memory = f" peak_allocated_gib {torch.cuda.max_memory_allocated(device) / 2**30:.2f}"
         print(
             f"{stage.name} update {index} steps {stage.steps} scripted_win_rate {win_rate:.3f} "
-            f"league_members {league.present_count()} snapshots {league.snapshots} retiring "
-            f"{len(league.retiring)} "
+            f"league_members {league.present_count()} snapshots {league.snapshots} "
+            f"league_slots [{loaded}] draining {summary['draining']} scripted_dealt "
+            f"{summary['scripted_dealt']:.3f} overflow_games {summary['overflow_games']:.0f} "
             f"league_win_rates [{rates}] steps_per_second {rate:.0f}{memory} {shown} "
             f"advantage_shares [{shares}]",
             flush=True,
