@@ -88,9 +88,13 @@ class LearnConfig:
     minibatches: int = 32
     # Views per micro-batch: memory follows this, not the minibatch (gradients accumulate
     # over a minibatch's micro-batches; every loss term is divided by its whole-minibatch
-    # denominator). Also the batch of the critic's target pass. Sized for an 8 GB GPU
-    # (docs/rewrite/scoreboard.md, "Streaming and micro-batches").
-    micro_batch_views: int = 64
+    # denominator). Also the batch of the critic's target pass. Speed only (the same recipe
+    # to rounding), and per GPU: on the laptop's 4070 smaller is faster (smaller kernels stay
+    # in its 32 MB L2; docs/rewrite/sections/training-review-2.md section 2): a whole BC update
+    # 124.8 s at 64, 111.2 at 16, 107.4 at 8 (2026-11-28, speed-5-progress.md), peak 5.1 ->
+    # 1.3 GiB. Below 8 the host's ~6 ms per micro-batch binds. Re-measure on another GPU
+    # (the 5090: 96 MB of L2, faster kernels, so the host binds at a larger size).
+    micro_batch_views: int = 8
     # The rollout's large records in pinned host memory, streamed (lean.learn.store); False
     # keeps everything on the device. Ignored on the CPU.
     stream_rollout: bool = True
