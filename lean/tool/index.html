@@ -85,6 +85,7 @@
   <details id="hitpanel" open><summary>Hit model (live)</summary>
     <select id="deflector-preset" aria-label="deflector preset"></select>
     <div id="hit-sliders"></div></details>
+  <label id="visionbox" style="position:absolute;left:10px;bottom:50px;color:#d8dee9;font:12px system-ui,sans-serif"><input type="checkbox" id="showVision" checked> vision (sight ellipse, tracking circle)</label>
   <label id="truesize"><input type="checkbox" id="trueSize" checked> true size (hit + core circles)</label>
   <div id="status">arrows/WASD turn (Max; shift Snap, left alt Sustain) / up dive / down climb / space fire / C opponent / R reset / +- zoom (hit range: WASD move shooter, Q/E turn target)</div>
 </div>
@@ -443,7 +444,7 @@ canvas.addEventListener("wheel", e => { zoom = Math.min(8, Math.max(0.02, zoom *
 function pose(i, alpha) {
   const b = cur.ships[i], a = prev ? prev.ships[i] : b;
   let turn = b.heading - a.heading; turn = (turn + Math.PI) % (2 * Math.PI) - Math.PI;
-  return { x: a.x + alpha * (b.x - a.x), y: a.y + alpha * (b.y - a.y), heading: a.heading + alpha * turn, alive: b.alive, angle: b.angle, speed: b.speed, vision_range: b.vision_range, vision_eccentricity: b.vision_eccentricity, seen: b.seen };
+  return { x: a.x + alpha * (b.x - a.x), y: a.y + alpha * (b.y - a.y), heading: a.heading + alpha * turn, alive: b.alive, angle: b.angle, speed: b.speed, vision_range: b.vision_range, vision_eccentricity: b.vision_eccentricity, tracking_radius: b.tracking_radius, seen: b.seen };
 }
 // True-size ship: the hit circle (hit radius) and the core circle, both from the game's rows
 // (the server sends them), and a heading triangle inscribed in the hit circle.
@@ -544,11 +545,18 @@ function frame() {
     }
   }
   // Sight outlines (lean.game.core.sight_pairs): reach p / (1 - e cos a) at angle a off the nose.
-  for (const [p, color] of [[foe, "#ff6b6b40"], [me, "#58a6ff40"]]) {
-    if (!p.alive || hitRange) continue;
+  for (const [p, color] of [[foe, "#ff6b6b70"], [me, "#58a6ff70"]]) {
+    if (!p.alive || !$("showVision").checked) continue;
     g.strokeStyle = color; g.lineWidth = 1; g.beginPath();
     for (let k = 0; k <= 96; k++) { const a = 2 * Math.PI * k / 96, reach = p.vision_range / (1 - p.vision_eccentricity * Math.cos(a)); const X = sx(p.x + reach * Math.cos(p.heading + a)), Y = sy(p.y + reach * Math.sin(p.heading + a)); k ? g.lineTo(X, Y) : g.moveTo(X, Y); }
     g.stroke();
+    if (p.tracking_radius) {   // the tracking circle p / (1 - e): a ship seen the tick before is held inside it
+      g.setLineDash([3, 4]); g.beginPath(); g.arc(sx(p.x), sy(p.y), p.tracking_radius * zoom, 0, 7); g.stroke(); g.setLineDash([]);
+    }
+    g.fillStyle = color.slice(0, 7) + "aa"; g.font = "11px ui-monospace, monospace";
+    const forward = p.vision_range / (1 - p.vision_eccentricity);
+    g.fillText(`sight: side ${p.vision_range.toFixed(0)} m, ahead ${forward.toFixed(0)} m, behind ${(p.vision_range / (1 + p.vision_eccentricity)).toFixed(0)} m` + (p.tracking_radius ? `; tracking circle ${p.tracking_radius.toFixed(0)} m (dashed)` : ""),
+              sx(p.x) + 8, sy(p.y) + (p === me ? -12 : 14));
   }
   if (hitRange) {
     // every bullet's whole flight, drawn when it ends (the game's shot_outcome): red hit, orange miss

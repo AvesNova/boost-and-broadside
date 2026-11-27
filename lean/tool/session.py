@@ -29,6 +29,7 @@ def frame(world: World) -> dict:
                 speed=float(s.speed[0, i]),
                 vision_range=world.constant("vision_range", i),
                 vision_eccentricity=world.constant("vision_eccentricity", i),
+                tracking_radius=_tracking_radius(world, i),
                 seen=bool(seen[i]),
             )
         )
@@ -65,6 +66,17 @@ def frame(world: World) -> dict:
         opponent_on=world.opponent_on,
         radii=dict(hit=world.constant("hit_radius", 0), core=world.constant("core_radius", 0)),
         **extra,
+    )
+
+
+def _tracking_radius(world: World, slot: int) -> float | None:
+    """The tracking circle's radius p / (1 - e) (core.sight_pairs: a ship seen on the tick before
+    is held within the observer's forward reach all round) from the game's own rows; None when
+    the game has tracking off (GameConfig.fog_tracking) or fog off."""
+    if not (world.config.fog and world.config.fog_tracking):
+        return None
+    return world.constant("vision_range", slot) / (
+        1.0 - world.constant("vision_eccentricity", slot)
     )
 
 
