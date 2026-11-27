@@ -26,6 +26,13 @@ other packages: `lean/contract.py`.
   generator)` draws the noise and steps: the game half of the rollout's, the evaluation
   runner's and the sandbox's tick.
 - `observe(config, state, team)`: that team's `Obs`, built under fog from `team_view` only.
+- Relative geometry (`core.py`, for the learner's geometry heads; one source with the step and
+  the observation): `boundary_distance` (beyond the edge, negative inside; boundary damage and
+  the observation's boundary scalar read it), `field_edge_distance` (to the middle of a field's
+  band, negative inside; `medium` reads it), `world_velocity`, `launch_velocity` (`_fire`'s
+  launch before the spread), `bullet_reach` / `bullet_flight_time` (the drag law; `gun_range`
+  reads `bullet_reach`), `visible_rows` (Obs.visible), `geometry_record` and `pair_geometry`
+  (range, range rate, line-of-sight rate, energy difference, train angle, gun solution error).
 - `card.py` (the ship card, one row per type; today the P-51D) and `tuning.py` (not imported
   by the step): ship design, option C (`docs/rewrite/p51d-model.md`, "Design inputs"). A
   reference ship from the documents (`reference`: the airframe's point mass fitted to the
