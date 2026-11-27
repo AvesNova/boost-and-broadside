@@ -125,3 +125,12 @@ server draws with matplotlib (author 2026-11-24: matplotlib is the one charting 
 The card is process-global (`tuning.flying`), which is why the sandbox runs in a child
 process and why chart requests are serialised; `design.PRESET_ROWS` holds the presets as
 imported, since `tuning.row_of` inside `flying` reads the design. Tests: `lean/tool/tests`.
+
+- **Hit range tab** (rough, 2026-11-27). `lean.sandbox.world.HitRange`: the target (slot 1) is
+  pinned at the origin with zero velocity, the shooter (slot 0) at the point you drag it to,
+  always facing the target; both poses are re-pinned each tick, the step is the real one
+  (guns, spread, drag, egg, damage; no refractive fields). Click-drag moves the shooter, A / D
+  turn the target, Space fires, R resets; the hit-model sliders work. Readouts over a rolling 1 s:
+  DPS, hits / shots, implied time to kill (full shield / DPS), actual time to kill (from first
+  damage; the target is refilled on death), range, aspect (0 = dead astern). "True size" box
+  draws the hit and core circles (the game's rows) with a heading triangle, in the sandbox too.
