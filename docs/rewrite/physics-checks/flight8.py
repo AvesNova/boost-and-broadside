@@ -20,11 +20,14 @@ the pitch (stall, or max turns at low speed). Near a full store, positive pitch 
 (ceiling); near an empty store, negative pitch fades (floor). Shooting costs E per bullet.
 Same integrator as v5 fast (exponential nose kick, exact arc, fields as curved space).
 """
+
 import math
-from dataclasses import dataclass, replace
-import jax, jax.numpy as jnp
+from dataclasses import dataclass
+
+import jax
+import jax.numpy as jnp
 from flight5 import fields_eval
-from flight5_fast import softmin4, small_cos_sin, expm2
+from flight5_fast import expm2, small_cos_sin, softmin4
 
 
 @dataclass(frozen=True)
@@ -36,16 +39,16 @@ class Ship:
     a_max: float = 216.0
     cd0: float = 2.9e-4
     k_ind: float = 3.8
-    power: float = 400.0          # W, all to thrust
-    f_static: float = 10.0        # N
-    e_max: float = 10_000.0       # J
+    power: float = 400.0  # W, all to thrust
+    f_static: float = 10.0  # N
+    e_max: float = 10_000.0  # J
     band: float = 0.02
-    a0: float = 2.0               # m/s^2, coast: small climb (charges the store)
-    a_climb: float = 27.0         # m/s^2, reverse
-    a_dive: float = 27.0          # m/s^2, boost
-    bullet_cost: float = 0.0      # J per bullet
-    soft_k: int = 2               # soft min exponent 2**soft_k for the lift budget (2 -> p = 4)
-    nose_mult: float = 1.0        # multiplies the nose frequency
+    a0: float = 2.0  # m/s^2, coast: small climb (charges the store)
+    a_climb: float = 27.0  # m/s^2, reverse
+    a_dive: float = 27.0  # m/s^2, boost
+    bullet_cost: float = 0.0  # J per bullet
+    soft_k: int = 2  # soft min exponent 2**soft_k for the lift budget (2 -> p = 4)
+    nose_mult: float = 1.0  # multiplies the nose frequency
     w_c: float = 12.3 * math.sqrt(216.0 / 270.0)
     zeta: float = 0.7
     w_floor: float = 1.0
@@ -57,7 +60,7 @@ class Ship:
 
 
 STICK = jnp.array([0.0, -1 / 3, 1 / 3, -2 / 3, 2 / 3, -1.0, 1.0])
-PITCH = jnp.array([0.0, -1.0, 1.0])      # coast, boost (dive), reverse (climb)
+PITCH = jnp.array([0.0, -1.0, 1.0])  # coast, boost (dive), reverse (climb)
 
 
 def lift(sh, alpha):
@@ -95,7 +98,9 @@ def flight_setting(sh, stick, pmode, u, u_inv, E):
     authority = jnp.sqrt(1.0 - turn_share * turn_share)
     a = a_c * authority * held - (1.0 - held) * sh.a_dive
     inv_band = 1.0 / (sh.band * sh.e_max)
-    a = a * jnp.where(a > 0, jnp.clip((sh.e_max - E) * inv_band, 0.0, 1.0), jnp.clip(E * inv_band, 0.0, 1.0))
+    a = a * jnp.where(
+        a > 0, jnp.clip((sh.e_max - E) * inv_band, 0.0, 1.0), jnp.clip(E * inv_band, 0.0, 1.0)
+    )
     thrust = softmin4(sh.power * u_inv, 1.0 / sh.f_static) / sh.mass
     return lat, a, vert, thrust
 
@@ -135,8 +140,14 @@ def kick(sh, u0, alpha0, ca0, sa0, r, E, n_inv, gbx, gby, stick, pmode, shoot, h
     du, dE = rates(jnp.maximum(u0 + 0.5 * h * du, sh.eps), clm, cam, vert, t, s, u2i)
     c1, s1 = small_cos_sin(e1)
     E1 = E + h * dE
-    return (jnp.maximum(u0 + h * du, sh.eps), alpha0 + e1, ca0 * c1 - sa0 * s1, sa0 * c1 + ca0 * s1,
-            r1, jnp.clip(E1, 0.0, sh.e_max))
+    return (
+        jnp.maximum(u0 + h * du, sh.eps),
+        alpha0 + e1,
+        ca0 * c1 - sa0 * s1,
+        sa0 * c1 + ca0 * s1,
+        r1,
+        jnp.clip(E1, 0.0, sh.e_max),
+    )
 
 
 def step(sh, field, st, act, h):
@@ -144,10 +155,12 @@ def step(sh, field, st, act, h):
     x, y, c, s, u, al, ca, sa, r, E, n, gx, gy = st
     stick, pmode = STICK[act[..., 1]].astype(x.dtype), PITCH[act[..., 0]].astype(x.dtype)
     shoot = act[..., 2].astype(x.dtype) * (E >= sh.bullet_cost)  # a bullet needs its energy
-    E = E - shoot * sh.bullet_cost                               # one bullet per decision step
+    E = E - shoot * sh.bullet_cost  # one bullet per decision step
     n_inv = 1.0 / n
     gbx, gby = c * gx + s * gy, -s * gx + c * gy
-    u, al, ca, sa, r, E = kick(sh, u, al, ca, sa, r, E, n_inv, gbx, gby, stick, pmode, shoot, 0.5 * h)
+    u, al, ca, sa, r, E = kick(
+        sh, u, al, ca, sa, r, E, n_inv, gbx, gby, stick, pmode, shoot, 0.5 * h
+    )
     vbx, vby = u * ca * n_inv, -u * sa * n_inv
     xg = 0.5 * h * (gbx * vbx + gby * vby)
     k = 1.0 / (1.0 + xg * (1.0 + xg * (0.5 + xg / 6.0)))
@@ -163,7 +176,9 @@ def step(sh, field, st, act, h):
     n, gx, gy = fields_eval(*field, x, y)
     n_inv = 1.0 / n
     gbx, gby = c * gx + s * gy, -s * gx + c * gy
-    u, al, ca, sa, r, E = kick(sh, u, al, ca, sa, r, E, n_inv, gbx, gby, stick, pmode, shoot, 0.5 * h)
+    u, al, ca, sa, r, E = kick(
+        sh, u, al, ca, sa, r, E, n_inv, gbx, gby, stick, pmode, shoot, 0.5 * h
+    )
     return x, y, c, s, u, al, ca, sa, r, E, n, gx, gy
 
 

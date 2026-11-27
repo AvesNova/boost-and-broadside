@@ -11,27 +11,29 @@ the store is full). Lift vector (coupled, p = 2): stick = lateral share, coast =
 the path, paid from / into E. Induced drag on the whole lift vector. Fields: proper time
 and velocity; bending; n at the step midpoint. Step: half kick | arc drift | fields | half kick.
 """
+
 import math
 from dataclasses import dataclass
+
 import jax.numpy as jnp
 
 
 @dataclass(frozen=True)
 class Ship:
-    mass: float = 1.0               # kg
-    g: float = 27.0                 # m/s^2, game gravity ("1 g"): lift needed to hold level
-    cl_max: float = 0.027           # 1/m: max lift accel = cl_max u^2  (stall 31.6 m/s)
+    mass: float = 1.0  # kg
+    g: float = 27.0  # m/s^2, game gravity ("1 g"): lift needed to hold level
+    cl_max: float = 0.027  # 1/m: max lift accel = cl_max u^2  (stall 31.6 m/s)
     alpha_s: float = math.radians(15.0)
-    a_max: float = 216.0            # m/s^2 = 8 g
-    cd0: float = 2.9e-4             # 1/m: parasitic drag accel = cd0 u^2
-    k_ind: float = 3.8              # induced drag accel = k_ind (lift/u^2)^2 u^2
-    p_thrust: float = 320.0         # W
-    p_store: float = 80.0           # W
-    f_static: float = 10.0          # N, thrust cap at low speed
-    e_max: float = 10_000.0         # J  (= 370 m of game altitude, ~2.2 km real)
-    band: float = 0.02              # soft limits over 2% of the store at each end
-    k_x: float = 0.1                # dive/climb exchange per unit of vertical lift change
-    w_c: float = 12.3 * math.sqrt(216.0 / 270.0)   # nose frequency at corner speed, rescaled
+    a_max: float = 216.0  # m/s^2 = 8 g
+    cd0: float = 2.9e-4  # 1/m: parasitic drag accel = cd0 u^2
+    k_ind: float = 3.8  # induced drag accel = k_ind (lift/u^2)^2 u^2
+    p_thrust: float = 320.0  # W
+    p_store: float = 80.0  # W
+    f_static: float = 10.0  # N, thrust cap at low speed
+    e_max: float = 10_000.0  # J  (= 370 m of game altitude, ~2.2 km real)
+    band: float = 0.02  # soft limits over 2% of the store at each end
+    k_x: float = 0.1  # dive/climb exchange per unit of vertical lift change
+    w_c: float = 12.3 * math.sqrt(216.0 / 270.0)  # nose frequency at corner speed, rescaled
     zeta: float = 0.7
     w_floor: float = 1.0
     eps: float = 1e-6
@@ -42,7 +44,7 @@ class Ship:
 
 
 STICK = jnp.array([0.0, -1 / 3, 1 / 3, -2 / 3, 2 / 3, -1.0, 1.0])
-VERT = jnp.array([0.0, -1.0, 1.0])      # coast: level, boost: push (dive), reverse: pull (climb)
+VERT = jnp.array([0.0, -1.0, 1.0])  # coast: level, boost: push (dive), reverse: pull (climb)
 
 
 def softmin4(a, b):
@@ -85,10 +87,13 @@ def kick(sh, u0, alpha0, r, E, n, gbx, gby, stick, vmode, h):
     lat0, vert0 = lift_vector(sh, stick, vmode, u0)
 
     def rates(uu, ee, aa, caa, vert):
-        cl = lift(sh, aa); cv = vert / jnp.maximum(uu * uu, sh.eps)
+        cl = lift(sh, aa)
+        cv = vert / jnp.maximum(uu * uu, sh.eps)
         drag = (sh.cd0 + sh.k_ind * (cl * cl + cv * cv)) * uu * uu
         ax = sh.k_x * (sh.g - vert)
-        ax = ax * jnp.where(ax > 0, jnp.clip(ee / band, 0.0, 1.0), jnp.clip((sh.e_max - ee) / band, 0.0, 1.0))
+        ax = ax * jnp.where(
+            ax > 0, jnp.clip(ee / band, 0.0, 1.0), jnp.clip((sh.e_max - ee) / band, 0.0, 1.0)
+        )
         charge = sh.p_store * jnp.clip((sh.e_max - ee) / band, 0.0, 1.0)
         return (thrust(sh, uu) * caa + ax - drag) / n, charge - sh.mass * ax * uu / n
 
@@ -106,10 +111,15 @@ def kick(sh, u0, alpha0, r, E, n, gbx, gby, stick, vmode, h):
     y1, y2 = -e_s, (r - theta_dot0) - z_s
     m = 0.5 * (a11 + a22)
     disc = m * m - Om * Om
-    q = jnp.sqrt(jnp.abs(disc)); qh = q * h
+    q = jnp.sqrt(jnp.abs(disc))
+    qh = q * h
     osc = disc < 0
     C = jnp.where(osc, jnp.cos(qh), jnp.cosh(jnp.minimum(qh, 30.0)))
-    Sq = jnp.where(qh > 1e-6, jnp.where(osc, jnp.sin(qh), jnp.sinh(jnp.minimum(qh, 30.0))) / jnp.maximum(q, 1e-12), h)
+    Sq = jnp.where(
+        qh > 1e-6,
+        jnp.where(osc, jnp.sin(qh), jnp.sinh(jnp.minimum(qh, 30.0))) / jnp.maximum(q, 1e-12),
+        h,
+    )
     em = jnp.exp(m * h)
     e1 = e_s + em * (C * y1 + Sq * ((a11 - m) * y1 + y2))
     r1 = theta_dot0 + z_s + em * (C * y2 + Sq * (a21 * y1 + (a22 - m) * y2))
@@ -127,7 +137,10 @@ def fields_eval(fx, fy, fr, fwid, flog, x, y):
     z = jnp.clip(zu, 0.0, 1.0)
     prof = z * z * z * (z * (z * 6.0 - 15.0) + 10.0)
     dprof = 30.0 * z * z * (z - 1.0) ** 2
-    fac = jnp.where((zu > 0) & (zu < 1) & (d > 1e-6), -dprof / fwid[None] / jnp.maximum(d, 1e-6), 0.0) * flog[None]
+    fac = (
+        jnp.where((zu > 0) & (zu < 1) & (d > 1e-6), -dprof / fwid[None] / jnp.maximum(d, 1e-6), 0.0)
+        * flog[None]
+    )
     return jnp.exp((prof * flog[None]).sum(1)), (fac * dx).sum(1), (fac * dy).sum(1)
 
 

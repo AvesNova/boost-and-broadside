@@ -1,6 +1,9 @@
 """Today's flight step (physics._update_kinematics, no fields) ported to JAX for a cost comparison."""
-import math, jax, jax.numpy as jnp
+
+import math
 from dataclasses import dataclass
+
+import jax.numpy as jnp
 
 
 @dataclass(frozen=True)
@@ -22,12 +25,18 @@ class Cfg:
     passive_power_gain: float = 10.0
 
 
-THRUST = jnp.array([8.0, 80.0, -80.0]); SIDE = jnp.array([0.0, -1, 1, -1, 1]); SHARP = jnp.array([0, 0, 0, 1, 1], bool)
+THRUST = jnp.array([8.0, 80.0, -80.0])
+SIDE = jnp.array([0.0, -1, 1, -1, 1])
+SHARP = jnp.array([0, 0, 0, 1, 1], bool)
 
 
 def slip_command(c, side, sharp, ps):
     sq = jnp.maximum(ps * ps, 1e-6)
-    lift = jnp.where(sharp, jnp.minimum(c.max_lateral_accel / sq, c.max_lift_coeff), jnp.minimum(0.5 * c.max_lateral_accel / sq, c.normal_lift_coeff))
+    lift = jnp.where(
+        sharp,
+        jnp.minimum(c.max_lateral_accel / sq, c.max_lift_coeff),
+        jnp.minimum(0.5 * c.max_lateral_accel / sq, c.normal_lift_coeff),
+    )
     frac = 1.0 - jnp.sqrt(jnp.maximum(1.0 - lift / c.max_lift_coeff, 0.0))
     return side * c.stall_angle * frac * jnp.minimum(ps / c.slip_fade_speed, 1.0)
 
@@ -43,7 +52,8 @@ def lift_drag(c, slip):
 def nose(c, slip, rate, cmd):
     w, R, dt = c.nose_frequency, c.max_slip_rate, c.dt
     err = slip - cmd
-    decay = jnp.exp(-w * dt); drive = rate + w * err
+    decay = jnp.exp(-w * dt)
+    drive = rate + w * err
     ne, nr = (err + drive * dt) * decay, (rate - w * drive * dt) * decay
     ne = err + jnp.clip(ne - err, -R * dt, R * dt)
     nr = jnp.clip(nr, -R, R)
@@ -63,21 +73,22 @@ def thrust_impulse(c, vel, att, power, T, dur):
     bs = jnp.maximum(b, 1e-12)
     frac = jnp.where(T < 0, jnp.clip(-a / (2 * bs), 0, 1), 1.0)
     frac = jnp.where(T == 0, 0.0, frac)
-    de = a * frac + b * frac ** 2
+    de = a * frac + b * frac**2
     sp = power * c.power_speed_constant
     root = (-a + jnp.sqrt(jnp.maximum(a * a + 4 * b * sp, 0))) / (2 * bs)
     frac = jnp.where(de > sp, jnp.minimum(frac, jnp.clip(root, 0, 1)), frac)
     rec = (c.max_power - power) * c.power_speed_constant
     rroot = (-a - jnp.sqrt(jnp.maximum(a * a - 4 * b * rec, 0))) / (2 * bs)
     frac = jnp.where(-de > rec, jnp.minimum(frac, jnp.clip(rroot, 0, 1)), frac)
-    de = a * frac + b * frac ** 2
+    de = a * frac + b * frac**2
     return vel + dv * frac, jnp.clip(power - de / c.power_speed_constant, 0, c.max_power)
 
 
 def half(c, vel, att, power, T, lc, dc):
     d = 0.5 * c.dt
     vel, power = thrust_impulse(c, vel, att, power, T, d)
-    sp = jnp.abs(vel); dirn = vel / jnp.maximum(sp, 1e-6)
+    sp = jnp.abs(vel)
+    dirn = vel / jnp.maximum(sp, 1e-6)
     sp = sp / (1 + dc * sp * d)
     return dirn * sp * jnp.exp(1j * (lc * sp * d)), power
 
@@ -85,15 +96,18 @@ def half(c, vel, att, power, T, lc, dc):
 def step(c, st, act):
     pos, vel, att, slip, rate, power = st
     T, side, sharp = THRUST[act[..., 0]], SIDE[act[..., 1]], SHARP[act[..., 1]]
-    ps = jnp.abs(vel); below = ps < c.min_speed
+    ps = jnp.abs(vel)
+    below = ps < c.min_speed
     T = jnp.where(below & (T < 0), 0.0, T)
     vdir = vel / jnp.maximum(ps, 1e-6)
     fs, fr = nose(c, slip, rate, slip_command(c, side, sharp, ps))
     held = jnp.angle(att * jnp.conj(vdir))
-    slip = jnp.where(below, held, fs); rate = jnp.where(below, 0.0, fr)
+    slip = jnp.where(below, held, fs)
+    rate = jnp.where(below, 0.0, fr)
     rot = jnp.exp(1j * slip)
     att = jnp.where(below, att, vdir * rot)
-    lc, dc = lift_drag(c, slip); lc = jnp.where(below, 0.0, lc)
+    lc, dc = lift_drag(c, slip)
+    lc = jnp.where(below, 0.0, lc)
     vel, power = half(c, vel, att, power, T, lc, dc)
     pos = pos + vel * c.dt
     vel, power = half(c, vel, att, power, T, lc, dc)

@@ -26,11 +26,14 @@ the pitch (stall, or max turns at low speed). Near a full store, positive pitch 
 (ceiling); near an empty store, negative pitch fades (floor). Shooting costs E per bullet.
 Same integrator as v5 fast (exponential nose kick, exact arc, fields as curved space).
 """
+
 import math
-from dataclasses import dataclass, replace
-import jax, jax.numpy as jnp
+from dataclasses import dataclass
+
+import jax
+import jax.numpy as jnp
 from flight5 import fields_eval
-from flight5_fast import softmin4, small_cos_sin, expm2
+from flight5_fast import expm2, small_cos_sin, softmin4
 
 
 @dataclass(frozen=True)
@@ -42,26 +45,28 @@ class Ship:
     a_max: float = 216.0
     cd0: float = 2.9e-4
     k_ind: float = 3.8
-    power: float = 400.0          # W, all to thrust
-    f_static: float = 10.0        # N
-    e_max: float = 10_000.0       # J
+    power: float = 400.0  # W, all to thrust
+    f_static: float = 10.0  # N
+    e_max: float = 10_000.0  # J
     band: float = 0.02
-    a0: float = 2.0               # m/s^2, coast: small climb (charges the store)
-    a_climb: float = 27.0         # m/s^2, reverse
-    a_dive: float = 27.0          # m/s^2, boost
-    bullet_cost: float = 0.0      # J per bullet
-    soft_k: int = 2               # soft min exponent 2**soft_k for the lift budget (2 -> p = 4)
-    nose_mult: float = 1.0        # multiplies the nose frequency
+    a0: float = 2.0  # m/s^2, coast: small climb (charges the store)
+    a_climb: float = 27.0  # m/s^2, reverse
+    a_dive: float = 27.0  # m/s^2, boost
+    bullet_cost: float = 0.0  # J per bullet
+    soft_k: int = 2  # soft min exponent 2**soft_k for the lift budget (2 -> p = 4)
+    nose_mult: float = 1.0  # multiplies the nose frequency
     levels: str = "lift"
-    geom: bool = False            # climb geometry: horizontal speed u cos(gamma), hold lift g cos(gamma),
-    gamma_max: float = math.radians(60.0)   # turn rate / cos(gamma), with sin(gamma) = a_x / g capped here
+    geom: bool = False  # climb geometry: horizontal speed u cos(gamma), hold lift g cos(gamma),
+    gamma_max: float = math.radians(
+        60.0
+    )  # turn rate / cos(gamma), with sin(gamma) = a_x / g capped here
     bleed: str = "kinetic"
-    pcurve: str = "none"          # engine power vs store: "none", "kink" (flat then linear), "smooth" (smoothstep), "smooth2"
-    p_min: float = 0.0            # W at a full store
-    e_knee: float = 0.5           # fraction of the store where power starts to fall
-    e_mid: bool = False           # evaluate the frozen settings at the predicted mid-kick store
-    charge_scale: bool = False    # coast charge scales with the engine's spare power (holds cruise)
-    static_scale: bool = False    # static thrust scales as (power / full power)^(2/3)
+    pcurve: str = "none"  # engine power vs store: "none", "kink" (flat then linear), "smooth" (smoothstep), "smooth2"
+    p_min: float = 0.0  # W at a full store
+    e_knee: float = 0.5  # fraction of the store where power starts to fall
+    e_mid: bool = False  # evaluate the frozen settings at the predicted mid-kick store
+    charge_scale: bool = False  # coast charge scales with the engine's spare power (holds cruise)
+    static_scale: bool = False  # static thrust scales as (power / full power)^(2/3)
     w_c: float = 12.3 * math.sqrt(216.0 / 270.0)
     zeta: float = 0.7
     w_floor: float = 1.0
@@ -73,7 +78,7 @@ class Ship:
 
 
 STICK = jnp.array([0.0, -1 / 3, 1 / 3, -2 / 3, 2 / 3, -1.0, 1.0])
-PITCH = jnp.array([0.0, -1.0, 1.0])      # coast, boost (dive), reverse (climb)
+PITCH = jnp.array([0.0, -1.0, 1.0])  # coast, boost (dive), reverse (climb)
 
 
 def lift(sh, alpha):
@@ -131,11 +136,11 @@ def flight_setting(sh, stick, pmode, u, u_inv, E):
     L = softmin_p(sh.cl_max * u * u, 1.0 / sh.a_max, sh.soft_k)
     x = jnp.abs(stick)
     if sh.levels in ("stick", "angle"):
-        f = 2.0 * x - x * x                                   # lift fraction at x of the stall angle
+        f = 2.0 * x - x * x  # lift fraction at x of the stall angle
         lat_c = jnp.sign(stick) * softmin_p(f * sh.cl_max * u * u, 1.0 / sh.a_max, sh.soft_k)
-    elif sh.levels == "cl":                                   # lift-coefficient thirds: fixed radius below the g limit
+    elif sh.levels == "cl":  # lift-coefficient thirds: fixed radius below the g limit
         lat_c = jnp.sign(stick) * softmin_p(x * sh.cl_max * u * u, 1.0 / sh.a_max, sh.soft_k)
-    elif sh.levels == "neutral":                              # 1/3 angle thirds, 2/3 energy-neutral, 3/3 max
+    elif sh.levels == "neutral":  # 1/3 angle thirds, 2/3 energy-neutral, 3/3 max
         f1 = 2.0 * x - x * x
         angle = softmin_p(f1 * sh.cl_max * u * u, 1.0 / sh.a_max, sh.soft_k)
         T = softmin4(sh.power * u_inv, 1.0 / sh.f_static) / sh.mass
@@ -154,7 +159,9 @@ def flight_setting(sh, stick, pmode, u, u_inv, E):
     authority = jnp.sqrt(1.0 - turn_share * turn_share)
     a = a_c * authority * held - (1.0 - held) * sh.a_dive
     inv_band = 1.0 / (sh.band * sh.e_max)
-    a = a * jnp.where(a > 0, jnp.clip((sh.e_max - E) * inv_band, 0.0, 1.0), jnp.clip(E * inv_band, 0.0, 1.0))
+    a = a * jnp.where(
+        a > 0, jnp.clip((sh.e_max - E) * inv_band, 0.0, 1.0), jnp.clip(E * inv_band, 0.0, 1.0)
+    )
     thrust = engine_thrust(sh, E, u_inv)
     cg = jnp.sqrt(jnp.clip(1.0 - (a / sh.g) ** 2, 0.04, 1.0)) if sh.geom else 1.0 + 0.0 * u
     return lat, a, vert, thrust, cg
@@ -169,7 +176,7 @@ def kick(sh, u0, alpha0, ca0, sa0, r, E, n_inv, gbx, gby, stick, pmode, shoot, h
     def rates(uu, cl, caa, vert, thrust, s, u2_inv):
         cv = vert * u2_inv
         drag = (sh.cd0 + sh.k_ind * (cl * cl + cv * cv)) * uu * uu
-        turn = w_store * floor * sh.k_ind * cl * cl * uu * uu      # induced drag of turning paid from E
+        turn = w_store * floor * sh.k_ind * cl * cl * uu * uu  # induced drag of turning paid from E
         return (thrust * caa - drag + turn - s) * n_inv, sh.mass * uu * (s - turn) * n_inv
 
     u0_inv = 1.0 / u0s
@@ -178,7 +185,7 @@ def kick(sh, u0, alpha0, ca0, sa0, r, E, n_inv, gbx, gby, stick, pmode, shoot, h
     du0, dE0 = rates(u0, cl0, ca0, vert0, thrust0, s0, u0_inv * u0_inv)
     u = jnp.maximum(u0 + 0.5 * h * du0, sh.eps)
     u_inv = 1.0 / u
-    E_mid = E + 0.5 * h * dE0 if sh.e_mid else E                 # store at mid-kick for the power curve
+    E_mid = E + 0.5 * h * dE0 if sh.e_mid else E  # store at mid-kick for the power curve
     lat, s, vert, t, cg = flight_setting(sh, stick, pmode, u, u_inv, E_mid)
     cg_inv = 1.0 / cg
     omega_f = u * n_inv * (ca0 * gby + sa0 * gbx)
@@ -201,8 +208,15 @@ def kick(sh, u0, alpha0, ca0, sa0, r, E, n_inv, gbx, gby, stick, pmode, shoot, h
     du, dE = rates(jnp.maximum(u0 + 0.5 * h * du, sh.eps), clm, cam, vert, t, s, u2i)
     c1, s1 = small_cos_sin(e1)
     E1 = E + h * dE
-    return (jnp.maximum(u0 + h * du, sh.eps), alpha0 + e1, ca0 * c1 - sa0 * s1, sa0 * c1 + ca0 * s1,
-            r1, jnp.clip(E1, 0.0, sh.e_max), cg)
+    return (
+        jnp.maximum(u0 + h * du, sh.eps),
+        alpha0 + e1,
+        ca0 * c1 - sa0 * s1,
+        sa0 * c1 + ca0 * s1,
+        r1,
+        jnp.clip(E1, 0.0, sh.e_max),
+        cg,
+    )
 
 
 def step(sh, field, st, act, h):
@@ -210,10 +224,12 @@ def step(sh, field, st, act, h):
     x, y, c, s, u, al, ca, sa, r, E, n, gx, gy = st
     stick, pmode = STICK[act[..., 1]].astype(x.dtype), PITCH[act[..., 0]].astype(x.dtype)
     shoot = act[..., 2].astype(x.dtype) * (E >= sh.bullet_cost)  # a bullet needs its energy
-    E = E - shoot * sh.bullet_cost                               # one bullet per decision step
+    E = E - shoot * sh.bullet_cost  # one bullet per decision step
     n_inv = 1.0 / n
     gbx, gby = c * gx + s * gy, -s * gx + c * gy
-    u, al, ca, sa, r, E, cg = kick(sh, u, al, ca, sa, r, E, n_inv, gbx, gby, stick, pmode, shoot, 0.5 * h)
+    u, al, ca, sa, r, E, cg = kick(
+        sh, u, al, ca, sa, r, E, n_inv, gbx, gby, stick, pmode, shoot, 0.5 * h
+    )
     vbx, vby = u * ca * n_inv, -u * sa * n_inv
     xg = 0.5 * h * (gbx * vbx + gby * vby)
     k = 1.0 / (1.0 + xg * (1.0 + xg * (0.5 + xg / 6.0)))
@@ -223,14 +239,16 @@ def step(sh, field, st, act, h):
     p2 = phi * phi
     a1 = (1.0 - p2 * (1.0 / 6.0 - p2 / 120.0)) * h
     a2 = phi * (0.5 - p2 * (1.0 / 24.0 - p2 / 720.0)) * h
-    vbx, vby = vbx * cg, vby * cg                              # horizontal speed u cos(gamma)
+    vbx, vby = vbx * cg, vby * cg  # horizontal speed u cos(gamma)
     bx, by = vbx * a1 - vby * a2, vbx * a2 + vby * a1
     x, y = x + c * bx - s * by, y + s * bx + c * by
     c, s = c * cp - s * sp, s * cp + c * sp
     n, gx, gy = fields_eval(*field, x, y)
     n_inv = 1.0 / n
     gbx, gby = c * gx + s * gy, -s * gx + c * gy
-    u, al, ca, sa, r, E, _ = kick(sh, u, al, ca, sa, r, E, n_inv, gbx, gby, stick, pmode, shoot, 0.5 * h)
+    u, al, ca, sa, r, E, _ = kick(
+        sh, u, al, ca, sa, r, E, n_inv, gbx, gby, stick, pmode, shoot, 0.5 * h
+    )
     return x, y, c, s, u, al, ca, sa, r, E, n, gx, gy
 
 

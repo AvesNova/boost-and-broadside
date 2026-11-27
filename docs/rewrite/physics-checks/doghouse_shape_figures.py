@@ -8,22 +8,30 @@ import math
 import matplotlib
 
 matplotlib.use("Agg")
+import doghouse_shape as ds  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm  # noqa: E402
 
-import doghouse_shape as ds  # noqa: E402
 from lean.game import tuning  # noqa: E402
 
 SERIES = ("#2a78d6", "#eb6834", "#1baf7a", "#8a5cd1")
 SURFACE, INK, INK_2, MUTED, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#898781", "#e7e6e2"
 DIVERGING = LinearSegmentedColormap.from_list("ps", ["#e34948", "#f0efec", "#2a78d6"])
-matplotlib.rcParams.update({
-    "text.color": INK, "axes.labelcolor": INK_2, "axes.edgecolor": MUTED,
-    "xtick.color": INK_2, "ytick.color": INK_2, "legend.facecolor": SURFACE,
-    "legend.edgecolor": GRID, "figure.facecolor": SURFACE, "axes.facecolor": SURFACE,
-    "font.size": 10,
-})
+matplotlib.rcParams.update(
+    {
+        "text.color": INK,
+        "axes.labelcolor": INK_2,
+        "axes.edgecolor": MUTED,
+        "xtick.color": INK_2,
+        "ytick.color": INK_2,
+        "legend.facecolor": SURFACE,
+        "legend.edgecolor": GRID,
+        "figure.facecolor": SURFACE,
+        "axes.facecolor": SURFACE,
+        "font.size": 10,
+    }
+)
 
 
 def style(ax):
@@ -46,13 +54,20 @@ def polar(results):
     fig, ax = plt.subplots(figsize=(6.4, 4.2))
     style(ax)
     ax.plot(cl, curves["parabolic"], color=SERIES[0], lw=2, label="parabolic: C_D0 + k C_L^2")
-    ax.plot(cl, curves["walled"], color=SERIES[1], lw=2,
-            label=f"game: x (1 + {p['separation']:.2f} (C_L/C_Lmax)^{p['exponent']:.0f})")
+    ax.plot(
+        cl,
+        curves["walled"],
+        color=SERIES[1],
+        lw=2,
+        label=f"game: x (1 + {p['separation']:.2f} (C_L/C_Lmax)^{p['exponent']:.0f})",
+    )
     ax.axvline(1.6 * 0.9, color=MUTED, lw=0.8, ls=":")
     ax.text(1.6 * 0.9 - 0.02, 0.2, "0.9 C_Lmax", ha="right", color=INK_2, fontsize=9)
     ax.set_xlabel("lift coefficient C_L")
     ax.set_ylabel("drag coefficient C_D")
-    ax.set_title("P-51D card row: drag polar (any speed below the drag rise)", fontsize=11, loc="left")
+    ax.set_title(
+        "P-51D card row: drag polar (any speed below the drag rise)", fontsize=11, loc="left"
+    )
     ax.legend(frameon=False, fontsize=9, loc="upper left")
     save(fig, "polar")
 
@@ -66,8 +81,14 @@ def steepness(results):
             depth = np.array(e["depth"]) * ds.RATE_RANGE
             ps = np.array(e["ps"])
             keep = depth <= 12.0
-            ax.plot(depth[keep], ps[keep], color=SERIES[i], ls=dash, lw=1.8,
-                    label=f"{float(v):.0f} m/s, {'game row' if name == 'current' else 'no game terms'}")
+            ax.plot(
+                depth[keep],
+                ps[keep],
+                color=SERIES[i],
+                ls=dash,
+                lw=1.8,
+                label=f"{float(v):.0f} m/s, {'game row' if name == 'current' else 'no game terms'}",
+            )
     ax.set_xlabel("distance inside the max-lift line (deg/s of turn rate)")
     ax.set_ylabel("Ps (m/s)")
     ax.set_title("Ps just inside the max-lift line (real units)", fontsize=11, loc="left")
@@ -96,14 +117,26 @@ def doghouse(ax, row, title, numbers=None):
     norm = TwoSlopeNorm(vmin=-100.0, vcenter=0.0, vmax=30.0)
     levels = np.arange(-100.0, 31.0, 10.0)
     ax.contourf(speeds_real, axis, field, levels=levels, cmap=DIVERGING, norm=norm, extend="both")
-    ax.contour(speeds_real, axis, field, levels=[lv for lv in levels if lv != 0], colors=INK_2,
-               linewidths=0.6, linestyles="solid")
-    ax.contour(speeds_real, axis, field, levels=[0.0], colors=INK, linewidths=1.6,
-               linestyles="--")
+    ax.contour(
+        speeds_real,
+        axis,
+        field,
+        levels=[lv for lv in levels if lv != 0],
+        colors=INK_2,
+        linewidths=0.6,
+        linestyles="solid",
+    )
+    ax.contour(speeds_real, axis, field, levels=[0.0], colors=INK, linewidths=1.6, linestyles="--")
     ax.plot(speeds_real, rate[-1], color=INK, lw=2.0)
     if numbers:
-        ax.plot(numbers["sustained_speed"], numbers["sustained_rate"], "s", color=SERIES[0],
-                ms=6, mec=SURFACE)
+        ax.plot(
+            numbers["sustained_speed"],
+            numbers["sustained_rate"],
+            "s",
+            color=SERIES[0],
+            ms=6,
+            mec=SURFACE,
+        )
         tight_rate = math.degrees(numbers["min_radius_speed"] / numbers["min_radius"])
         ax.plot(numbers["min_radius_speed"], tight_rate, "^", color=SERIES[1], ms=6, mec=SURFACE)
     ax.set_xlim(40, 200)
@@ -129,9 +162,14 @@ def variants(results, rows, name, suptitle):
     for ax in axes[-cols:]:
         ax.set_xlabel("speed (m/s)", fontsize=8)
     fig.suptitle(suptitle, fontsize=10, x=0.02, ha="left")
-    fig.text(0.02, -0.01, "Shading and thin lines: Ps every 10 m/s (blue gain, red loss); dashed: Ps = 0;"
-             " thick: max-lift line; square: best sustained rate; triangle: tightest sustained.",
-             fontsize=8, color=INK_2)
+    fig.text(
+        0.02,
+        -0.01,
+        "Shading and thin lines: Ps every 10 m/s (blue gain, red loss); dashed: Ps = 0;"
+        " thick: max-lift line; square: best sustained rate; triangle: tightest sustained.",
+        fontsize=8,
+        color=INK_2,
+    )
     fig.tight_layout()
     save(fig, name)
 
@@ -145,19 +183,32 @@ def excess(results):
     ax.plot(v, np.array(pr["drag_1g"]) / w, color=INK, lw=2, label="drag at 1 g")
     shown = [n for n in pr["curves"] if not n.startswith("game")]
     for color, name in zip(SERIES, shown):
-        ax.plot(v, np.array(pr["curves"][name]["thrust"]) / w, color=color, lw=1.8,
-                label=f"thrust: {name}")
+        ax.plot(
+            v,
+            np.array(pr["curves"][name]["thrust"]) / w,
+            color=color,
+            lw=1.8,
+            label=f"thrust: {name}",
+        )
     a = tuning.P51D
     imp = tuning.implied(tuning.row_of("p51d"), a)
     k = 1.0 / (math.pi * imp["oswald"] * a.aspect_ratio)
     q = 0.5 * tuning.AIR_DENSITY * v**2 * a.wing_area
-    ax.plot(v, q * (imp["zero_lift_drag_coefficient"] + k * 1.6**2) / w, color=MUTED, lw=1.2,
-            ls="--", label="drag at C_Lmax (parabolic)")
+    ax.plot(
+        v,
+        q * (imp["zero_lift_drag_coefficient"] + k * 1.6**2) / w,
+        color=MUTED,
+        lw=1.2,
+        ls="--",
+        label="drag at C_Lmax (parabolic)",
+    )
     ax.set_ylim(0, 0.8)
     ax.set_xlim(40, 175)
     ax.set_xlabel("speed (m/s)")
     ax.set_ylabel("force / weight")
-    ax.set_title("Thrust against drag (P-51D point mass, e from the card row)", fontsize=11, loc="left")
+    ax.set_title(
+        "Thrust against drag (P-51D point mass, e from the card row)", fontsize=11, loc="left"
+    )
     ax.legend(frameon=False, fontsize=8)
     save(fig, "excess")
 
@@ -168,13 +219,23 @@ def main(results):
     excess(results)
     current = tuning.row_of("p51d")
     start = current
-    rows = [("now: s 0.41, exponent 16 (e 0.97)", current),
-            ("no separation drag (e 0.79)", ds.solve(
-                "separation_closed", start=start, separation_drag=0.0))]
+    rows = [
+        ("now: s 0.41, exponent 16 (e 0.97)", current),
+        (
+            "no separation drag (e 0.79)",
+            ds.solve("separation_closed", start=start, separation_drag=0.0),
+        ),
+    ]
     for m in (8.0, 4.0, 2.0):
-        rows.append((f"exponent {m:.0f}, gap 0.85 solves s", ds.solve("documents", separation_exponent=m)))
-    variants(results, rows[:5], "exponents",
-             "P-51D doghouse, real units: separation exponent lowered, other targets held")
+        rows.append(
+            (f"exponent {m:.0f}, gap 0.85 solves s", ds.solve("documents", separation_exponent=m))
+        )
+    variants(
+        results,
+        rows[:5],
+        "exponents",
+        "P-51D doghouse, real units: separation exponent lowered, other targets held",
+    )
     extra = getattr(ds, "RECOMMENDED_ROWS", None)
     if extra:
         variants(results, extra(), "recommended", "P-51D doghouse, real units: candidate models")

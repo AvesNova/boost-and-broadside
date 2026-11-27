@@ -9,8 +9,10 @@ Changes (no physics change beyond rounding / series truncation):
 - cos and sin of small angles (step rotation r h, half the angle-of-attack change) and the
   arc factors by series; n at the step midpoint by a cubic series of exp.
 """
-import jax, jax.numpy as jnp
-from flight5 import Ship, STICK, VERT, fields_eval, lift, lift_slope
+
+import jax
+import jax.numpy as jnp
+from flight5 import STICK, VERT, fields_eval, lift, lift_slope
 
 
 def softmin4(a, b_inv):
@@ -21,22 +23,28 @@ def softmin4(a, b_inv):
 
 def small_cos_sin(x):
     x2 = x * x
-    return 1.0 - x2 * (0.5 - x2 * (1.0 / 24.0 - x2 / 720.0)), x * (1.0 - x2 * (1.0 / 6.0 - x2 * (1.0 / 120.0 - x2 / 5040.0)))
+    return 1.0 - x2 * (0.5 - x2 * (1.0 / 24.0 - x2 / 720.0)), x * (
+        1.0 - x2 * (1.0 / 6.0 - x2 * (1.0 / 120.0 - x2 / 5040.0))
+    )
 
 
 def expm2(a11, a12, a21, a22, h):
     """exp(A h) for a batch of 2x2 matrices: Taylor degree 4 on A h / 2, then squared."""
     t = 0.5 * h
     b11, b12, b21, b22 = a11 * t, a12 * t, a21 * t, a22 * t
-    # B^2
-    c11, c12, c21, c22 = b11 * b11 + b12 * b21, b11 * b12 + b12 * b22, b21 * b11 + b22 * b21, b21 * b12 + b22 * b22
     # I + B + B^2/2 + B^3/6 + B^4/24 = I + B (I + B/2 (I + B/3 (I + B/4)))  via Horner on matrices
     def mm(x, y):
-        return (x[0] * y[0] + x[1] * y[2], x[0] * y[1] + x[1] * y[3], x[2] * y[0] + x[3] * y[2], x[2] * y[1] + x[3] * y[3])
+        return (
+            x[0] * y[0] + x[1] * y[2],
+            x[0] * y[1] + x[1] * y[3],
+            x[2] * y[0] + x[3] * y[2],
+            x[2] * y[1] + x[3] * y[3],
+        )
+
     B = (b11, b12, b21, b22)
-    I = (1.0, 0.0, 0.0, 1.0)
     def add_scaled(x, k):  # I + k x
         return (1.0 + k * x[0], k * x[1], k * x[2], 1.0 + k * x[3])
+
     H = add_scaled(B, 0.25)
     H = add_scaled(mm(B, H), 1.0 / 3.0)
     H = add_scaled(mm(B, H), 0.5)
@@ -62,7 +70,11 @@ def kick(sh, u0, alpha0, ca0, sa0, r, E, n_inv, gbx, gby, stick, vmode, h):
         cv = vert * u2_inv
         drag = (sh.cd0 + sh.k_ind * (cl * cl + cv * cv)) * uu * uu
         ax = sh.k_x * (sh.g - vert)
-        ax = ax * jnp.where(ax > 0, jnp.clip(ee * inv_band, 0.0, 1.0), jnp.clip((sh.e_max - ee) * inv_band, 0.0, 1.0))
+        ax = ax * jnp.where(
+            ax > 0,
+            jnp.clip(ee * inv_band, 0.0, 1.0),
+            jnp.clip((sh.e_max - ee) * inv_band, 0.0, 1.0),
+        )
         charge = sh.p_store * jnp.clip((sh.e_max - ee) * inv_band, 0.0, 1.0)
         return (thrust * caa + ax - drag) * n_inv, charge - sh.mass * ax * uu * n_inv
 
@@ -92,8 +104,14 @@ def kick(sh, u0, alpha0, ca0, sa0, r, E, n_inv, gbx, gby, stick, vmode, h):
     du, dE = rates(u0, E, clm, cam, vert, t, u2i)
     du, dE = rates(jnp.maximum(u0 + 0.5 * h * du, sh.eps), E + 0.5 * h * dE, clm, cam, vert, t, u2i)
     c1, s1 = small_cos_sin(e1)
-    return (jnp.maximum(u0 + h * du, sh.eps), alpha0 + e1, ca0 * c1 - sa0 * s1, sa0 * c1 + ca0 * s1,
-            r1, jnp.clip(E + h * dE, 0.0, sh.e_max))
+    return (
+        jnp.maximum(u0 + h * du, sh.eps),
+        alpha0 + e1,
+        ca0 * c1 - sa0 * s1,
+        sa0 * c1 + ca0 * s1,
+        r1,
+        jnp.clip(E + h * dE, 0.0, sh.e_max),
+    )
 
 
 def step(sh, field, st, act, h):
@@ -105,7 +123,7 @@ def step(sh, field, st, act, h):
     u, al, ca, sa, r, E = kick(sh, u, al, ca, sa, r, E, n_inv, gbx, gby, stick, vmode, 0.5 * h)
     vbx, vby = u * ca * n_inv, -u * sa * n_inv
     xg = 0.5 * h * (gbx * vbx + gby * vby)
-    k = 1.0 / (1.0 + xg * (1.0 + xg * (0.5 + xg / 6.0)))      # n / n_mid
+    k = 1.0 / (1.0 + xg * (1.0 + xg * (0.5 + xg / 6.0)))  # n / n_mid
     vbx, vby = vbx * k, vby * k
     phi = r * h
     cp, sp = small_cos_sin(phi)
