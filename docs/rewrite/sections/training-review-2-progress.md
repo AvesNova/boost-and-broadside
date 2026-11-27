@@ -32,3 +32,9 @@ power profile and load recorded per job in the raw output.
   micro-batches), act ("accessing tensor output of CUDAGraphs that has been overwritten",
   rollout.py:616, in the first segment). Re-queued the loss with one micro-batch per
   minibatch (no accumulation) to get a number. BC collect warm first segment 14.9 s (cold 94.3).
+- 05:53-06:05: collect max-autotune-no-cudagraphs 25.04 ms a tick (default 25.34, -1.2%), cold
+  305.7 s (default 94.3). Memory curve (384 views): B 32 158.8 ms per 64 views, B 64 165.0
+  (smaller is faster per view here: L2?), B 128 and 256 OOM on 8 GB; checkpoint per sublayer at
+  B 64 198.7 ms (+20%), peak 4.61 -> 2.98 GiB. Added B 16 / 48 and budget 0.5 at B 32.
+  Remaining: checkpoint 128/256, budget 64/128/256/32, fold check + time, reduce-overhead with
+  one micro-batch per minibatch, math attention, max-autotune (ETA 07:15, worst 07:45).
