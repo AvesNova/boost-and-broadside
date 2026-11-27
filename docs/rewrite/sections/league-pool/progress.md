@@ -96,3 +96,21 @@ first snapshot at 5M, then 83%). The learner (random) loses every scripted game,
 puts most slots on scripted members. The resume found a core bug: a GPU resume failed setting
 the generators (load_checkpoint maps the RNG states to the GPU); fixed (`set_random_states`
 moves them to the CPU), then the resume ran 2 updates without a recompile.
+
+## Compile check (23:07 pool, 23:17 core, back to back, quiet: load 1.1)
+
+Both trees fail against compile_baseline.json in the same way (a stale baseline: act 1,821
+operations, no merge_league); baseline untouched. Pool against core: the same 5 graphs, 0
+breaks; act 4,535 / 4,439 traced operations (+2.2%, the per-row parameters), advance 3,194 /
+3,211, slot_actions 720 / 720, merge_league 28 / 25; cold 129.7 / 127.7 s.
+
+## Tests (end)
+
+Quick tier `-m "not slow"` on lean: 357 passed (21:20-21:24, with the smoke run on the GPU).
+Slow test_compiled: 5 passed (the static-through-loads test after its no_grad fix, 70.8 s).
+ruff check + format: clean.
+
+## Done 23:20
+
+Open for the author: K / R (table above), whether the personas share one PFSP share, the real
+personas from the persona study, and the stale compile baseline (both trees fail it).

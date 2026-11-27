@@ -120,6 +120,10 @@ docs/rewrite/sections/league-pool/progress.md).
 - Loop speed (collect plus update), earlier: 6,670 steps/s in RL before the first snapshot (step L2,
   2026-11-23); BC 6,668. Peak allocated 5.7 GiB. Steady speed with league networks playing is
   not measured under the per-slot routing (the one short run included its compile: 4,852).
+- League side, two levels (2026-11-27, league-pool, back to back with core): the RL tick 27.9 ms
+  with no snapshot (EMA, 2 x 107 rows; core 24.1, no network), 28.6 ms with 1 (core 26.4),
+  33.1 ms with 12 (core 32.5); the BC tick 25.5 ms (core 24.2: the per-row scripted
+  parameters, 1.3 ms). Share tracking and the smoke run: docs/rewrite/sections/league-pool/.
 - League side before the two-level league (2026-11-27, slots x 86 rows, the empty slots skipped): the RL tick at E 2,048 is
   26.4 ms with 1 snapshot (2 slot calls) and 32.5 ms with 12 (11 calls), against 24.2 ms
   without league networks; running all 18 slots it was 38.5 and 38.6 ms (the rows are
