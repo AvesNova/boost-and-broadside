@@ -56,6 +56,7 @@ BULLET_SPEED, BULLET_LOG_INDEX = (
     BULLET_COLUMNS.index("bullet_log_index"),
 )
 MOVES_LEFT = BULLET_COUNT_COLUMNS.index("bullet_moves_left")
+GHOST, REAL, CONTACTED = 0, 1, 2  # the ghost-only prototype's bullet states
 FIRED_TICK = BULLET_COUNT_COLUMNS.index("bullet_fired_tick")
 
 
@@ -1525,10 +1526,12 @@ def step(
 
     shots = _fire(config, state, shoot, noise["spread"], index)
     flown = _fly(config, state, stick, power, shots.fired)
-    flying = shots.counts[:, MOVES_LEFT] > 0
-    bullets = _move_bullets(config, state, shots.bullets, flying)
+    # Ghost-only prototype: every bullet flies its 12 ticks (the ring); bullet_real is the
+    # bullet's state, 0 ghost, 1 real, 2 contacted (no further contact, no damage).
+    flying = shots.bullet_real < CONTACTED
+    bullets = _move_bullets(config, state, shots.bullets)
     contact = _hit_test(config, state, flown, shots.bullets, bullets, flying, index)
-    real = shots.bullet_real.reshape(E, N * K)
+    real = (shots.bullet_real == REAL).reshape(E, N * K)
     bullet_damage = _damage(state, flown, bullets, real, contact)
     if contact.bent is not None:
         bullets = _deflect(bullets, contact)
@@ -1547,7 +1550,13 @@ def step(
     recharged = shield + restored
     tick, done, result = _end_check(config, state, alive, recharged)
     enemy = state.team[:, index.owner] != _on_target(state.team, contact.target)
-    moves_left, shot_outcome = _bullet_ends(shots.counts, flying, contact.hit, enemy)
+    # The ring's age of each slot: 0 for the bullet written this tick, K - 1 for its last move.
+    age = (shots.next_slot[..., None] - 1 - index.bullet_slot) % K
+    hit_now = contact.hit.reshape(E, N, K)
+    ended = hit_now | ((age == K - 1) & flying)
+    outcome = torch.where(hit_now, torch.where(enemy.reshape(E, N, K), 1, 2), 0)
+    shot_outcome = torch.where(ended, outcome, -1)
+    bullet_state = torch.where(hit_now, CONTACTED, shots.bullet_real)
 
     # Slots not alive at tick start keep their whole row (agreed fix 3: one select, not one per
     # field).
@@ -1584,14 +1593,13 @@ def step(
         ),
         state.ships,
     )
-    fired_tick = shots.counts[:, FIRED_TICK]
+    fired_tick = state.tick[:, None, None] - age
     new_state = dataclasses.replace(
         state,
         ships=ships,
         flags=torch.stack([alive, state.exists, shots.fired], 1),
         bullets=bullets,
-        bullet_counts=torch.stack([moves_left, fired_tick], 1),
-        bullet_real=shots.bullet_real,
+        bullet_real=bullet_state,
         tick=tick,
         pending=action,
     )
@@ -1635,7 +1643,6 @@ class Shots(NamedTuple):
 
     fired: Tensor  # (E, N) bool
     bullets: Tensor  # (E, BULLET_COLUMNS, N, K) with the new bullets written
-    counts: Tensor  # (E, BULLET_COUNT_COLUMNS, N, K) long
     bullet_real: Tensor  # (E, N, K) bool
     cooldown: Tensor  # (E, N), the gun's whole ticks to wait, before this tick's count down
     next_slot: Tensor  # (E, N)
@@ -1668,8 +1675,7 @@ def _fire(
         + c["spread_speed"] * spread[..., 1]
     )
     launch_speed = torch.sqrt(launch_x * launch_x + launch_y * launch_y)
-    emits = alive if config.ghost_bullets else fired
-    written = emits[..., None] & (index.bullet_slot == state.next_slot[..., None])
+    written = index.bullet_slot == state.next_slot[..., None]  # every ship, every tick
     launched = torch.cat(
         [
             state.ships[:, X : Y + 1],
@@ -1678,15 +1684,12 @@ def _fire(
         ],
         1,
     )
-    moves = filled((E,), c["bullet_moves"], torch.long, state.ships.device)
-    new_counts = torch.stack([moves, state.tick], 1)
     return Shots(
         fired=fired,
         bullets=torch.where(written[:, None], launched[..., None], state.bullets),
-        counts=torch.where(written[:, None], new_counts[:, :, None, None], state.bullet_counts),
-        bullet_real=torch.where(written, fired[..., None], state.bullet_real),
+        bullet_real=torch.where(written, fired[..., None].to(torch.uint8), state.bullet_real),
         cooldown=torch.where(fired, c["fire_interval"], state.cooldown),
-        next_slot=torch.where(emits, (state.next_slot + 1) % K, state.next_slot),
+        next_slot=(state.next_slot + 1) % K,
     )
 
 
@@ -1734,7 +1737,7 @@ def _fly(
     return flown
 
 
-def _move_bullets(config: GameConfig, state: State, start: Tensor, flying: Tensor) -> Tensor:
+def _move_bullets(config: GameConfig, state: State, start: Tensor) -> Tensor:
     """Every flying bullet's move (bullet_motion); inactive bullets are frozen. start: the bullet
     block after the fire stage; returns the block after the move."""
     x, y, direction_x, direction_y, speed = start[:, :BULLET_LOG_INDEX].unbind(1)
@@ -1749,7 +1752,7 @@ def _move_bullets(config: GameConfig, state: State, start: Tensor, flying: Tenso
         _per_bullet(state.constants["bullet_drag"]),
         start[:, BULLET_LOG_INDEX:].unbind(1),
     )
-    return torch.where(flying[:, None], torch.stack(moved, 1), start)
+    return torch.stack(moved, 1)
 
 
 class Contact(NamedTuple):
@@ -2624,6 +2627,14 @@ def _lineup_types(lineup: tuple[str, ...], device: torch.device) -> Tensor:
 
 
 @built_once
+def _parked_bullets(envs, slots, x, y, device) -> Tensor:
+    """Ghost-only prototype: a fresh deal's bullets are ghosts parked on their owner (speed 0)."""
+    bullets = _no_bullets(envs, slots, device)
+    bullets[:, BULLET_X] = x[..., None]
+    bullets[:, BULLET_Y] = y[..., None]
+    return bullets
+
+
 def _no_bullets(envs: int, slots: int, device: torch.device) -> Tensor:
     """The bullet block of a fresh deal: every bullet inactive, at the origin, pointing along x."""
     bullets = torch.zeros((envs, len(BULLET_COLUMNS), slots, BULLET_SLOTS), device=device)
@@ -2753,11 +2764,11 @@ def deal(config: GameConfig, envs: int, slots: int, team_sizes: Tensor, generato
         flags=torch.stack([exists, exists, filled((envs, slots), False, torch.bool, device)], 1),
         identity=torch.stack([team, ship_type], 1),
         constants=constants,
-        bullets=_no_bullets(envs, slots, device),
+        bullets=_parked_bullets(envs, slots, named["x"], named["y"], device),
         bullet_counts=filled(
             (envs, len(BULLET_COUNT_COLUMNS), slots, BULLET_SLOTS), 0, torch.long, device
         ),
-        bullet_real=filled(bullet_shape, False, torch.bool, device),
+        bullet_real=filled(bullet_shape, GHOST, torch.uint8, device),
         tick=filled((envs,), 0, torch.long, device),
         fields=fields,
         # The neutral action (straight, coast, no fire) is every ship's first pending action.
@@ -2920,7 +2931,7 @@ def _snapshot(state: State) -> Tensor:
     """(E, SEEN_COLUMNS, N) float32: each ship's raw values now, as a sighting records them.
     Columns on the middle axis, so each column read back is an (E, N) slice with unit stride
     along N."""
-    bullet_share = ((state.bullet_moves_left > 0) & state.bullet_real).to(torch.float32).mean(-1)
+    bullet_share = (state.bullet_real == REAL).to(torch.float32).mean(-1)
     alive = state.alive.to(torch.float32)
     return torch.cat(
         [state.ships, torch.stack([bullet_share, alive, torch.ones_like(alive)], 1)], 1
@@ -3030,14 +3041,14 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
         # Own rows: the live share; enemy rows: as last seen.
         bullet_share = torch.where(
             same_team,
-            ((state.bullet_moves_left > 0) & state.bullet_real).to(torch.float32).mean(-1),
+            (state.bullet_real == REAL).to(torch.float32).mean(-1),
             enemy_seen[:, 0],
         )
         # For the globals: own ships alive, enemies not seen dead (never-seen count as alive).
         counted = torch.where(same_team, state.alive, enemy_seen[:, SEEN_ALIVE - SEEN_SHARE] > 0.5)
     else:
         view = state
-        in_flight = (state.bullet_moves_left > 0) & state.bullet_real
+        in_flight = state.bullet_real == REAL
         bullet_share = in_flight.to(torch.float32).mean(-1)
     exists, alive = state.exists, view.alive
     # World-frame motion, as v2 observes it: the proper speed over the refractive index, so a
