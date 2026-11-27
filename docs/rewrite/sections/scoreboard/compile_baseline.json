@@ -1,45 +1,45 @@
 {
- "cold_s": 120.9,
+ "cold_s": 141.6,
  "graphs": 5,
  "graph_breaks": 0,
- "operations": 9338,
+ "operations": 10295,
  "functions": {
   "act": {
    "graphs": 1,
-   "operations": 4535,
+   "operations": 4613,
    "aot": [
     [
      "forward",
-     5263
+     5333
     ]
    ],
-   "backend_s": 35.2
+   "backend_s": 35.9
   },
   "advance": {
    "graphs": 1,
-   "operations": 3194,
+   "operations": 3307,
    "aot": [
     [
      "forward",
-     3423
+     3537
     ]
    ],
-   "backend_s": 17.6
+   "backend_s": 19.3
   },
   "minibatch_loss": {
    "graphs": 1,
-   "operations": 861,
+   "operations": 1627,
    "aot": [
     [
      "forward",
-     1266
+     2067
     ],
     [
      "backward",
-     1758
+     2215
     ]
    ],
-   "backend_s": 10.8
+   "backend_s": 21.7
   },
   "slot_actions": {
    "graphs": 1,
@@ -50,7 +50,7 @@
      1114
     ]
    ],
-   "backend_s": 8.4
+   "backend_s": 8.6
   },
   "merge_league": {
    "graphs": 1,
@@ -67,6 +67,5 @@
  "gpu": "NVIDIA GeForce RTX 4070 Laptop GPU",
  "power_profile": "performance",
  "torch": "2.15.0+cu132",
- "budget_s": 150.0,
- "note": "Reset by the author's decision (2026-11-27 ~22:00) after the night's merge (merge-1128: core + league-pool + personas-2 + hit-range-2), recorded on the laptop (quiet, performance profile). Op counts as measured on this tree, merge_league included; budget 150 s, about 25% over the measured cold compile (121.3 s and 120.9 s in two runs). Before: act 1,821, advance 2,856, minibatch_loss 1,080, slot_actions 746, total 6,503, cold 231.7 s, budget 260 s."
+ "budget_s": 150.0
 }

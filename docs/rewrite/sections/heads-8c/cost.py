@@ -43,9 +43,7 @@ def main() -> None:
     generator = torch.Generator(device=device).manual_seed(0)
     envs, ticks = 128, 128
     pairs, field_pairs = 28, 80
-    samples = {"all": (pairs, field_pairs), "off": (pairs, field_pairs)}.get(
-        variant, (int(variant), int(variant))
-    )
+    samples = (pairs, field_pairs) if variant in ("all", "off") else (int(variant), int(variant))
     config = dataclasses.replace(
         LearnConfig(),
         epochs=1,
