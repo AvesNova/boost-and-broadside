@@ -2,27 +2,29 @@
 networks' moves, the critic's target pass and the minibatch loss (forward and backward).
 Adam and the gradient clipping stay eager (the framework spike found nothing to gain there).
 
-`graphs()` builds them once, on the first compiled collect or update, through
-lean.contract.compile_dynamic (dynamic sizes, duck sizing off for the process: each graph
-compiles once for every team size, environment count and minibatch size). Importing this
-module changes nothing.
+`graphs(shapes)` builds them once per `shapes` (LearnConfig.compile_shapes), on the first
+compiled collect or update, through lean.contract.compile_graph: "static" (a training run:
+every size fixed, a recompile is an error) or "dynamic" (duck sizing off: each graph compiles
+once for every team size, environment count and minibatch size). The league routing
+(slot_actions) compiles dynamic either way: its table width follows the league's capacity,
+which changes as members join. Importing this module changes nothing.
 """
 
 import functools
 from types import SimpleNamespace
 
-from lean.contract import compile_dynamic
+from lean.contract import compile_dynamic, compile_graph
 from lean.learn import rollout, training
 
 
 @functools.cache
-def graphs() -> SimpleNamespace:
+def graphs(shapes: str = "static") -> SimpleNamespace:
     """The compiled functions: act, advance, slot_actions (lean.learn.rollout),
     minibatch_values and minibatch_loss (lean.learn.training)."""
     return SimpleNamespace(
-        act=compile_dynamic(rollout.act),
-        advance=compile_dynamic(rollout.advance),
+        act=compile_graph(rollout.act, shapes),
+        advance=compile_graph(rollout.advance, shapes),
         slot_actions=compile_dynamic(rollout.slot_actions),
-        minibatch_values=compile_dynamic(training.minibatch_values),
-        minibatch_loss=compile_dynamic(training.minibatch_loss),
+        minibatch_values=compile_graph(training.minibatch_values, shapes),
+        minibatch_loss=compile_graph(training.minibatch_loss, shapes),
     )

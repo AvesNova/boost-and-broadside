@@ -53,15 +53,6 @@ class LeagueMove(NamedTuple):
     carry: Tensor
 
 
-class HitLabels(NamedTuple):
-    """The segment's flat hit labels (collect) and this tick's row in them: `label` is written
-    in place (hit_label_entries); `row` is a 0-d long tensor (an int would be a new constant
-    for a compiled graph every tick)."""
-
-    label: Tensor
-    row: Tensor
-
-
 class Decision(NamedTuple):
     """The first half of a tick (act): both teams' `views`, the live policy's `observation` on
     every seat with each seat's `position_offset` (S, 2), its sampled `joint` actions (S, N),
@@ -490,29 +481,35 @@ def abandon(
     return state, dataclasses.replace(fresh, reset=carry.reset | chosen)
 
 
-def hit_label_entries(
-    step_out,
-    state,
-    label_row: Tensor | int,
-    slot_index: Tensor,
-    environment_index: Tensor,
-    spare: int,
-):
-    """(index, outcome) for scattering this tick's ended bullets into the flat hit labels
-    (row, environment, slot) of `collect`.
+def hit_outcomes_by_age(step_out, state) -> Tensor:
+    """(E, N, K) int8: this tick's outcome (step_out.shot_outcome: -1 none, 0 missed, 1 hit an
+    enemy, 2 a team-mate) of each ship's bullet of age a (left the gun a ticks before this
+    tick, on episode tick state.tick - a), indexed by a: the ring slot of age a is
+    (state.tick - a) mod K (lean.game.core.bullet_ages). One tick's record for
+    assemble_hit_labels; nothing is written in place in the tick."""
+    slots = step_out.shot_outcome.shape[-1]
+    by_age = (state.tick[:, None] - torch.arange(slots, device=state.tick.device)) % slots
+    index = by_age[:, None, :].expand_as(step_out.shot_outcome)
+    return step_out.shot_outcome.gather(-1, index).to(torch.int8)
 
-    `label_row` is this tick's row in the labels. A bullet that ended on this tick left the
-    gun on episode tick step_out.shot_tick; its row is label_row - (state.tick - shot_tick),
-    since episode ticks and rows advance together within an episode (a bullet of the
-    current episode can never reach a row before the episode's first). A bullet whose row
-    would be negative goes to the spare last entry `spare`.
-    """
-    envs, slots = state.exists.shape
-    row = label_row - (state.tick[:, None, None] - step_out.shot_tick)
-    landed = (step_out.shot_outcome >= 0) & (row >= 0)
-    index = (row * envs + environment_index) * slots + slot_index
-    index = torch.where(landed, index, spare)
-    return index.flatten(), step_out.shot_outcome.flatten()
+
+def assemble_hit_labels(outcomes: Tensor) -> Tensor:
+    """The segment's hit labels (2, T, E, N) long from its ticks' hit_outcomes_by_age
+    (T, E, N, K): the outcome of the bullet each ship emitted on each row's tick, rows 0 to
+    T - 1 the previous segment's ticks (its bullets that end in this segment), rows T to
+    2T - 1 this segment's; -1 where it has not ended in this segment. A bullet of age a that
+    ends on tick t left the gun on row T + t - a (episode ticks and rows advance together
+    within an episode: a bullet of the current episode never reaches a row before the
+    episode's first); one fired before the previous segment is dropped. Each bullet ends
+    once, so a row's entries are -1 but one: the maximum over the ages assembles them."""
+    ticks, envs, slots, ages = outcomes.shape
+    labels = torch.full((2 * ticks, envs, slots), -1, dtype=torch.int8, device=outcomes.device)
+    for age in range(ages):
+        first = ticks - age  # the row of tick 0's bullet of this age
+        skip = max(0, -first)  # ticks whose bullet of this age predates the previous segment
+        rows = labels[first + skip : first + ticks]
+        torch.maximum(rows, outcomes[skip:, ..., age], out=rows)
+    return labels.long().view(2, ticks, envs, slots)
 
 
 def act(
@@ -562,16 +559,13 @@ def advance(
     carry: CollectCarry,
     decision: Decision,
     league_move: LeagueMove,
-    hit_labels: HitLabels,
     generator,
 ):
     """The second half of a tick, after `decision` (act) and `league_move` (league_actions):
-    every ship's action, the game step, rewards, hit labels (written into hit_labels.label in
-    place at this tick's row, see hit_label_entries), the league tallies, then the re-deal of
-    finished environments. Returns (state, carry, this tick's records by Rollout field
-    name)."""
+    every ship's action, the game step, rewards, the tick's bullet outcomes for the hit labels
+    (hit_outcomes_by_age), the league tallies, then the re-deal of finished environments.
+    Returns (state, carry, this tick's records by Rollout field name, and "hit_outcome")."""
     envs, slots = state.exists.shape
-    device = state.exists.device
     self_play = envs - carry.member.shape[0]
     seat_environment, _ = seats(carry.learner_team, self_play)
     observation = decision.observation
@@ -584,14 +578,8 @@ def advance(
     done = step_out.done
     seat_done = done.index_select(0, seat_environment)
     reward, ledger = reward_step(config, carry.ledger, tick_events(step_out, state), state.team)
-    slot_index = torch.arange(slots, device=device)[None, :, None]
-    environment_index = torch.arange(envs, device=device)[:, None, None]
-    spare = hit_labels.label.shape[0] - 1
-    hit_labels.label.scatter_(
-        0,
-        *hit_label_entries(step_out, state, hit_labels.row, slot_index, environment_index, spare),
-    )
     records = {
+        "hit_outcome": hit_outcomes_by_age(step_out, state),
         "teacher": decision.scripted.teacher.index_select(0, seat_environment),
         "reward": reward.index_select(0, seat_environment),
         "done": seat_done,
@@ -675,7 +663,9 @@ def collect(
     if compiled:
         from lean.learn.compiled import graphs
 
-        act_part, advance_part, networks = graphs().act, graphs().advance, graphs().slot_actions
+        compiled_graphs = graphs(config.compile_shapes)
+        act_part, advance_part = compiled_graphs.act, compiled_graphs.advance
+        networks = compiled_graphs.slot_actions
         generator = None
         # A fresh state can hold broadcast (stride 0) tensors where a re-dealt one holds
         # whole ones (even empty ones: fields with F = 0).
@@ -696,11 +686,7 @@ def collect(
     if store is not None:
         store.begin_segment(segment, ticks, initial_carry, table)
     records = {}
-    # Hit labels over (row, environment, slot), flat: rows 0 to T - 1 are the previous
-    # segment's ticks (its bullets that end in this segment), rows T to 2T - 1 this
-    # segment's; one spare entry at the end takes every bullet fired earlier.
-    hit_label = torch.full((2 * ticks * envs * slots + 1,), -1, dtype=torch.long, device=device)
-    label_row = torch.full((), ticks, dtype=torch.long, device=device)
+    hit_outcomes = []  # each tick's hit_outcomes_by_age, assembled at the segment's end
     seat_environment, _ = seats(carry.learner_team, self_play)
 
     for index in range(ticks):
@@ -718,9 +704,9 @@ def collect(
             carry,
             decision,
             league_move,
-            HitLabels(hit_label, label_row),
             generator,
         )
+        hit_outcomes.append(tick_records.pop("hit_outcome"))
         tick_records = {
             "observation": decision.observation,
             "action": decision.joint,
@@ -735,7 +721,6 @@ def collect(
         else:
             for name, item in tick_records.items():
                 records.setdefault(name, []).append(item)
-        label_row = label_row + 1
 
     seat_environment, seat_team = seats(carry.learner_team, self_play)
     # The value after the last tick from the tick's first half (one graph fewer to compile;
@@ -747,7 +732,7 @@ def collect(
     # A seat is the same environment's same slots in every segment (`seats`), so the
     # previous segment's rows go to the same seats there.
     previous_hit_label, seat_hit_label = (
-        hit_label[:-1].view(2, ticks, envs, slots).index_select(2, seat_environment).unbind()
+        assemble_hit_labels(torch.stack(hit_outcomes)).index_select(2, seat_environment).unbind()
     )
 
     if store is not None:

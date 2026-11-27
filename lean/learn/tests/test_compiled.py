@@ -12,7 +12,6 @@ from lean.learn import League, LearnConfig, Opponent, collect, make_optimiser, s
 from lean.learn.compiled import graphs
 from lean.learn.pool import EMA, FIRST_SNAPSHOT
 from lean.learn.rollout import (
-    HitLabels,
     act,
     advance,
     draw_next_episodes,
@@ -56,6 +55,18 @@ def test_compiled_collect_and_update_run_with_the_real_packages():
         assert all(value == value for value in metrics.values())
 
 
+def test_a_static_graph_refuses_to_compile_again():
+    """compile_shapes "static" (training): the first call compiles, a call at a new size
+    raises instead of recompiling."""
+    from lean.contract import compile_graph
+
+    graph = compile_graph(lambda x: x * 2.0 + 1.0, "static")
+    assert torch.equal(graph(torch.ones(3)), torch.full((3,), 3.0))
+    assert torch.equal(graph(torch.zeros(3)), torch.ones(3))  # same size: no compile
+    with pytest.raises(RuntimeError, match="recompile"):
+        graph(torch.ones(4))
+
+
 def test_compiled_loss_matches_eager():
     from lean.learn import RolloutStore
     from lean.learn.compiled import graphs
@@ -93,7 +104,8 @@ def test_compiled_loss_matches_eager():
     )
     twin = copy.deepcopy(policy)
     eager_loss, eager_measures = minibatch_loss(config, policy, *arguments)
-    compiled_loss, compiled_measures = graphs().minibatch_loss(config, twin, *arguments)
+    # Dynamic: the other tests here compile the same functions at other sizes.
+    compiled_loss, compiled_measures = graphs("dynamic").minibatch_loss(config, twin, *arguments)
     assert torch.allclose(eager_loss, compiled_loss, rtol=1e-4, atol=1e-5)
     for name in eager_measures:
         assert torch.allclose(
@@ -130,10 +142,9 @@ def test_the_league_tick_compiles_fullgraph_so_it_never_reads_the_host():
     slots = state.exists.shape[1]
     deals = draw_next_episodes(config, game_config, policy, opponent, 8, slots, None, "cpu")
     carry = dataclasses.replace(carry, next_episodes=deals)
-    graphs()  # duck sizing off, as in training
+    graphs("dynamic")  # duck sizing off, as in a dynamic compile
     routing = torch.compile(slot_actions, fullgraph=True, dynamic=True)
     second_half = torch.compile(advance, fullgraph=True, dynamic=True)
-    hit_label = torch.full((2 * 4 * 8 * slots + 1,), -1, dtype=torch.long)  # rows for 4 ticks
     for tick in range(4):  # a game ends on the third tick: re-deals draw members within capacity
         decision = act(config, game_config, policy, opponent, state, carry, None)
         league_move = league_actions(
@@ -148,7 +159,6 @@ def test_the_league_tick_compiles_fullgraph_so_it_never_reads_the_host():
             carry,
             decision,
             league_move,
-            HitLabels(hit_label, torch.tensor(4 + tick)),
             None,
         )
     rows = torch.bincount(carry.member.clamp(min=0), minlength=league.members)
@@ -182,10 +192,9 @@ def test_the_first_league_networks_do_not_recompile_the_tick():
     opponent = Opponent(scripted.ScriptedConfig(), league)
     state, carry = start(config, game_config, policy, opponent, 8, None)
     slots = state.exists.shape[1]
-    graphs()  # duck sizing off, as in training
+    graphs("dynamic")  # duck sizing off, as in a dynamic compile
     routing = torch.compile(slot_actions, fullgraph=True, dynamic=True)
     second_half = torch.compile(advance, fullgraph=True, dynamic=True)
-    hit_label = torch.full((2 * 4 * 8 * slots + 1,), -1, dtype=torch.long)
 
     def tick(state, carry, row):
         deals = draw_next_episodes(config, game_config, policy, opponent, 8, slots, None, "cpu")
@@ -203,7 +212,6 @@ def test_the_first_league_networks_do_not_recompile_the_tick():
             carry,
             decision,
             league_move,
-            HitLabels(hit_label, torch.tensor(row)),
             None,
         )
         return state, carry

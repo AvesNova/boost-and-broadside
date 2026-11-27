@@ -350,7 +350,8 @@ def update(
     if compiled:
         from lean.learn.compiled import graphs
 
-        loss_of, values = graphs().minibatch_loss, graphs().minibatch_values
+        compiled_graphs = graphs(config.compile_shapes)
+        loss_of, values = compiled_graphs.minibatch_loss, compiled_graphs.minibatch_values
     else:
         loss_of, values = minibatch_loss, minibatch_values
     if cloning:

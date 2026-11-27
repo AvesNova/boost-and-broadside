@@ -92,15 +92,10 @@ def whole_state(state):
     return dataclasses.replace(state, constants=map_fields(state.constants, whole))
 
 
-def compile_dynamic(function):
-    """`function` under torch.compile with dynamic sizes, duck sizing turned off for the
-    process (the one place it is set): with it on, two sizes equal at the first call (ship
-    slots and field slots at 5v5) are tied and a new team size recompiles; off, each graph
-    compiles once for every team size, environment count and batch size
-    (docs/rewrite/scoreboard.md). The inductor and triton caches default to
-    ~/.cache/bnb-inductor when TORCHINDUCTOR_CACHE_DIR is not set."""
-    import torch.fx.experimental._config as fx_config
+COMPILE_SHAPES = ("static", "dynamic")
 
+
+def _default_compile_cache() -> None:
     # /tmp is wiped at reboot, which loses the warm compile cache (93 s against about 230 s
     # cold): default it to the home cache unless the caller (a test, a box) set its own.
     if "TORCHINDUCTOR_CACHE_DIR" not in os.environ:
@@ -108,8 +103,52 @@ def compile_dynamic(function):
         os.environ.setdefault(
             "TRITON_CACHE_DIR", os.path.join(os.environ["TORCHINDUCTOR_CACHE_DIR"], "triton")
         )
+
+
+def compile_dynamic(function):
+    """`function` under torch.compile with dynamic sizes, duck sizing turned off for the
+    process (the one place it is set): with it on, two sizes equal at the first call (ship
+    slots and field slots at 5v5) are tied and a new team size recompiles; off, each graph
+    compiles once for every team size, environment count and batch size
+    (docs/rewrite/scoreboard.md). For evaluation across sizes (crossover); a training run
+    compiles static (compile_graph). The inductor and triton caches default to
+    ~/.cache/bnb-inductor when TORCHINDUCTOR_CACHE_DIR is not set."""
+    import torch.fx.experimental._config as fx_config
+
+    _default_compile_cache()
     fx_config.use_duck_shape = False
     return torch.compile(function, dynamic=True)
+
+
+class StaticGraph:
+    """A function compiled for the sizes, strides and Python numbers of its first call
+    (torch.compile with dynamic=False); every later call that would compile again raises
+    (torch.compiler stance fail_on_recompile) instead of recompiling."""
+
+    def __init__(self, function):
+        self.compiled = torch.compile(function, dynamic=False)
+        self.traced = False
+
+    def __call__(self, *arguments, **keywords):
+        if not self.traced:
+            result = self.compiled(*arguments, **keywords)
+            self.traced = True
+            return result
+        with torch.compiler.set_stance("fail_on_recompile"):
+            return self.compiled(*arguments, **keywords)
+
+
+def compile_graph(function, shapes: str):
+    """`function` under torch.compile, `shapes` one of COMPILE_SHAPES: "static" (a training
+    run: every size is fixed for the run, so the graph is specialised to them, run-uniform
+    Python numbers are folded in, and a second compile is an error, StaticGraph) or
+    "dynamic" (evaluation across sizes, compile_dynamic)."""
+    if shapes == "dynamic":
+        return compile_dynamic(function)
+    if shapes != "static":
+        raise ValueError(f"compile shapes {shapes!r}, expected one of {COMPILE_SHAPES}")
+    _default_compile_cache()
+    return StaticGraph(function)
 
 
 def random_keywords(generator: torch.Generator | None, device) -> dict:
