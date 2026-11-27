@@ -35,3 +35,10 @@ ETA: code + CPU tests 01:30 (worst 03:00); GPU measurements 03:30 (worst 05:00);
 - K 12 + R 4 kept (the brief's numbers); the simulation's K/R variants are recorded for the author.
 
 ## Log
+
+- 21:05 Code + CPU tests done (commits ff302665..4fdc9c74): pool.py two levels, rollout per-row
+  scripted parameters + network-only merge, train.py opens the league at RL start; test_league
+  rewritten (27 pass, quick tier of lean/learn 62 + train 5 pass), slow test_compiled 5 pass
+  (the static test needed its ticks under no_grad, a test bug). Simulation (CPU, 300 updates):
+  numbers below. Next: GPU bench (core vs pool, 0/1/12 snapshots) and the smoke run, queued on
+  the GPU lock behind the persona agent's jobs. ETA 22:30 (worst 00:30).
