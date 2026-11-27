@@ -18,7 +18,7 @@ from pathlib import Path
 
 import numpy as np
 
-from lean.scripted.parameters import CROWDED, SAMPLED
+from lean.scripted.parameters import CROWDED, PARAMETERS, SAMPLED
 
 SIZES = ("1v1", "4v4", "16v16")
 MEASURES = {"near": 0.0, "known": 1.0, "own": 2.0}
@@ -54,8 +54,9 @@ def main():
     v_grid = np.linspace(-1.5, 1.5, 61)
     rows = [name for name in SAMPLED if name not in INERT]
     plain, x0, crowded, report = {}, {}, [], {}
+    store_choice = None
     for name in rows:
-        k = SAMPLED.index(name)
+        k = k_index = SAMPLED.index(name)
         each = np.stack([surrogate(fits[s], k, grid) for s in SIZES])  # (sizes, grid)
         best = int(np.argmax(each.mean(0)))
         plain[name] = float(grid[best])
@@ -78,16 +79,58 @@ def main():
             if gain >= CROWD_GAIN:
                 crowded.append(name)
                 x0[name] = (float(uu[index]), float(vv[index]))
+        if name == "store_weight":
+            # store_crowd k (= e^(2 s)): the store weight x (1 + k) / (1 + k max(near, 1)), the
+            # near measure's histogram per size; a shift of ln(factor_k / factor_1) / (2 width)
+            # box units against today's k = 1.
+            width = PARAMETERS[name].width
+            shifts = []
+            for s_value in v_grid:
+                k = np.exp(2.0 * s_value)
+                per = []
+                for size in SIZES:
+                    centres, counts = np.array(crowd[size]["near"]["histogram"]).T
+                    m = np.maximum(centres, 1.0)
+                    factor = ((1 + k) / (1 + k * m) * counts).sum() / counts.sum()
+                    today = (2.0 / (1.0 + m) * counts).sum() / counts.sum()
+                    per.append(np.log(factor / today) / (2.0 * width))
+                shifts.append(per)
+            shifts = np.array(shifts)  # (v grid, sizes)
+            best_total, best_pair = -np.inf, None
+            for j, s_value in enumerate(v_grid):
+                total = np.mean(
+                    [
+                        surrogate(fits[size], k_index, np.clip(grid + shifts[j, i], U_LOW_FIT, U_HIGH_FIT))
+                        for i, size in enumerate(SIZES)
+                    ],
+                    axis=0,
+                )
+                index = int(np.argmax(total))
+                if total[index] > best_total:
+                    best_total, best_pair = total[index], (float(grid[index]), float(s_value), j)
+            gain = float(best_total - each.mean(0)[best])
+            entry.update({"store_u": best_pair[0], "store_s": best_pair[1], "store_gain": gain})
+            if gain >= CROWD_GAIN:
+                store_choice = best_pair
         report[name] = entry
     space_rows = rows
+    if store_choice is not None:
+        x0["store_weight"] = (store_choice[0], None)
     z = [x0[name][0] if name in x0 else plain[name] for name in space_rows]
     z += [x0[name][1] for name in crowded]
+    if store_choice is not None:
+        z.append(store_choice[1])
     predicted = {}
     for i, s in enumerate(SIZES):
         total = fits[s]["intercept"]
         for name in space_rows:
             k = SAMPLED.index(name)
-            u = x0[name][0] + x0[name][1] * weights[i] if name in x0 else plain[name]
+            if name == "store_weight" and store_choice is not None:
+                u = store_choice[0] + shifts[store_choice[2], i]
+            elif name in x0:
+                u = x0[name][0] + x0[name][1] * weights[i]
+            else:
+                u = plain[name]
             total += float(surrogate(fits[s], k, np.clip(u, U_LOW_FIT, U_HIGH_FIT)))
         predicted[s] = total
     predicted_plain = {
@@ -100,6 +143,7 @@ def main():
         "crowded": crowded,
         "measure": MEASURES[arguments.measure],
         "half": arguments.half,
+        "store": store_choice is not None,
         "x0": z,
         "weights": dict(zip(SIZES, weights.tolist(), strict=True)),
         "predicted": predicted,

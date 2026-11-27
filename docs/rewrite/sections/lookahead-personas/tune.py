@@ -77,26 +77,42 @@ class Space:
     crowded: tuple  # rows with a crowd endpoint (v)
     measure: float = 0.0
     half: float = 1.0
+    store: bool = False  # one more coordinate: store_crowd = e^(2 s) (s = 0: the default 1)
 
     @property
     def dimension(self):
-        return len(self.rows) + len(self.crowded)
+        return len(self.rows) + len(self.crowded) + int(self.store)
 
     def config(self, z) -> ScriptedConfig:
         z = np.asarray(z, dtype=float)
         values = {}
         for name, u in zip(self.rows, z[: len(self.rows)], strict=True):
             values[name] = row_value(name, float(np.clip(u, U_LOW, U_HIGH)))
-        for name, v in zip(self.crowded, z[len(self.rows) :], strict=True):
+        crowd_z = z[len(self.rows) : len(self.rows) + len(self.crowded)]
+        for name, v in zip(self.crowded, crowd_z, strict=True):
             v = float(np.clip(v, -V_LIMIT, V_LIMIT))
             values[f"{name}_crowd"] = math.exp(2.0 * PARAMETERS[name].width * v)
+        if self.store:
+            values["store_crowd"] = math.exp(2.0 * float(np.clip(z[-1], -V_LIMIT, V_LIMIT)))
         if self.crowded:
             values["crowd_measure"] = self.measure
             values["crowd_half"] = self.half
         return ScriptedConfig().replace(**values)
 
     def centre(self):
-        return np.array([0.5] * len(self.rows) + [0.0] * len(self.crowded))
+        return np.array(
+            [0.5] * len(self.rows) + [0.0] * len(self.crowded) + [0.0] * int(self.store)
+        )
+
+
+def space_of(spec) -> Space:
+    return Space(
+        tuple(spec["rows"]),
+        tuple(spec["crowded"]),
+        spec["measure"],
+        spec["half"],
+        bool(spec.get("store", False)),
+    )
 
 
 def evaluators(store, envs):
@@ -137,8 +153,8 @@ def cma_search(data, minutes, games, envs, space, popsize, sigma, x0):
                 "popsize": popsize,
                 "seed": 1128,
                 "bounds": [
-                    [U_LOW] * len(space.rows) + [-V_LIMIT] * len(space.crowded),
-                    [U_HIGH] * len(space.rows) + [V_LIMIT] * len(space.crowded),
+                    [U_LOW] * len(space.rows) + [-V_LIMIT] * (space.dimension - len(space.rows)),
+                    [U_HIGH] * len(space.rows) + [V_LIMIT] * (space.dimension - len(space.rows)),
                 ],
                 "verbose": -9,
             },
@@ -196,7 +212,7 @@ def verify(data, named, sizes, target, minutes, envs, opponents):
                     pairings.append((agents[first], agents[second], (size, size)))
         while (time.perf_counter() - started) / 60.0 < minutes:
             rows = evaluator.adaptive(
-                pairings, target_error=target, budget=16384, round_games=16384
+                pairings, target_error=target, budget=4096, round_games=4096
             )
             worst = max(row["error"] for row in rows)
             log(f"verify {size}v{size}: worst error {worst:.4f}")
@@ -204,7 +220,9 @@ def verify(data, named, sizes, target, minutes, envs, opponents):
                 break
         else:
             log("time bound")
-            return
+            return False
+    log("verify done")
+    return True
 
 
 def report_verify(data, named, sizes, out):
@@ -266,7 +284,7 @@ def main():
     arguments = parser.parse_args()
     if arguments.command == "cma":
         spec = json.loads(arguments.space.read_text())
-        space = Space(tuple(spec["rows"]), tuple(spec["crowded"]), spec["measure"], spec["half"])
+        space = space_of(spec)
         x0 = spec.get("x0") or space.centre()
         cma_search(
             arguments.data,
@@ -279,7 +297,7 @@ def main():
             x0,
         )
     elif arguments.command == "verify":
-        verify(
+        finished = verify(
             arguments.data,
             load_named(arguments.named),
             arguments.sizes,
@@ -288,6 +306,7 @@ def main():
             arguments.envs,
             set(arguments.opponents),
         )
+        sys.exit(0 if finished else 3)
     else:
         report_verify(arguments.data, load_named(arguments.named), arguments.sizes, arguments.out)
 
