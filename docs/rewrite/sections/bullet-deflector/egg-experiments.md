@@ -274,9 +274,8 @@ Passes: 4116 / 3216 / 4157 / 3256. Per shooter (one sample per pass and shooter,
 own damage): egg normal 71% of attacks do no hit, 8.8% kill, 20.9% partial, 2.3% deliver at
 least a shield; the median attack that hits at all does 0.30 of a shield (mean 0.40); off normal
 44.7% no hit, 25.4% kill, 30.1% partial, 16.8% at least a shield, median hitting attack 0.67.
-A pass that kills (summed): egg normal 0.67 shields mean (the kill's pass also holds the
-damage of earlier passes' remainder only through the shield's carry: the victim was already
-hurt), off normal 1.06.
+Damage in a pass that holds a kill (summed): egg normal 0.67 shields mean (the victim was already
+hurt by earlier passes), off normal 1.06.
 
 Overkill per pass: refuted for the egg in normal play. The god-mode mean (15.3 hits per pass)
 came from a ship that cannot die; with real shields the egg pass delivers a median of 0.09 of a
