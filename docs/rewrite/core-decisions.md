@@ -1039,3 +1039,25 @@ Bullet deflector and the runtime hit model (PROPOSAL, branch `bullet-deflector`,
   profile, load ~1.2-1.6; bench_tick, base b70dcd18 vs this branch, 2 rounds alternating):
   off 0.973 / 0.973 -> 0.753 / 0.753 ms, egg 1.078 / 1.079 -> 0.880 / 0.925 ms. Kernels:
   docs/rewrite/sections/bullet-deflector/progress.md (2026-11-27 16:00).
+
+## Static training graphs and the hot-path fixes (PROPOSAL, branch `tick-audit`, unmerged; author decisions 2026-11-27 ~16:00)
+
+- **A training run is fully static** (author): `LearnConfig.compile_shapes` "static" (default)
+  compiles act, advance and the update graphs for the run's sizes (environments, ships, fields,
+  micro-batch) with `dynamic=False` and makes any second compile an error
+  (`lean.contract.compile_graph`, `StaticGraph`, stance fail_on_recompile). "dynamic" keeps
+  `compile_dynamic` (duck sizing off) for crossover evaluation, as the evaluation runner does.
+  This replaces "Dynamic shapes, not fixed" (Deliberate changes, Game) for training. Open for
+  the author: the league routing's table width follows the league's capacity, so slot_actions
+  stays dynamic; making it static means a fixed width with padded rows.
+- **Hit labels per segment**: advance returns each ship's bullet outcomes by age and collect
+  assembles the labels at the segment's end; nothing is written into a buffer in the tick.
+- **Constants per ship type**: State carries the card's (C, T) table and the slots' types, not
+  an (E, C, N) copy; bitwise.
+- **Dropped with numbers** (hot-path-audit-progress.md): the reset cap D = 16 (the whole
+  re-deal costs 0.076 ms per tick now; a capped path cannot beat the fused select without a
+  branch), a deal pool (deals cost 0.012 ms per tick), exp2 powers (no gain); not done: sight
+  on unordered pairs, fire's block rewrite, the bullet share once a tick.
+- **Cost** (laptop 4070, performance profile): core.step at E 4096, 4v4, egg 1.777 ms on the
+  old trainer path (compile_dynamic) -> 0.766 ms static (off 1.713 -> 0.572); the training
+  tick at E 2048 31.8 -> 25.2 ms (collect 64.4k -> 81.4k steps/s), advance 3.67 -> 1.84 ms.
