@@ -1,0 +1,276 @@
+{
+ "rows": [
+  "threat_weight",
+  "angles_weight",
+  "energy_weight",
+  "aggression",
+  "speed_weight",
+  "collision_weight",
+  "field_weight",
+  "horizon",
+  "preferred_speed",
+  "reply_temperature",
+  "caution",
+  "temperature",
+  "stickiness",
+  "store_weight",
+  "power_horizon",
+  "power_temperature",
+  "power_stickiness",
+  "disengaged_energy_weight",
+  "fire_tolerance"
+ ],
+ "crowded": [
+  "angles_weight",
+  "aggression",
+  "speed_weight",
+  "preferred_speed",
+  "reply_temperature"
+ ],
+ "measure": 1.0,
+ "half": 1.0,
+ "store": true,
+ "x0": [
+  -0.25,
+  1.125,
+  1.25,
+  1.25,
+  0.6000000000000001,
+  -0.225,
+  0.65,
+  -0.25,
+  -0.2,
+  -0.04999999999999999,
+  0.6000000000000001,
+  -0.25,
+  1.25,
+  -0.25,
+  1.25,
+  1.25,
+  0.10000000000000003,
+  0.050000000000000044,
+  1.25,
+  -1.5,
+  -1.5,
+  1.4500000000000002,
+  1.5,
+  1.5,
+  0.0
+ ],
+ "weights": {
+  "1v1": 0.0,
+  "4v4": 0.4638779217087772,
+  "16v16": 0.8706371801612252
+ },
+ "predicted": {
+  "1v1": 1335.8953100910796,
+  "4v4": 1312.706338304766,
+  "16v16": 2075.646163359501
+ },
+ "report": {
+  "threat_weight": {
+   "plain_u": -0.25,
+   "plain_gain": 29.164313323363356,
+   "best_u_per_size": {
+    "1v1": 1.25,
+    "4v4": -0.25,
+    "16v16": -0.25
+   }
+  },
+  "angles_weight": {
+   "plain_u": 0.2,
+   "plain_gain": 7.141296055642342,
+   "best_u_per_size": {
+    "1v1": 1.25,
+    "4v4": 0.050000000000000044,
+    "16v16": -0.25
+   },
+   "crowd_u": 1.125,
+   "crowd_v": -1.5,
+   "crowd_gain": 50.25303661562821
+  },
+  "energy_weight": {
+   "plain_u": 1.25,
+   "plain_gain": 53.525974422857104,
+   "best_u_per_size": {
+    "1v1": -0.25,
+    "4v4": 1.25,
+    "16v16": 1.25
+   },
+   "crowd_u": 0.55,
+   "crowd_v": 1.5,
+   "crowd_gain": 5.416156990307442
+  },
+  "aggression": {
+   "plain_u": 0.22500000000000003,
+   "plain_gain": 5.62554720256613,
+   "best_u_per_size": {
+    "1v1": 1.25,
+    "4v4": 0.17500000000000004,
+    "16v16": -0.15
+   },
+   "crowd_u": 1.25,
+   "crowd_v": -1.5,
+   "crowd_gain": 35.52551391830528
+  },
+  "speed_weight": {
+   "plain_u": 1.25,
+   "plain_gain": 49.123392387041676,
+   "best_u_per_size": {
+    "1v1": 0.6000000000000001,
+    "4v4": 1.25,
+    "16v16": 1.25
+   },
+   "crowd_u": 0.6000000000000001,
+   "crowd_v": 1.4500000000000002,
+   "crowd_gain": 10.24418423513984
+  },
+  "collision_weight": {
+   "plain_u": -0.225,
+   "plain_gain": 20.332274369040583,
+   "best_u_per_size": {
+    "1v1": -0.07499999999999998,
+    "4v4": -0.25,
+    "16v16": -0.175
+   },
+   "crowd_u": -0.07499999999999998,
+   "crowd_v": -1.5,
+   "crowd_gain": 0.3485811827371741
+  },
+  "field_weight": {
+   "plain_u": 0.65,
+   "plain_gain": 0.42355337265620796,
+   "best_u_per_size": {
+    "1v1": 0.65,
+    "4v4": 1.25,
+    "16v16": 0.42500000000000004
+   }
+  },
+  "horizon": {
+   "plain_u": -0.25,
+   "plain_gain": 78.11474455182677,
+   "best_u_per_size": {
+    "1v1": 1.25,
+    "4v4": -0.25,
+    "16v16": -0.25
+   },
+   "crowd_u": 0.42500000000000004,
+   "crowd_v": -1.5,
+   "crowd_gain": 3.9313015115842944
+  },
+  "preferred_speed": {
+   "plain_u": 1.0750000000000002,
+   "plain_gain": 7.282490710583685,
+   "best_u_per_size": {
+    "1v1": -0.25,
+    "4v4": 1.25,
+    "16v16": 1.25
+   },
+   "crowd_u": -0.2,
+   "crowd_v": 1.5,
+   "crowd_gain": 12.90835793857663
+  },
+  "reply_temperature": {
+   "plain_u": 1.25,
+   "plain_gain": 5.43065902770816,
+   "best_u_per_size": {
+    "1v1": -0.25,
+    "4v4": -0.25,
+    "16v16": 1.25
+   },
+   "crowd_u": -0.04999999999999999,
+   "crowd_v": 1.5,
+   "crowd_gain": 27.272627341745146
+  },
+  "caution": {
+   "plain_u": 0.6000000000000001,
+   "plain_gain": 0.3102373140062187,
+   "best_u_per_size": {
+    "1v1": 0.375,
+    "4v4": 0.6000000000000001,
+    "16v16": 1.25
+   }
+  },
+  "temperature": {
+   "plain_u": -0.25,
+   "plain_gain": 39.31046317388299,
+   "best_u_per_size": {
+    "1v1": -0.25,
+    "4v4": 0.050000000000000044,
+    "16v16": -0.25
+   },
+   "crowd_u": -0.25,
+   "crowd_v": -1.5,
+   "crowd_gain": 0.0
+  },
+  "stickiness": {
+   "plain_u": 1.25,
+   "plain_gain": 17.704453368100012,
+   "best_u_per_size": {
+    "1v1": 1.25,
+    "4v4": 1.25,
+    "16v16": 1.25
+   }
+  },
+  "store_weight": {
+   "plain_u": -0.25,
+   "plain_gain": 20.908567559503133,
+   "best_u_per_size": {
+    "1v1": 0.375,
+    "4v4": 0.050000000000000044,
+    "16v16": -0.25
+   },
+   "store_u": 0.025000000000000022,
+   "store_s": 1.5,
+   "store_gain": 5.776947044937096
+  },
+  "power_horizon": {
+   "plain_u": 1.25,
+   "plain_gain": 22.1287722365636,
+   "best_u_per_size": {
+    "1v1": 1.25,
+    "4v4": 1.25,
+    "16v16": -0.25
+   }
+  },
+  "power_temperature": {
+   "plain_u": 1.25,
+   "plain_gain": 7.047835759050016,
+   "best_u_per_size": {
+    "1v1": 1.175,
+    "4v4": 1.25,
+    "16v16": -0.25
+   }
+  },
+  "power_stickiness": {
+   "plain_u": 0.10000000000000003,
+   "plain_gain": 2.536820859716288,
+   "best_u_per_size": {
+    "1v1": -0.25,
+    "4v4": 0.30000000000000004,
+    "16v16": 0.55
+   }
+  },
+  "disengaged_energy_weight": {
+   "plain_u": 0.050000000000000044,
+   "plain_gain": 2.9178484020353346,
+   "best_u_per_size": {
+    "1v1": -0.25,
+    "4v4": 1.25,
+    "16v16": 0.525
+   }
+  },
+  "fire_tolerance": {
+   "plain_u": 1.25,
+   "plain_gain": 53.06822145425634,
+   "best_u_per_size": {
+    "1v1": 0.9500000000000002,
+    "4v4": 1.25,
+    "16v16": 1.25
+   },
+   "crowd_u": 0.9500000000000002,
+   "crowd_v": 0.6499999999999999,
+   "crowd_gain": 0.28203254082930584
+  }
+ }
+}

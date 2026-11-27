@@ -2,7 +2,8 @@
 mean Elo against the old yardstick over 1v1, 4v4 and 16v16 (equal weight), each size at its
 study clock (skill2.CLOCKS), fields and fog.
 
-    tune.py DATA cma --minutes 12 [--games 256]   # resumable: DATA/cma.pickle, DATA/cma.jsonl
+    tune.py DATA cma [REF=JSON] --space SPACE.json --minutes 12 [--games 256]
+                                   # resumable: DATA/cma.pickle, DATA/cma.jsonl
     tune.py DATA verify NAME=JSON ... --sizes 1 2 4 8 16 --target-error 0.012
     tune.py DATA report NAME=JSON ... --sizes 1 2 4 8 16 --out OUT.json
 
@@ -122,9 +123,10 @@ def evaluators(store, envs):
     }
 
 
-def rate(evaluators_, agents, games, sizes=SIZES):
-    """Elo per size of each agent against the old yardstick from `games` games each."""
-    yard = ScriptedAgent.of()
+def rate(evaluators_, agents, games, sizes=SIZES, reference=None):
+    """Elo per size of each agent against `reference` (default the old yardstick; at 1000)
+    from `games` games each."""
+    yard = reference or ScriptedAgent.of()
     out = [{} for _ in agents]
     for size in sizes:
         rows = evaluators_[size].ensure([(yard, agent, (size, size), games) for agent in agents])
@@ -134,7 +136,7 @@ def rate(evaluators_, agents, games, sizes=SIZES):
     return out
 
 
-def cma_search(data, minutes, games, envs, space, popsize, sigma, x0):
+def cma_search(data, minutes, games, envs, space, popsize, sigma, x0, reference=None):
     import cma
 
     started = time.perf_counter()
@@ -162,7 +164,7 @@ def cma_search(data, minutes, games, envs, space, popsize, sigma, x0):
     while (time.perf_counter() - started) / 60.0 < minutes:
         solutions = es.ask()
         agents = [ScriptedAgent.of(space.config(z)) for z in solutions]
-        elos = rate(evaluating, agents, games)
+        elos = rate(evaluating, agents, games, reference=reference)
         means = [float(np.mean([e[s] for s in SIZES])) for e in elos]
         es.tell(solutions, [-m for m in means])
         mean_z = es.mean
@@ -291,6 +293,9 @@ def main():
             arguments.popsize,
             arguments.sigma,
             x0,
+            # The first NAME=JSON, if given: the opponent the search rates against (the old
+            # yardstick saturates at 8v8 and 16v16).
+            next(iter(ScriptedAgent.of(c) for c in load_named(arguments.named).values()), None),
         )
     elif arguments.command == "verify":
         finished = verify(
