@@ -184,6 +184,10 @@ RUNTIME_CONSTANTS = (
     "egg_rear",
     "egg_half_width",
     "deflector_turn",
+    # The egg's semi-axes as inverses (derived, written with them): the pair test multiplies.
+    "inverse_egg_front",
+    "inverse_egg_rear",
+    "inverse_egg_half_width",
     "nose_cone",
     "nose_inner_cos",
     "inverse_nose_width",
@@ -1818,9 +1822,9 @@ def _hit_test(
         relative[:, 1],
         flown.heading_cos[:, None, :],
         flown.heading_sin[:, None, :],
-        _per_ship(c["egg_front"]),
-        _per_ship(c["egg_rear"]),
-        _per_ship(c["egg_half_width"]),
+        _per_ship(c["inverse_egg_front"]),
+        _per_ship(c["inverse_egg_rear"]),
+        _per_ship(c["inverse_egg_half_width"]),
     )
     entry = torch.where(candidate, entry, torch.inf)
     entry_tau, bend_ship = entry.min(-1)
@@ -1839,7 +1843,7 @@ def _hit_test(
         relative[:, 0],
         relative[:, 1],
         pair_entry,
-        _per_ship(c["egg_half_width"]),
+        _per_ship(c["inverse_egg_half_width"]),
         _per_ship(c["deflector_turn"]),
     )
     bend = index.ship == bend_ship[..., None]
@@ -1933,22 +1937,32 @@ def _per_ship(values: Tensor | float) -> Tensor | float:
     return values[:, None, :] if isinstance(values, Tensor) else values
 
 
-def egg_entry(start_x, start_y, move_x, move_y, nose_cos, nose_sin, front, rear, half_width):
+def egg_entry(
+    start_x,
+    start_y,
+    move_x,
+    move_y,
+    nose_cos,
+    nose_sin,
+    inverse_front,
+    inverse_rear,
+    inverse_half_width,
+):
     """The deflector's egg (proposal 2026-11-27): in the ship's frame (nose +x) the front half an
     ellipse of semi-axis `front` along the nose, the rear half one of semi-axis `rear`, both of
     half-width `half_width`. The tau in [0, 1) at which the straight path start + tau move (the
     bullet relative to the ship's centre, world axes) first crosses the egg inward, inf for
     none: a path starting inside (a bullet fired from inside, or already turned) never enters.
-    Elementwise; every argument broadcasts."""
+    The semi-axes come as inverses (1 / front, 1 / rear, 1 / half_width: the rows
+    inverse_egg_*), so the pair test multiplies. Elementwise; every argument broadcasts."""
     along = start_x * nose_cos + start_y * nose_sin
     across = start_y * nose_cos - start_x * nose_sin
     move_along = move_x * nose_cos + move_y * nose_sin
     move_across = move_y * nose_cos - move_x * nose_sin
-    inverse_width = 1.0 / half_width
-    scaled_across, scaled_move_across = across * inverse_width, move_across * inverse_width
+    scaled_across = across * inverse_half_width
+    scaled_move_across = move_across * inverse_half_width
 
-    def half(semi_axis, front_half: bool):
-        inverse = 1.0 / semi_axis
+    def half(inverse, front_half: bool):
         p, d = along * inverse, move_along * inverse
         qa = (d * d + scaled_move_across * scaled_move_across).clamp_min(1e-12)
         qb = p * d + scaled_across * scaled_move_across
@@ -1960,8 +1974,8 @@ def egg_entry(start_x, start_y, move_x, move_y, nose_cos, nose_sin, front, rear,
         valid = (disc > 0.0) & (t >= 0.0) & (t < 1.0) & on_half
         return torch.where(valid, t, torch.inf), qc > 0.0
 
-    front_t, outside_front = half(front, True)
-    rear_t, outside_rear = half(rear, False)
+    front_t, outside_front = half(inverse_front, True)
+    rear_t, outside_rear = half(inverse_rear, False)
     outside = torch.where(along >= 0.0, outside_front, outside_rear)
     return torch.where(outside, torch.minimum(front_t, rear_t), torch.inf)
 
@@ -1983,19 +1997,20 @@ def hump(x: Tensor) -> Tensor:
     return 6.75 * x * (1.0 - x) * (1.0 - x)
 
 
-def egg_turn(start_x, start_y, move_x, move_y, entry_tau, half_width, turn_max) -> Turn:
+def egg_turn(start_x, start_y, move_x, move_y, entry_tau, inverse_half_width, turn_max) -> Turn:
     """The deflector's turn at the egg entry (`egg_entry`'s tau) of the straight path start +
     tau move (relative to the ship's centre): the direction turned away from the centre by
-    turn_max x hump(b / half_width), b the distance of the straight line from the centre (b = 0
-    goes straight); the speed kept; then the swept test of the turned remainder (the entry
-    point to the tick's end, (1 - entry_tau) of the move turned) against the centre."""
+    turn_max x hump(b / half_width) (given as inverse_half_width), b the distance of the
+    straight line from the centre (b = 0 goes straight); the speed kept; then the swept test of
+    the turned remainder (the entry point to the tick's end, (1 - entry_tau) of the move turned)
+    against the centre."""
     length_squared = (move_x * move_x + move_y * move_y).clamp_min(1e-12)
     inverse_length = torch.rsqrt(length_squared)
     point_x, point_y = start_x + entry_tau * move_x, start_y + entry_tau * move_y
     # Signed distance of the line from the centre: + when the centre is on the line's right.
     signed = (move_x * point_y - move_y * point_x) * inverse_length
     b = signed.abs()
-    angle = turn_max * hump(b / half_width)
+    angle = turn_max * hump(b * inverse_half_width)
     turn_cos = torch.cos(angle)
     turn_sin = torch.sin(angle) * signed / b.clamp_min(1e-9)
     rest = 1.0 - entry_tau
@@ -2178,9 +2193,9 @@ def hit_widths(hit_radius: Tensor, inputs: dict[str, float]) -> Tensor:
         move_y,
         1.0,
         0.0,
-        float(inputs["egg_front"]),
-        float(inputs["egg_rear"]),
-        float(inputs["egg_half_width"]),
+        1.0 / float(inputs["egg_front"]),
+        1.0 / float(inputs["egg_rear"]),
+        1.0 / float(inputs["egg_half_width"]),
     )
     entered = entry < torch.inf
     turn = egg_turn(
@@ -2189,7 +2204,7 @@ def hit_widths(hit_radius: Tensor, inputs: dict[str, float]) -> Tensor:
         move_x,
         move_y,
         torch.where(entered, entry, 0.0),
-        float(inputs["egg_half_width"]),
+        1.0 / float(inputs["egg_half_width"]),
         torch.tensor(float(inputs["deflector_turn"]), dtype=torch.float64),
     )
     # Straight (no entry: a miss of the egg) or turned, against each hit radius.
@@ -2268,6 +2283,9 @@ def hit_model_constants(inputs: dict[str, float]) -> dict[str, float]:
     """The constants (RUNTIME_CONSTANTS names, except the hit widths) of hit-model inputs
     (`HIT_MODEL` names; the nose cone's pair only when both angles are given)."""
     out = {name: float(inputs[name]) for name in _HIT_SAME if name in inputs}
+    for name in ("egg_front", "egg_rear", "egg_half_width"):
+        if name in inputs:
+            out["inverse_" + name] = 1.0 / float(inputs[name])
     if "bullet_spread" in inputs:
         out["spread_speed"] = float(inputs["bullet_spread"])
     if "nose_inner_angle" in inputs and "nose_outer_angle" in inputs:
