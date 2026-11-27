@@ -5,10 +5,16 @@ it blocks. Answered questions move to the bottom with the answer and its date.
 
 ## Open
 
+(none)
+
+## Answered
+
 9. **Boundary ramp (2026-11-23).** The boundary ramp is the distance beyond the arena edge
    over which boundary damage rises from zero to its maximum. v2 scales it with the map
    (100 m times the map scale: 161.5 m at a 4,200 m arena); lean fixes it at 300 m (a
    builder's assumption). Proposal: v2's rule. Blocks: nothing urgent.
+   **Answered 2026-11-27:** fixed at 300 m regardless of map size (as decision 2.1).
+
 10. **Core flight numbers to fly and tune (2026-11-23).** Measured in
    docs/rewrite/core-flight-measurements.md. (a) The two-loop store is crossed in about 1.5 s
    per half at the full exchange rate (38.6 m/s^2, about 1 g) and is worth about +-45 m/s
@@ -17,6 +23,8 @@ it blocks. Answered questions move to the bottom with the answer and its date.
    (c) Engine power is the card's full-store power (Vizia 2.04 kW/kg; top speed 325 m/s
    unchanged). (d) Full stick while coasting now settles at 111 m/s and 25 deg/s (v2: 139,
    38.6) because coast holds 1 g. Fly it in the web tool (`python -m lean.tool`, Sandbox tab).
+   **Answered 2026-11-27:** signed off as they are ("I like how they fly"); firing keeps the full engine cut.
+
 11. **Scripted tripwire (2026-11-23).** The team-mate line-of-fire check you asked for costs
    21 operations; the scripted call is now 193 against the 170 tripwire. What it buys: the
    yardstick never shoots its own team. Sign off, or ask for savings elsewhere (agreed fix 6,
@@ -24,6 +32,7 @@ it blocks. Answered questions move to the bottom with the answer and its date.
    Update (2026-11-23): fix 6 is made. One call for both teams is 188 operations (one team
    190; at this tree one team was 196 before), so the teacher costs 188 per tick instead of
    392; the 170 tripwire per call is still exceeded by 18.
+   **Answered 2026-11-27:** moot; the look-ahead agent replaced this scripted agent.
 
 12. **Training speed against the 5,000 steps/s floor (2026-11-23).** Compiled, bf16, laptop
    RTX 4070, league full (8 snapshots): v2 game 5,160 (256 envs) and 5,057 (1,024); core game
@@ -35,8 +44,8 @@ it blocks. Answered questions move to the bottom with the answer and its date.
    memory on 8 GB); v2 used 32; the update size is yours. (d) Compiling costs 199 s cold, 72 s
    warm before the first update ends (eager 17 s); it pays back after about 20 updates cold.
    Blocks: the first real training run's settings.
+   **Answered 2026-11-27:** already in the code per docs/rewrite/literature-ppo-targets-minibatches.md: targets once per update (`targets_every_epoch=False`), 32 minibatches, 1,048,576 ticks per update (2,048 x 4 x 128), streamed store with micro-batches on the laptop. Speed re-measured after the audits.
 
-## Answered
 
 1. **Fields in `lean/game` (2026-11-22).** The author says fields are the default, but
    `GameConfig.fields` defaults to none and no field map is defined yet. The game also
