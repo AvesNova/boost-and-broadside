@@ -242,3 +242,99 @@ straight contact that tick, so the entry and contact reductions run as one pass;
 only a second egg entered in the same tick). Re-run after the cut (egg_runs/recheck_after_cut):
 1v1 egg 1.39 kills per minute (1.45 before), 4v4 6.67 (6.57), god-mode 4v4 friendly fire 4.4%
 (4.9%): within the seed-to-seed spread.
+
+## Damage per pass, per engagement, and always fire (2026-11-27)
+
+Script `egg_pass.py`, results `egg_runs/pass_2026_11_27/*.json` (raw logs in
+data/egg-pass-2026-11-27). Look-ahead agent on both sides, today's settings (hit damage 10.5,
+spread 1.5 mrad), same game counts as `egg_play.py` (1v1: 512 environments, 4v4: 256, 1800
+ticks = 60 s each, seed 0, games re-dealt). Damage is in full shields (`StepOut.hit_damage`:
+bullets, plus collisions credited to the other ship; collisions are rare in these cells).
+A pass is a local minimum of the 1v1 distance under the gun range, 1 s apart, events assigned to
+the nearest minimum of the same game; a game that ends on a kill inside the gun range ends its
+last pass at the kill tick (without that, the 1v1 off cell loses a third of its kills: the game
+ends at the merge, before the distance turns up; the first run of the script did this wrongly
+and was replaced). An engagement is the passes of one game in a row, ended by a kill or by the
+distance rising above the gun range between two passes (or the game's end). "Always fire": after
+the agent decides, every ship's fire action is 1 (the gun still waits its cooldown, and a blocked
+shot at stall speed with an empty store stays blocked), and `GameConfig.fire_thrust_fraction =
+1.0`: `core._fly` withholds `1 - fire_thrust_fraction` of the thrust on a tick that fires, so 1.0
+withholds none (the default 0.0 withholds all of it on those ticks).
+
+### Per pass (1v1, both shooters summed; the first row of 1v1 egg matches egg_play's 2.72 and 43%)
+
+| 1v1 | hits mean | median [p25, p75] p90 | damage mean (shields) | damage median [p25, p75] p90 | no hit | kill | partial (>0, no kill) | damage >= 1 shield |
+|---|---|---|---|---|---|---|---|---|
+| egg, normal | 2.72 | 1 [0, 4] 9 | 0.24 | 0.09 [0, 0.38] 0.77 | 43.2% | 17.6% | 39.3% | 4.8% |
+| off, normal | 9.17 | 8 [3, 14] 19 | 0.76 | 0.72 [0.23, 1.16] 1.61 | 15.7% | 50.7% | 33.6% | 37.8% |
+| egg, always fire | 2.96 | 1 [0, 5] 9 | 0.26 | 0.11 [0, 0.39] 0.80 | 33.6% | 19.5% | 47.0% | 4.4% |
+| off, always fire | 9.46 | 9 [4, 14] 20 | 0.77 | 0.72 [0.28, 1.17] 1.61 | 13.9% | 50.7% | 35.4% | 37.9% |
+
+Passes: 4116 / 3216 / 4157 / 3256. Per shooter (one sample per pass and shooter, the attacker's
+own damage): egg normal 71% of attacks do no hit, 8.8% kill, 20.9% partial, 2.3% deliver at
+least a shield; the median attack that hits at all does 0.30 of a shield (mean 0.40); off normal
+44.7% no hit, 25.4% kill, 30.1% partial, 16.8% at least a shield, median hitting attack 0.67.
+A pass that kills (summed): egg normal 0.67 shields mean (the kill's pass also holds the
+damage of earlier passes' remainder only through the shield's carry: the victim was already
+hurt), off normal 1.06.
+
+Overkill per pass: refuted for the egg in normal play. The god-mode mean (15.3 hits per pass)
+came from a ship that cannot die; with real shields the egg pass delivers a median of 0.09 of a
+shield, and only 4.8% of passes deliver a whole shield or more (the egg's attacker alone: 2.3%).
+Off (no egg) is different: 37.8% of passes deliver a shield or more and 50.7% kill, median 0.72.
+
+### Per engagement (1v1)
+
+| 1v1 | engagements | passes mean (median) | damage mean (median) | share that kill | damage in a killing engagement (median) | passes to kill mean (median) | kills in one pass |
+|---|---|---|---|---|---|---|---|
+| egg, normal | 1617 | 2.55 (2) | 0.60 (0.60) | 44.8% | 1.15 (1.14) | 3.64 (4) | 2.9% |
+| off, normal | 2253 | 1.43 (1) | 1.09 (1.15) | 72.4% | 1.34 (1.19) | 1.54 (1) | 55.2% |
+| egg, always fire | 1722 | 2.41 (2) | 0.62 (0.69) | 47.1% | 1.16 (1.15) | 3.47 (3) | 2.8% |
+| off, always fire | 2262 | 1.44 (1) | 1.12 (1.16) | 73.0% | 1.33 (1.20) | 1.56 (1) | 53.8% |
+
+With the egg a kill takes 3 to 4 passes (3.64 mean, 1 pass 2.9%); without it one pass (55%).
+Engagements that do not kill (55% with the egg) end by separation or the 60 s clock with 0.6
+shields dealt on average.
+
+### Damage lost to shield recharge
+
+The shield did not refill in any cell: shield recharge is 0.0 shields in 1v1 egg (both),
+0.12 in 1v1 off (of 2460 dealt), 0.62 in 4v4 egg (of 2434), 0 with always fire. The agent
+essentially never coasts straight with no trigger for the wait, so no damage is lost to
+recharge: every ship that dies took, over its life, 1.139 shields (1v1 egg; 1.165 off, 1.156 4v4)
+= its 1.0 shield counted + 0.139 overkill (the last hit's excess; 12-14% of the damage on killed
+ships) + 0.00 refilled. Damage on ships that did not die (games ended by the clock, ships alive
+at the end) is 14.9% (1v1 egg), 22.2% (1v1 off), 21.2% (4v4 egg) of all damage dealt: that,
+not recharge, is what does not count toward a kill.
+
+### Firing and hits
+
+| cell | fire action share | shots per pass | shots per kill (real bullets ended) | hit chance per real bullet |
+|---|---|---|---|---|
+| 1v1 egg normal | 2.5% | 11.2 mean (6 median) | 59.5 | 26.0% |
+| 1v1 off normal | 3.6% | 20.1 (18) | 34.8 | 51.7% |
+| 4v4 egg normal | 3.7% | - | 63.7 | 23.6% |
+| 1v1 egg always fire | 100% (99.9% fired) | 422 (302) | 2236 | 0.68% |
+| 1v1 off always fire | 100% | 514 (380) | 1075 | 1.71% |
+| 4v4 egg always fire | 100% | - | 1107 | 1.39% |
+
+### Always fire against normal play
+
+| cell | kills / min | median time to kill [p25, p75] (s) | hits / pass (1v1) | damage / pass (shields) | passes with no hit |
+|---|---|---|---|---|---|
+| 1v1 egg normal | 1.41 | 7.87 [4.03, 12.48] | 2.72 | 0.24 | 43.2% |
+| 1v1 egg always | 1.59 | 7.83 [4.23, 11.78] | 2.96 | 0.26 | 33.6% |
+| 1v1 off normal | 3.21 | 0.80 [0.40, 4.61] | 9.17 | 0.76 | 15.7% |
+| 1v1 off always | 3.28 | 0.73 [0.37, 4.60] | 9.46 | 0.77 | 13.9% |
+| 4v4 egg normal | 6.48 | 7.27 [2.41, 14.53] | - | - | - |
+| 4v4 egg always | 9.86 | 6.80 [2.70, 12.20] | - | - | - |
+
+Always fire raises damage per pass by 8% (egg) and 1% (off) and kills per minute by 12%, 2% and
+52% (1v1 egg, 1v1 off, 4v4 egg), while the shots rise 40-fold in the passes: the agent's fire
+gate (2-4% of ticks) loses little of what a spray would deliver in 1v1, because the bullets
+that hit are the aimed ones; the extra shots are 99% misses (hit chance 0.7-1.7%). The 4v4 gain
+is the largest (a spray hits whoever crosses the line, and the thrust a shot withholds is the
+cost the normal agent pays: with no firing penalty a firing ship also keeps its speed). The
+cell mixes the two changes (fire every tick; no withheld thrust); they were not separated. The
+theoretical maximum for this agent's flight is therefore about 1.1x the damage per pass in 1v1
+and 1.5x the kills in 4v4; passes still end in a kill only 20% (egg) of the time.
