@@ -579,6 +579,45 @@ def assemble_hit_labels(outcomes: Tensor) -> Tensor:
     return labels.long().view(2, ticks, envs, slots)
 
 
+@torch.compiler.nested_compile_region
+def _policy_chunk(policy, fields: tuple, carry: Tensor, offset: Tensor, reset: Tensor | None):
+    """One chunk of chunked_step: Policy.step on a chunk's rows (a nested compile region,
+    decorated here, outside any traced code)."""
+    return policy.step(Obs(*fields), carry, offset, reset)
+
+
+def chunked_step(policy, chunks: int):
+    """`policy`'s step (Policy.step: (view, carry, offset, reset) -> (logits, value_logits,
+    carry), rows on dimension 0 of the view and 1 of the carry) run over `chunks` equal row
+    chunks (the last shorter when they do not divide) and the outputs joined: rows are
+    independent, so this equals one call to rounding. On the laptop's GPU smaller chunks run
+    faster (LearnConfig.policy_step_chunks). Under torch.compile each chunk is one nested
+    compile region (torch.compiler.nested_compile_region): the step is traced and compiled
+    once and called per chunk, so the compile does not grow with the chunks."""
+    if chunks <= 1:
+        return policy.step
+
+    def forward(view, carry: Tensor, offset: Tensor, reset: Tensor | None = None):
+        rows = carry.shape[1]
+        size = -(-rows // chunks)
+        parts = []
+        for begin in range(0, rows, size):
+            part = slice(begin, begin + size)
+            parts.append(
+                _policy_chunk(
+                    policy,
+                    tuple(getattr(view, field.name)[part] for field in dataclasses.fields(view)),
+                    carry[:, part],
+                    offset[part],
+                    None if reset is None else reset[part],
+                )
+            )
+        logits, value_logits, carries = zip(*parts, strict=True)
+        return torch.cat(logits), torch.cat(value_logits), torch.cat(carries, 1)
+
+    return forward
+
+
 def act(
     config: LearnConfig,
     game_config,
@@ -600,7 +639,7 @@ def act(
     observation = seat_view(views, seat_environment, seat_team)
     seat_offset = carry.position_offset.index_select(0, seat_environment)
     step = agent_step(
-        policy.step,
+        chunked_step(policy, config.policy_step_chunks),
         config.bf16,
         observation,
         carry.policy,

@@ -30,8 +30,26 @@ a time; "core" numbers from a detached worktree at 2b7bc58e (`v2-speed5-base`).
   per-machine settings place exists); the 5090 re-measures. A first attempt of the curve was
   stopped: it ran from the branch worktree while I edited it; then rerun from a detached
   core worktree.
-- Seat chunks: as a plain unrolled loop the review measured +33 s of cold compile at 6 chunks
-  (over the 150 s budget). Tried `torch.compiler.nested_compile_region` per chunk (the step
-  traced once): Dynamo traces it once (105 top-level operations instead of 527 at 6 chunks,
-  CPU), but the CPU compile took 70.5 s against 15.4 s at one chunk. The GPU compile check
-  decides.
+- 07:00-07:43 seat chunks (`rollout.chunked_step`, LearnConfig.policy_step_chunks = 6). As a
+  plain unrolled loop the review measured +33 s of cold compile at 6 chunks. Instead each
+  chunk is a `torch.compiler.nested_compile_region` (`rollout._policy_chunk`, decorated at
+  module level: decorating inside the traced act is a graph break, the first try's 2 breaks
+  and 2 act graphs): the step is traced once and called per chunk. On the CPU chunked equals
+  one call to 4e-8 (logits) / 5e-6 (carry), test_the_chunked_policy_step_equals_one_call.
+  Ticks (`training-review-2/profile_collect.py bc|rl default cold --no-profile`, 2,048
+  environments, one compiling and one timed 128-tick segment; core from the core worktree):
+
+  | | core | 6 chunks | |
+  |---|---|---|---|
+  | BC tick | 25.34 ms | 20.87 ms | -17.6% |
+  | RL tick (EMA, 2 slot calls; the slots stay whole) | 27.70 ms | 23.22 ms | -16.2% |
+  | first (compiling) segment, cold, BC / RL | 95.6 / 113.1 s | 97.5 / 115.1 s | +2 s |
+  | peak allocated, BC / RL | 0.97 / 1.16 GiB | 0.72 / 0.91 GiB | |
+
+  More than the review's unrolled prototype (-12.1% / -10.8%). The compile check:
+  **core itself fails it** (2b7bc58e, run here 07:34): act 6,325 traced operations against the
+  baseline's 4,613 (+37%) and cold 160.3 s, over the 150 s budget, before any change of mine
+  (the baseline, 522e25f3 on `heads-8c`, predates the scripted-delay merge dc0d5480 in
+  lean/, and act holds the scripted agent: the likely cause, not bisected). The branch at 6 chunks and 8-view micro-batches: act 5,788 operations
+  (fewer than core: the step is traced once), 5 graphs, no break, no recompile, cold 163.1 s
+  (+2.8 s over core). Over the budget, as core is: reported, budget not raised.
