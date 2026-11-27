@@ -34,7 +34,8 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
   `LearnConfig.compile_shapes` (2026-11-27): "static" (the default) compiles each for the run's
   sizes (environments, slots, fields, micro-batch: all fixed in a run) and any second compile
   raises; "dynamic" compiles once for every size (duck sizing off). The league routing
-  (slot_actions) is dynamic either way: its table width follows the league's capacity.
+  (slot_actions) is static too, with its table width W symbolic (it follows the league's
+  capacity).
 - `lean/train.py`: the stages, checkpoints, `--resume`.
 
 ## The recipe
