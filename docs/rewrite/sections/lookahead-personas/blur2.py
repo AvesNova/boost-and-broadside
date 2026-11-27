@@ -16,7 +16,6 @@ proposed box's inert rows). Every result is written per (spread, size) file; res
 """
 
 import argparse
-import dataclasses
 import json
 import sys
 import time
@@ -85,8 +84,7 @@ def collect(centre: ScriptedConfig, size: int, seed: int):
         if bool(out.done.any()):
             fresh = draw()
             persona = {
-                name: torch.where(out.done[:, None], fresh[name], persona[name])
-                for name in SAMPLED
+                name: torch.where(out.done[:, None], fresh[name], persona[name]) for name in SAMPLED
             }
             state = game.take_deal(
                 state, out.done, game.deal(config, envs, slots, sizes, generator, here)
