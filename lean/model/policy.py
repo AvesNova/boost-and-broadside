@@ -17,6 +17,7 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 
 from lean import contract
+from lean.model.norm import Norm
 from lean.model.position import Rotary, make_position_code
 from lean.model.temporal import Temporal
 from lean.model.value import COLUMNS, buffered_centres, hl_gauss_targets
@@ -106,6 +107,9 @@ class ModelConfig:
     retention_low: float = 0.9
     retention_high: float = 0.999
     norm_epsilon: float | None = None  # torch's default: the dtype's machine epsilon (v2)
+    # Norms that feed a Linear return the autocast dtype (bf16) after their float32 reduction;
+    # the norms that start the residual stream and the map memory stay float32 (lean.model.norm).
+    low_precision_norm_outputs: bool = True
     position_code: str = "fourier"
     position_periods: tuple[float, ...] = _default_position_periods()
     grid_phases: int = (
@@ -284,7 +288,7 @@ class KindProjection(nn.Module):
     def __init__(self, inputs: int, config: ModelConfig, categories: int = 0):
         super().__init__()
         self.first = nn.Linear(inputs, 2 * config.width)
-        self.norm = nn.RMSNorm(2 * config.width, eps=config.norm_epsilon)
+        self.norm = Norm(2 * config.width, config.norm_epsilon, config.low_precision_norm_outputs)
         self.category = None
         if categories:
             self.category = nn.Embedding(categories + 1, 2 * config.width, padding_idx=categories)
@@ -311,9 +315,9 @@ class Encoder(nn.Module):
         self.game = KindProjection(game_inputs, config)
         self.field = KindProjection(field_inputs, config)
         self.shared = nn.Linear(2 * config.width, config.width)
-        self.shared_norm = nn.RMSNorm(config.width, eps=config.norm_epsilon)
+        self.shared_norm = Norm(config.width, config.norm_epsilon, False)  # the residual stream
         self.map_memory = nn.Linear(config.width, config.map_width, bias=False)
-        self.map_memory_norm = nn.RMSNorm(config.map_width, eps=config.norm_epsilon)
+        self.map_memory_norm = Norm(config.map_width, config.norm_epsilon, False)
 
     def forward(
         self, ship: Tensor, pending: Tensor, game: Tensor, field: Tensor
@@ -353,12 +357,13 @@ class Spatial(nn.Module):
         width, hidden = config.width, config.mlp_ratio * config.width
         self.heads = config.heads
         self.rotate_values = config.rotate_values
-        self.attention_norm = nn.RMSNorm(width, eps=config.norm_epsilon)
+        low = config.low_precision_norm_outputs
+        self.attention_norm = Norm(width, config.norm_epsilon, low)
         self.query_key_value_gate = nn.Linear(width, 4 * width, bias=False)
         self.output = nn.Linear(width, width, bias=False)
-        self.map_norm = nn.RMSNorm(config.map_width, eps=config.norm_epsilon)
+        self.map_norm = Norm(config.map_width, config.norm_epsilon, low)
         self.map_key_value = nn.Linear(config.map_width, 2 * width, bias=False)
-        self.mlp_norm = nn.RMSNorm(width, eps=config.norm_epsilon)
+        self.mlp_norm = Norm(width, config.norm_epsilon, low)
         self.mlp_input = nn.Linear(width, 2 * hidden, bias=False)  # gate rows, then up rows
         self.mlp_output = nn.Linear(hidden, width, bias=False)
 
@@ -420,7 +425,9 @@ class HeadGroup(nn.Module):
         super().__init__()
         self.hidden = hidden
         self.first = nn.Linear(inputs, hidden * len(outputs))
-        self.norms = nn.ModuleList(nn.RMSNorm(hidden, eps=config.norm_epsilon) for _ in outputs)
+        self.norms = nn.ModuleList(
+            Norm(hidden, config.norm_epsilon, config.low_precision_norm_outputs) for _ in outputs
+        )
         self.lasts = nn.ModuleList(nn.Linear(hidden, size) for size in outputs)
         with torch.no_grad():
             for block in self.first.weight.split(hidden):
