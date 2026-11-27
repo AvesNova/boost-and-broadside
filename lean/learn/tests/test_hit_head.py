@@ -87,3 +87,29 @@ def test_real_game_labels():
     ended = label.shape[0] - BULLET_SLOTS
     assert ended > 0
     assert (label[:ended][own[:ended]] >= 0).float().mean() > 0.9
+
+
+@pytest.mark.parametrize("ticks", [3, 12, 20])
+def test_assembled_labels_put_each_outcome_on_its_firing_row(ticks):
+    """assemble_hit_labels against the rule written out: the outcome reported on tick t by the
+    bullet of age a lands on row T + t - a (rows from 0, the previous segment's first), and is
+    dropped when that row is negative; segments shorter and longer than a bullet's life."""
+    from lean.learn.rollout import assemble_hit_labels
+
+    generator = torch.Generator().manual_seed(ticks)
+    envs, slots = 3, 4
+    # Each (row, environment, slot) reports at most once: draw its end age, then its outcome.
+    expected = torch.full((2 * ticks, envs, slots), -1, dtype=torch.long)
+    outcomes = torch.full((ticks, envs, slots, BULLET_SLOTS), -1, dtype=torch.int8)
+    for row in range(2 * ticks):
+        for environment in range(envs):
+            for slot in range(slots):
+                age = int(torch.randint(0, BULLET_SLOTS, (), generator=generator))
+                tick = row - ticks + age
+                if 0 <= tick < ticks and torch.rand((), generator=generator) < 0.7:
+                    outcome = int(torch.randint(0, 3, (), generator=generator))
+                    outcomes[tick, environment, slot, age] = outcome
+                    expected[row, environment, slot] = outcome
+    if ticks < BULLET_SLOTS - 1:  # a bullet fired before the previous segment: dropped
+        outcomes[0, 0, 0, BULLET_SLOTS - 1] = 1
+    assert torch.equal(assemble_hit_labels(outcomes), expected.view(2, ticks, envs, slots))

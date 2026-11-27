@@ -507,6 +507,8 @@ def assemble_hit_labels(outcomes: Tensor) -> Tensor:
     for age in range(ages):
         first = ticks - age  # the row of tick 0's bullet of this age
         skip = max(0, -first)  # ticks whose bullet of this age predates the previous segment
+        if skip >= ticks:  # a segment shorter than half a bullet's life
+            continue
         rows = labels[first + skip : first + ticks]
         torch.maximum(rows, outcomes[skip:, ..., age], out=rows)
     return labels.long().view(2, ticks, envs, slots)
