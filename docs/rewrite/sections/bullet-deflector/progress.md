@@ -240,6 +240,35 @@ player (2.3 GB, ~20% GPU) ran during the first bench, closed before the second; 
   | rest (fire, move, flight, fields, fog, ...) | 837 | 779 | -58 (L2 noise: the fire kernel 92 -> 39 us, the block hot in L2) | 0 |
 
   Plainly: the egg's pair work is cheap (+31 us, it stays in registers); the cost is the
-  per-bullet chain after the reduction: ~45 per-bullet tensors materialised between six
-  kernels (turn, gathers, damage, deflect, cat), each pass ~6 us, plus a second full write of
-  the bullet block (head 156 + tail 28 us). Not atomics, not launches (+4).
+  per-bullet chain after the reduction: per-bullet tensors written and re-read between six
+  kernels (turn, gathers, damage, deflect, cat; the turn kernel alone 23 loads and 10 stores
+  per bullet), at ~6 us a pass, plus a second full write of the bullet block (head 156 + tail
+  28 us). Not atomics, not launches (+4).
+
+## 14:16 egg speed, step 2: cuts tried
+
+Each against the same tree's off (bench_tick, back to back). Until ~14:10 the machine had a
+second CPU job (another worktree's python, ~20% CPU) and a browser at ~80% CPU: off read
+1.25-1.29 ms then, 0.98-1.04 ms after on the same code. So the step-2 rows below compare
+within a row, and the final before/after is re-measured on the quiet machine.
+
+| try | what | egg ms (off) | kept |
+|---|---|---|---|
+| base | 180d16a8 | 1.772 (1.270) | - |
+| A | the turn of every pair's pass read at the bend ship by a masked sum over the ships inside the pair reduction (`_at`), same for the straight impact at the target: no per-bullet gathers, the turn/gather/damage kernels fold into the pair kernel (263 us) | 1.523 (1.267) | yes |
+| B | A, but select only the bend pass's inputs and run egg_turn per bullet after the reduction | 1.703 (1.248) | no: inductor split it into a reduction + a per-bullet kernel with 25 per-bullet loads (268 us) |
+| C | A + the moved block assembled column by column, stacked once at the end of the tick | 1.543 (1.188) | no for the egg: the pair kernel recomputes where(flying, moved, start) per pair (391 us); off gains 0.06 ms |
+| D0 | A + `_deflect` stacks the 8 columns once (no where over the head + cat of the tail) | 1.430 (1.287) | yes: the deflect folds into the pair kernel, egg 31 -> 28 launches |
+| E | D0 with the pair test unrolled over the 8 ships ((E, N K) tensors, running minima) to avoid the persistent reduction's replicated per-bullet work | 1.730 (0.986) | no: slower, and eager dispatch calls 2,802 -> 3,921 |
+
+Quiet machine (load ~1.9, GPU idle but the desktop), base vs D0 alternating, 2 rounds:
+base off 0.983 / 1.040, egg 1.383 / 1.423; D0 off 1.043 / 1.029, egg 1.092 / 1.123 ms.
+**Egg 1.40 -> 1.11 ms (the egg's extra over off 0.39 -> 0.07 ms).** Kernel time (profile,
+min of 5): egg 1,408 -> 1,096 us per tick against off 972-984.
+
+Why A works (reading of the generated code, not a counter measurement): a gather by an index
+that a reduction produced is its own kernel in inductor, so every per-bullet value after the
+gather went to memory; a masked sum over the 8 ships is another reduction over the same axis
+and stays in the pair kernel's registers. Why B and E lost: in B inductor split the turn into a
+second kernel that re-reads 25 per-bullet values; in E the unrolled pairs were materialised
+per ship. Next: the whole-tick breakdown by feature; the ghost-only bullet prototype.
