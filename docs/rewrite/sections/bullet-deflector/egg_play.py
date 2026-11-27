@@ -161,8 +161,10 @@ def run_cell(name, config, size, envs, ticks, model, egg, god, agent_call, step_
         )
         # Real shots among the bullets that reported: real before the tick, or written this
         # tick by a ship that fired (a hit makes a bullet CONTACTED).
-        slots = before.bullet_state.shape[-1]
-        written = torch.arange(slots, device=device) == (before.tick % slots)[:, None, None]
+        bullet_slots = before.bullet_state.shape[-1]
+        written = (
+            torch.arange(bullet_slots, device=device) == (before.tick % bullet_slots)[:, None, None]
+        )
         real = torch.where(written, state.fired[..., None], before.bullet_state == REAL)
         ended = (out.shot_outcome >= 0) & real
         acc["real_ended"] += float(ended.sum())

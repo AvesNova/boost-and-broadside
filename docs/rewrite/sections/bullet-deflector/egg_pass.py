@@ -20,12 +20,12 @@ import json
 import time
 from pathlib import Path
 
+import egg_play
 import numpy as np
 import torch
 
-import egg_play
 from lean import game, scripted
-from lean.contract import compile_dynamic
+from lean.contract import REAL, compile_dynamic
 from lean.game import card, core
 
 
@@ -199,7 +199,13 @@ def run_cell(name, config, size, envs, ticks, model, always, agent_call, step_ca
             state, action, game.draw_noise(config, envs, slots, generator, device)
         )
         acc["shots"] += float(state.fired[living].sum())
-        real = state.bullet_real
+        # Real shots among the bullets that reported: real before the tick, or written this
+        # tick by a ship that fired (a hit makes a bullet CONTACTED).
+        bullet_slots = before.bullet_state.shape[-1]
+        written = (
+            torch.arange(bullet_slots, device=device) == (before.tick % bullet_slots)[:, None, None]
+        )
+        real = torch.where(written, state.fired[..., None], before.bullet_state == REAL)
         ended = (out.shot_outcome >= 0) & real
         acc["real_ended"] += float(ended.sum())
         acc["real_enemy"] += float(((out.shot_outcome == 1) & real).sum())
