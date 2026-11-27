@@ -48,7 +48,12 @@ label is a function of the observation. The sandbox flies against it (`World(opp
    softmax (`power_temperature`) and stickiness (`power_stickiness`) on the pending power. The
    table power: the own ship's pending power; an enemy's (not observable) the power his outlook
    scores best from straight flight with the yardstick's rows.
-3. Candidate paths (`paths.predict`, the 7 sticks at the table power): speed and store stepped
+3. Candidate paths (`paths.predict`, the 7 sticks at the table power). The one-tick delay: the
+   game applies an action chosen now after the pending one, so an own ship's candidates start
+   from its pose one tick on under its pending flight action (`after_pending`: the game's
+   `core.flight_tick`, the firing tick's thrust cut left out), the first segment one tick
+   shorter, the points at the same times (`predict`'s `start`); an enemy's from now (his pending
+   action is not observed). Speed and store stepped
    per segment from the game's steady-flight rates at the segment's start (its table: below);
    the angle of attack
    follows the nose spring in closed form per segment (`nose_response`: e'' + 2 sigma e' + k
@@ -83,7 +88,10 @@ label is a function of the observation. The sandbox flies against it (`World(opp
    action), and with no enemy known (no goal point) an energy preference and
    a seek toward the freshest dropped last-seen position. The stickiness bonus for the pending
    stick.
-8. Stick = softmax(scores / tau_me); flight = stick x power; fire = the trigger now (aim gate
+8. Stick = softmax(scores / tau_me); flight = stick x power; fire = the trigger now, for the
+   shot on the next tick (review 2026-11-28 finding 4): aimed (`aim`), ranged and lined up from
+   `after_pending`'s pose against the enemies one tick on (straight), the gun read at that tick
+   (aim gate
    at the lead point in target sizes x `fire_tolerance`, the size from the game's hit width at
    the predicted aspect; range gate; the expected hit (damage x hit chance) worth `fire_worth`
    ticks of shield recharge or his whole shield; never through a team-mate; the gun ready).
@@ -131,7 +139,8 @@ error against the direct functions and the path check: progress.md (round 3, ste
 order, the yardstick and full tensor rows alike, randomness only from sampling, one call for
 both teams, the paths against the game's tick, the nose spring's closed form, the collapse's
 limits, roam and cutoff, dead reckoning, no goal point, turning toward an enemy, the gun (tail
-and nose cone, team-mate in the line), collision avoidance, the edge, stickiness, the kernel
+and nose cone, team-mate in the line, aimed and ready after the pending tick, which equals the
+game's tick), collision avoidance, the edge, stickiness, the kernel
 against its twin (CUDA), the power from the own-ship terms, games against the chaser and the persona population (slow).
 
 ## Open

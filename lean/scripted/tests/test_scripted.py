@@ -15,7 +15,13 @@ from lean.contract import JOINT, POWERS, STICKS, join_action, map_fields
 from lean.game import card, core
 from lean.sandbox.world import World
 from lean.scripted import ScriptedConfig, act, chaser_act, draw_uniforms, explain, personas
-from lean.scripted.opponent import ENEMIES, collapse, dead_reckon, nearest_enemies
+from lean.scripted.opponent import (
+    ENEMIES,
+    after_pending,
+    collapse,
+    dead_reckon,
+    nearest_enemies,
+)
 from lean.scripted.parameters import PARAMETERS, SAMPLED, rows_of, vector
 from lean.scripted.paths import CANDIDATES, LOOK_AHEAD, nose_response, predict
 
@@ -421,6 +427,54 @@ def test_the_trigger_weighs_the_hit_chance():
     assert float(choice_of(astern).fire[0, 0]) > 0.5
     wide = astern.replace(constants=core.with_hit_model(astern.constants, bullet_spread=60.0))
     assert float(choice_of(wide).fire[0, 0]) < 0.05
+
+
+@pytest.mark.parametrize("fields", [0, 4])
+def test_the_pending_tick_is_the_games_tick(fields):
+    """The pose an action chosen now starts from (`after_pending`) is the game's next tick
+    under the pending flight action (no pending shot: the firing tick's thrust cut is left
+    out)."""
+    state = random_state(4, 8, seed=11, fields=fields)
+    generator = torch.Generator().manual_seed(12)
+    stick = torch.randint(0, STICKS, (4, 8), generator=generator)
+    power = torch.randint(0, POWERS, (4, 8), generator=generator)
+    state = state.replace(pending=torch.stack([stick, power, torch.zeros_like(stick)], -1))
+    config = core.GameConfig(field_count=fields, fog=False)
+    noise = {"spread": torch.zeros(4, 8, 2)}
+    stepped, _ = core.step(config, state, torch.zeros_like(state.pending), noise)
+    ahead = after_pending(state)
+    alive = state.alive
+    for name in ("x", "y", "heading_cos", "heading_sin", "speed", "nose_rate", "velocity_x"):
+        torch.testing.assert_close(getattr(ahead, name)[alive], getattr(stepped, name)[alive])
+
+
+def test_the_trigger_aims_from_the_pose_after_the_pending_tick():
+    """The shot leaves on the next tick: a nose on the lead point now but turning off it over
+    the pending tick holds fire; one turning onto it fires."""
+    distance = 0.9 * card_values()["gun_range"]
+    rate = torch.tensor([[2.0, 0.0]])
+    turning = placed(ship(), ship(x=distance)).replace(nose_rate=rate)
+    ahead = after_pending(turning)
+    turned = math.atan2(float(ahead.heading_sin[0, 0]), float(ahead.heading_cos[0, 0]))
+    assert float(choice_of(turning).fire[0, 0]) < 0.1
+    onto = placed(ship(heading=-turned), ship(x=distance)).replace(nose_rate=rate)
+    assert float(choice_of(onto).fire[0, 0]) > 0.5
+
+
+def test_the_gun_is_ready_on_the_shots_tick():
+    """The gun is read at the shot's tick: one tick of cooldown left counts down in the pending
+    tick (ready), a pending shot that fires restarts it (not ready). With a gun slower than one
+    shot a tick (the default fires every tick)."""
+    distance = 0.5 * card_values()["gun_range"]
+    astern = placed(ship(), ship(x=distance))
+    constants = astern.constants
+    uniform = {**constants.uniform, "fire_interval": 3}
+    astern = astern.replace(constants=dataclasses.replace(constants, uniform=uniform))
+    waiting = astern.replace(cooldown=torch.tensor([[1, 0]]))
+    assert float(choice_of(waiting).fire[0, 0]) > 0.5
+    pending = astern.pending.clone()
+    pending[0, 0, 2] = 1
+    assert float(choice_of(astern.replace(pending=pending)).fire[0, 0]) == 0.0
 
 
 def test_never_shoots_through_a_team_mate():

@@ -43,6 +43,7 @@ from lean.game.core import (
     TARGET_HIT_CONSTANTS,
     enemy_view,
     field_blocks,
+    flight_tick,
     hit_damage,
     hit_width,
     maximum,
@@ -565,6 +566,47 @@ def nearest_mates(state) -> tuple[Tensor, Tensor]:
     return torch.where(present, nearest.indices, 0).clamp_max(slots - 1), present
 
 
+def after_pending(state):
+    """Every ship one tick on, under its pending flight action (the action chosen on the last
+    tick, which the game's next tick applies before the one chosen now: the one-tick delay):
+    the game's own `flight_tick` (the firing tick's thrust cut left out), with the velocity
+    rows recomputed. What an action chosen now starts from: its bullet leaves from this pose,
+    its stick turns the nose from here. Own ships only: an enemy's pending action is not
+    observed."""
+    c = state.constants
+    flown = flight_tick(
+        c,
+        state.fields,
+        c["tick_length"],
+        SimpleNamespace(**{name: getattr(state, name) for name in FLOWN}),
+        state.pending[..., 0],
+        state.pending[..., 1],
+    )
+    velocity_x, velocity_y = path_velocity(
+        flown.speed, flown.heading_cos, flown.heading_sin, flown.angle_cos, flown.angle_sin
+    )
+    changes = {name: getattr(flown, name) for name in FLOWN}
+    return state.replace(**changes, velocity_x=velocity_x, velocity_y=velocity_y)
+
+
+# The rows `flight_tick` reads and writes (the game's _fly passes the same).
+FLOWN = (
+    "x",
+    "y",
+    "heading_cos",
+    "heading_sin",
+    "speed",
+    "angle",
+    "angle_cos",
+    "angle_sin",
+    "nose_rate",
+    "energy",
+    "log_index",
+    "gradient_x",
+    "gradient_y",
+)
+
+
 def explain(config: ScriptedConfig, state, team: int | None, persona) -> Choice:
     """The look-ahead agent's distributions for the rows of `team`, or of every ship of both
     teams when `team` is None (each ship decides exactly as in its own team's call)."""
@@ -609,8 +651,10 @@ def explain(config: ScriptedConfig, state, team: int | None, persona) -> Choice:
             log_ratio = torch.log(ratio) if isinstance(ratio, Tensor) else math.log(ratio)
             return _lay(base * torch.exp(weight * log_ratio), dims)
 
+    # The one-tick delay: own ships' candidates and shots start after the pending tick.
+    ahead = after_pending(state)
     own_paths, seen_paths, power_scores = _predict_views(
-        c, state, enemies, config, read, engaged, crowd
+        c, ahead, enemies, config, read, engaged, crowd
     )
     horizon = time_weights(read("horizon"), device)
     if horizon.dim() == 1:
@@ -699,7 +743,7 @@ def explain(config: ScriptedConfig, state, team: int | None, persona) -> Choice:
         -1,
     )
     flight = (stick[..., :, None] * power[..., None, :]).flatten(-2)
-    fire = _trigger(state, enemies, enemy_slot, enemy_weight, read) * controlled
+    fire = _trigger(state, ahead, enemies, enemy_slot, enemy_weight, read) * controlled
     joint = (flight[..., :, None] * torch.stack([1.0 - fire, fire], -1)[..., None, :]).flatten(-2)
     return Choice(
         joint=joint,
@@ -768,9 +812,12 @@ def _predict_views(
     with the own-only components attached, computed in one pass (the two views side by side on
     the slot axis) and materialised once: every field a view of one stacked tensor (P, E, 2 N,
     len(PATH_FIELDS), C), so every write is a run of C (the kernel's layout) and no consumer
-    recomputes the paths. Each view's table power: the own ship's pending power (in its
-    observation); an enemy's is not observed, so it is the power his outlook scores best with
-    the yardstick's rows (`config`; no persona of his is read), engaged, from straight flight.
+    recomputes the paths. `state`: the own ships one tick on under their pending action
+    (`after_pending`; the enemies as seen now), so the own view starts its candidates one tick
+    later (`predict`'s start) with its points at the same times. Each view's table power: the
+    own ship's pending power (in its observation); an enemy's is not observed, so it is the
+    power his outlook scores best with the yardstick's rows (`config`; no persona of his is
+    read), engaged, from straight flight.
     Also returns the own ships' power scores (E, N, POWERS) from their outlook holding the
     pending stick, with their own rows (`read`)."""
     slots = state.x.shape[1]
@@ -792,7 +839,11 @@ def _predict_views(
     margin = read("boundary_margin")
     if isinstance(margin, Tensor):
         margin = torch.cat([margin, torch.full_like(margin, config.values["boundary_margin"])], 1)
-    paths = own_components(constants, predict(constants, state.fields, ships, table_power), margin)
+    tick = c["tick_length"]
+    start = torch.cat([torch.full_like(state.x, tick), torch.zeros_like(state.x)], 1)
+    paths = own_components(
+        constants, predict(constants, state.fields, ships, table_power, start), margin
+    )
     # Materialised once, (P, E, 2 N, PATH_FIELDS, C): every write a run of C.
     stacked = torch.stack([getattr(paths, name).permute(3, 0, 1, 2) for name in PATH_FIELDS], -2)
 
@@ -925,25 +976,45 @@ def _mate_contacts(state, own_paths: Paths, read) -> Tensor:
     return (total * present[..., None]).sum(-2)
 
 
-def _trigger(state, enemies, enemy_slot, enemy_weight, read) -> Tensor:
-    """The probability of firing now (E, N): the best of the scored enemies' (aligned at the
-    lead point within the trigger's tolerance of the target's size, in range, the hit worth it,
-    no team-mate in the line), with the gun ready."""
-    c = state.constants
-    rel_x = _at(enemies.x, enemy_slot) - state.x[..., None]
-    rel_y = _at(enemies.y, enemy_slot) - state.y[..., None]
+def aim(shooter, enemies, enemy_slot, read, seconds: float = 0.0):
+    """The trigger's aim per scored enemy (E, N, ENEMIES): the distance, the bullet's flight
+    time and the nose's error (radians, signed) against the lead point, from the shooter's pose
+    (`shooter`: anything with the State's rows) and the enemies `seconds` on from their
+    view, straight at their map velocity (the shot's tick: their own pending action is not
+    observed)."""
+    c = shooter.constants
+    his_velocity_x, his_velocity_y = _map_velocity(enemies)
+    his_velocity_x = _at(his_velocity_x, enemy_slot)
+    his_velocity_y = _at(his_velocity_y, enemy_slot)
+    rel_x = _at(enemies.x, enemy_slot) + his_velocity_x * seconds - shooter.x[..., None]
+    rel_y = _at(enemies.y, enemy_slot) + his_velocity_y * seconds - shooter.y[..., None]
     distance = torch.sqrt(rel_x * rel_x + rel_y * rel_y).clamp_min(TINY)
-    index = torch.exp(state.log_index)[..., None] if state.fields.shape[-1] > 0 else 1.0
+    index = torch.exp(shooter.log_index)[..., None] if shooter.fields.shape[-1] > 0 else 1.0
     gun_range = _lay(c["gun_range"], 1)
     laid = {name: _lay(c[name], 1) for name in ("bullet_drag", "bullet_launch_speed")}
     flight = _flight_time(distance, laid, read("lead_cap", 1) * gun_range, index)
-    my_velocity_x, my_velocity_y = _map_velocity(state)
-    his_velocity_x, his_velocity_y = _map_velocity(enemies)
-    velocity_x = _at(his_velocity_x, enemy_slot) - my_velocity_x[..., None]
-    velocity_y = _at(his_velocity_y, enemy_slot) - my_velocity_y[..., None]
+    my_velocity_x, my_velocity_y = _map_velocity(shooter)
+    velocity_x = his_velocity_x - my_velocity_x[..., None]
+    velocity_y = his_velocity_y - my_velocity_y[..., None]
     aim_x, aim_y = rel_x + velocity_x * flight, rel_y + velocity_y * flight
-    nose_cos, nose_sin = state.heading_cos[..., None], state.heading_sin[..., None]
+    nose_cos, nose_sin = shooter.heading_cos[..., None], shooter.heading_sin[..., None]
     error = torch.atan2(nose_cos * aim_y - nose_sin * aim_x, nose_cos * aim_x + nose_sin * aim_y)
+    return distance, flight, error
+
+
+def _trigger(state, ahead, enemies, enemy_slot, enemy_weight, read) -> Tensor:
+    """The probability of firing now (E, N): the best of the scored enemies' (aligned at the
+    lead point within the trigger's tolerance of the target's size, in range, the hit worth it,
+    no team-mate in the line), with the gun ready. The one-tick delay: the shot leaves on the
+    next tick, so the aim, the range, the line and the bullet's launch are those of `ahead`
+    (the own ships one tick on under their pending action, `after_pending`) against the
+    enemies one tick on, and the gun must be ready then (the pending shot, if it fires,
+    restarts the cooldown)."""
+    c = state.constants
+    tick = c["tick_length"]
+    distance, flight, error = aim(ahead, enemies, enemy_slot, read, tick)
+    gun_range = _lay(c["gun_range"], 1)
+    nose_cos, nose_sin = ahead.heading_cos[..., None], ahead.heading_sin[..., None]
     in_range = torch.sigmoid(
         -torch.log(distance / (read("fire_range", 1) * gun_range)) / read("fire_range_scale", 1)
     )
@@ -953,9 +1024,9 @@ def _trigger(state, enemies, enemy_slot, enemy_weight, read) -> Tensor:
     # nose cone's rule on, inside his nose cone it does nothing). The hit by the game's hit
     # model (`hit_worth`: core.hit_damage, one call; round 3), dead centre, my bullet's launch
     # speed slowed over the distance.
-    launch_x = state.velocity_x[..., None] + _lay(c["muzzle_speed"], 1) * nose_cos
-    launch_y = state.velocity_y[..., None] + _lay(c["muzzle_speed"], 1) * nose_sin
-    turned = _at(enemies.nose_rate, enemy_slot) * flight
+    launch_x = ahead.velocity_x[..., None] + _lay(c["muzzle_speed"], 1) * nose_cos
+    launch_y = ahead.velocity_y[..., None] + _lay(c["muzzle_speed"], 1) * nose_sin
+    turned = _at(enemies.nose_rate, enemy_slot) * (flight + tick)
     his_cos, his_sin = _at(enemies.heading_cos, enemy_slot), _at(enemies.heading_sin, enemy_slot)
     turned_cos, turned_sin = torch.cos(turned), torch.sin(turned)
     nose_x = his_cos * turned_cos - his_sin * turned_sin
@@ -986,9 +1057,13 @@ def _trigger(state, enemies, enemy_slot, enemy_weight, read) -> Tensor:
     worth = read("fire_worth", 1) * _lay(c["shield_rate"] * c["tick_length"], 1)
     shield = _at(enemies.shield, enemy_slot)
     worthwhile = (hit >= worth) | ((hit >= shield) & (hit > 0.0))
-    clear = ~_mate_in_line(state, distance, read)
+    clear = ~_mate_in_line(ahead, distance, read)
     chance = aligned * in_range * (worthwhile & clear & (enemy_weight > 0.0)).float()
-    ready = state.cooldown <= 0
+    # The gun at the shot's tick: the game's count down after the pending tick (the store's
+    # block on the pending shot left out).
+    pending_shot = (state.pending[..., 2] == 1) & (state.cooldown == 0)
+    cooldown = torch.where(pending_shot, c["fire_interval"], state.cooldown)
+    ready = cooldown <= 1
     return torch.where(ready, chance.amax(-1), 0.0)
 
 

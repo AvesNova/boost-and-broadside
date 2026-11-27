@@ -150,11 +150,14 @@ def _start(constants, fields: Tensor, ships):
     return speed0, path0, inverse_index0
 
 
-def predict(constants, fields: Tensor, ships, power: Tensor) -> Paths:
+def predict(constants, fields: Tensor, ships, power: Tensor, start: Tensor | float = 0.0) -> Paths:
     """The 7 stick candidates' paths of every slot of `ships` (anything with the State's
     per-ship columns, (E, N) each: x, y, heading_cos/sin, speed, angle, nose_rate, energy,
     log_index, gradient_x, gradient_y) at its table power `power` (E, N) long, with its
-    constants and the environment's fields (E, 5, F)."""
+    constants and the environment's fields (E, 5, F). `start` (a number or (E, N), seconds,
+    below LOOK_AHEAD[0]): how far after now `ships` is (an own ship flown one tick under its
+    pending action, which the game applies first); its candidates start there and the points
+    stay at the times LOOK_AHEAD from now (the first segment is that much shorter)."""
     points_at = LOOK_AHEAD
     p = candidate_constants(constants, power)  # power tables (E, N, 1, 1)
     out_stiffness, level, side = level_shapes(constants)
@@ -212,7 +215,7 @@ def predict(constants, fields: Tensor, ships, power: Tensor) -> Paths:
     energy = ships.energy[..., None].expand(shape)
     log_index = ships.log_index[..., None].expand(shape)
     path_rate = path_rate0[..., None].expand(shape)  # the path rate now (the angle's)
-    started = 0.0
+    started = start[..., None] if isinstance(start, Tensor) else start
     points = []
     for index, time in enumerate(points_at):
         duration = time - started
