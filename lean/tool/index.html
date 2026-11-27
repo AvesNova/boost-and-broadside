@@ -48,11 +48,12 @@
   #hitpanel .value { float: right; font-variant-numeric: tabular-nums; color: #8b949e; }
   #hitpanel select { width: 100%; margin-top: 4px; }
   @media (max-width: 760px) { #hitpanel { width: calc(100vw - 52px); right: 16px; top: auto; bottom: 40px; max-height: 40vh; } }
+  #truesize { position: absolute; left: 10px; bottom: 32px; color: #d8dee9; font: 12px system-ui, sans-serif; }
   #status { position: absolute; left: 10px; bottom: 10px; color: #8b949e; font: 12px ui-monospace, monospace; }
 </style>
 </head>
 <body>
-<nav><button id="tab-ships" class="on">Ships</button><button id="tab-sandbox">Sandbox</button></nav>
+<nav><button id="tab-ships" class="on">Ships</button><button id="tab-sandbox">Sandbox</button><button id="tab-hitrange">Hit range</button></nav>
 
 <div id="ships" class="on">
   <div id="controls">
@@ -84,6 +85,7 @@
   <details id="hitpanel" open><summary>Hit model (live)</summary>
     <select id="deflector-preset" aria-label="deflector preset"></select>
     <div id="hit-sliders"></div></details>
+  <label id="truesize"><input type="checkbox" id="trueSize" checked> true size (hit + core circles)</label>
   <div id="status">arrows/WASD turn (Max; shift Snap, left alt Sustain) / up dive / down climb / space fire / C opponent / R reset / +- zoom</div>
 </div>
 
@@ -94,11 +96,15 @@ let unitInfo = null, saved = {}, controlsByName = {}, presets = null, values = {
 
 // ---- tabs
 function show(tab) {
-  for (const t of ["ships", "sandbox"]) { $(t).classList.toggle("on", t === tab); $("tab-" + t).classList.toggle("on", t === tab); }
-  if (tab === "sandbox") startSandbox(); else stopSandbox();
+  const panel = tab === "hitrange" ? "sandbox" : tab;
+  for (const t of ["ships", "sandbox", "hitrange"]) { if (t !== "hitrange") $(t).classList.toggle("on", t === panel); $("tab-" + t).classList.toggle("on", t === tab); }
+  hitRange = tab === "hitrange";
+  if (hitRange) { zoom = 1.5; aimAngle = 0; shooter = [-200, 0]; lastAim = ""; }
+  if (tab === "sandbox" || hitRange) startSandbox(); else stopSandbox();
 }
 $("tab-ships").onclick = () => show("ships");
 $("tab-sandbox").onclick = () => show("sandbox");
+$("tab-hitrange").onclick = () => show("hitrange");
 
 // ---- ships tab: the inputs come from the server (lean.tool.design.inputs: the chosen profile's
 // table, tuning.PROFILES); the page knows no profile's inputs
@@ -344,6 +350,7 @@ function panels(ship) {                                   // warnings, implied p
 
 // ---- sandbox tab
 const canvas = $("view"), g = canvas.getContext("2d");
+let hitRange = false, aimAngle = 0, shooter = [-200, 0], lastAim = "", trueSize = true, lastFrameAt = 0;
 let socket = null, setup = null, prev = null, cur = null, curAt = 0, zoom = 0.6, trail = [], bulletTrails = new Map();
 const keys = new Set();
 function stopSandbox() { if (socket) { socket.close(); socket = null; } }
@@ -351,7 +358,7 @@ function startSandbox() {
   stopSandbox(); prev = cur = null; trail = [];
   const ws = new WebSocket(`ws://${location.host}/api/sandbox`);
   socket = ws;
-  ws.onopen = () => ws.send(JSON.stringify({ preset: base(), profile: $("profile").value, values, fixed: fixedRow, time_scale: +$("factor").value, opponent: true }));
+  ws.onopen = () => ws.send(JSON.stringify({ preset: base(), profile: $("profile").value, values, fixed: fixedRow, time_scale: +$("factor").value, opponent: true, mode: hitRange ? "hit_range" : "sandbox" }));
   ws.onmessage = e => {
     const m = JSON.parse(e.data);
     if (m.type === "setup") { setup = m; trail = []; bulletTrails = new Map(); hitSliders(m); }
@@ -388,7 +395,18 @@ function hitSliders(m) {
     input.onchange = () => { $("deflector-preset").value = ""; send({ hit_model: { [e.name]: +input.value } }); };
   }
 }
+$("trueSize").onchange = () => { trueSize = $("trueSize").checked; };
+// Click and drag moves the shooter (it stays where it is released).
+let dragging = false;
+function dragTo(e) {
+  const r = canvas.getBoundingClientRect();
+  shooter = [(e.clientX - r.left - r.width / 2) / zoom, -(e.clientY - r.top - r.height / 2) / zoom];
+}
+canvas.addEventListener("mousedown", e => { if (hitRange) { dragging = true; dragTo(e); } });
+addEventListener("mousemove", e => { if (hitRange && dragging) dragTo(e); });
+addEventListener("mouseup", () => { dragging = false; });
 function controls() {
+  if (hitRange) return { fire: keys.has(" ") };
   const left = keys.has("ArrowLeft") || keys.has("a"), right = keys.has("ArrowRight") || keys.has("d");
   const dive = keys.has("ArrowUp") || keys.has("w"), climb = keys.has("ArrowDown") || keys.has("s");
   // the turn's level: alone Max, with Shift Snap, with left Alt Sustain (Shift wins)
@@ -396,15 +414,17 @@ function controls() {
            power: dive && !climb ? 1 : climb && !dive ? 2 : 0, fire: keys.has(" ") };
 }
 let sent = "";
-function sync() { const c = JSON.stringify(controls()); if (c !== sent) { sent = c; send(JSON.parse(c)); } }
+function sync() {
+  if (hitRange) { const a = JSON.stringify([shooter.map(v => +v.toFixed(2)), +aimAngle.toFixed(4)]); if (a !== lastAim) { lastAim = a; send({ shooter: shooter.map(v => +v.toFixed(2)), target_heading: aimAngle }); } }
+  const c = JSON.stringify(controls()); if (c !== sent) { sent = c; send(JSON.parse(c)); } }
 addEventListener("keydown", e => {
   if ($("sandbox").classList.contains("on")) {
     const k = keyName(e);
     if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", " ", "Tab", "AltLeft"].includes(k) || e.altKey) e.preventDefault();  // no menu bar
     if (!keys.has(k)) {
       keys.add(k);
-      if (k === "c") send({ opponent: !(cur && cur.opponent_on) });
-      if (k === "r") { send({ reset: true }); trail = []; }
+      if (k === "c" && !hitRange) send({ opponent: !(cur && cur.opponent_on) });
+      if (k === "r") { send({ reset: true }); trail = []; lastAim = ""; }
     }
     if (k === "+" || k === "=") zoom = Math.min(8, zoom * 1.1);
     if (k === "-") zoom = Math.max(0.02, zoom / 1.1);
@@ -425,6 +445,57 @@ function pose(i, alpha) {
   let turn = b.heading - a.heading; turn = (turn + Math.PI) % (2 * Math.PI) - Math.PI;
   return { x: a.x + alpha * (b.x - a.x), y: a.y + alpha * (b.y - a.y), heading: a.heading + alpha * turn, alive: b.alive, angle: b.angle, speed: b.speed, vision_range: b.vision_range, vision_eccentricity: b.vision_eccentricity, seen: b.seen };
 }
+// True-size ship: the hit circle (hit radius) and the core circle, both from the game's rows
+// (the server sends them), and a heading triangle inscribed in the hit circle.
+function drawTrueShip(p, rows, color, sx, sy) {
+  const R = rows.hit_radius !== undefined ? rows.hit_radius : rows.hit, C = rows.core_radius !== undefined ? rows.core_radius : rows.core;
+  g.lineWidth = 1; g.strokeStyle = color; g.beginPath(); g.arc(sx(p.x), sy(p.y), R * zoom, 0, 7); g.stroke();
+  g.setLineDash([4, 3]); g.beginPath(); g.arc(sx(p.x), sy(p.y), C * zoom, 0, 7); g.stroke(); g.setLineDash([]);
+  g.fillStyle = color + "aa"; g.beginPath();
+  [0, 2.4, -2.4].forEach((a, i) => { const t = p.heading + a; const X = sx(p.x + R * Math.cos(t)), Y = sy(p.y + R * Math.sin(t)); i ? g.lineTo(X, Y) : g.moveTo(X, Y); });
+  g.closePath(); g.fill(); g.stroke();
+}
+// The egg (core.egg_entry): front half an ellipse of semi-axis egg_front along the nose, rear half
+// one of egg_rear, both of half-width egg_half_width: the server's rows.
+function drawEgg(p, rows, sx, sy) {
+  g.strokeStyle = "#7ee787"; g.lineWidth = 1.5; g.beginPath();
+  for (let k = 0; k <= 64; k++) {
+    const t = -Math.PI / 2 + Math.PI * k / 64, u = rows.egg_front * Math.cos(t), v = rows.egg_half_width * Math.sin(t);
+    const X = sx(p.x + u * Math.cos(p.heading) - v * Math.sin(p.heading)), Y = sy(p.y + u * Math.sin(p.heading) + v * Math.cos(p.heading)); k ? g.lineTo(X, Y) : g.moveTo(X, Y);
+  }
+  for (let k = 0; k <= 64; k++) {
+    const t = Math.PI / 2 + Math.PI * k / 64, u = rows.egg_rear * Math.cos(t), v = rows.egg_half_width * Math.sin(t);
+    const X = sx(p.x + u * Math.cos(p.heading) - v * Math.sin(p.heading)), Y = sy(p.y + u * Math.sin(p.heading) + v * Math.cos(p.heading)); g.lineTo(X, Y);
+  }
+  g.closePath(); g.stroke();
+}
+// Distance rings (metres) round the target, a ruler along both world axes through it.
+function drawRings(c, w, h, sx, sy) {
+  const step = [10, 20, 50, 100, 200, 500, 1000].find(s => s * zoom >= 45) || 1000, reach = Math.hypot(w, h) / zoom;
+  g.font = "11px ui-monospace, monospace"; g.fillStyle = "#8b949e"; g.strokeStyle = "#30394a"; g.lineWidth = 1;
+  for (let r = step; r < reach; r += step) {
+    g.beginPath(); g.arc(sx(c.x), sy(c.y), r * zoom, 0, 7); g.stroke();
+    g.fillText(r + " m", sx(c.x) + r * zoom * 0.7071 + 3, sy(c.y) - r * zoom * 0.7071 - 2);
+  }
+  g.strokeStyle = "#445066";
+  g.beginPath(); g.moveTo(0, sy(c.y)); g.lineTo(w, sy(c.y)); g.moveTo(sx(c.x), 0); g.lineTo(sx(c.x), h); g.stroke();
+  const tick = step / (step >= 100 ? 5 : 2);
+  for (let m = -Math.ceil(reach / tick) * tick; m <= reach; m += tick) {
+    const major = Math.abs(m % step) < 1e-6, len = major ? 8 : 4;
+    g.beginPath(); g.moveTo(sx(c.x + m), sy(c.y) - len); g.lineTo(sx(c.x + m), sy(c.y) + len); g.moveTo(sx(c.x) - len, sy(c.y - m)); g.lineTo(sx(c.x) + len, sy(c.y - m)); g.stroke();
+    if (major && m) { g.fillText(m, sx(c.x + m) - 8, sy(c.y) + 20); g.fillText(m, sx(c.x) + 12, sy(c.y - m) + 4); }
+  }
+}
+function hitRangeHud() {
+  const r = cur.range;
+  $("hud").textContent = `HIT RANGE   target fixed at the centre, drag the shooter (faces the target)
+range   ${r.distance.toFixed(0)} m     aspect ${r.aspect.toFixed(0)} deg (0 = dead astern, 180 = head on)
+last ${r.window_seconds.toFixed(1)} s   shots ${r.shots}   hits ${r.hits}   (${r.shots ? (100 * r.hits / r.shots).toFixed(0) : "-"} %)
+damage  ${r.damage_per_second.toFixed(1)} per s   target shield ${r.shield.toFixed(0)} / ${r.full_shield.toFixed(0)}
+time to kill, implied (full / DPS)  ${r.implied_time_to_kill === null ? "-" : r.implied_time_to_kill.toFixed(2) + " s"}
+time to kill, actual (last kill)    ${r.last_kill_time === null ? "-" : r.last_kill_time.toFixed(2) + " s"}   kills ${r.kills}
+A / D turn the target, space fire, click-drag = move shooter, wheel or +/- zoom`;
+}
 function frame() {
   requestAnimationFrame(frame);
   if (!$("sandbox").classList.contains("on")) return;
@@ -432,17 +503,20 @@ function frame() {
   g.clearRect(0, 0, w, h);
   if (!cur || !setup) return;
   const alpha = Math.min(1, (performance.now() - curAt) / (1000 * setup.tick));
-  const me = pose(0, alpha), foe = pose(1, alpha);
+  const now = performance.now(), dt = Math.min(0.1, (now - lastFrameAt) / 1000); lastFrameAt = now;
+  if (hitRange) { aimAngle += 2.0 * dt * ((keys.has("a") || keys.has("ArrowLeft") ? 1 : 0) - (keys.has("d") || keys.has("ArrowRight") ? 1 : 0)); sync(); }
+  const me = pose(hitRange ? 1 : 0, alpha), foe = pose(hitRange ? 0 : 1, alpha);
   const sx = x => w / 2 + (x - me.x) * zoom, sy = y => h / 2 - (y - me.y) * zoom;
   // grid
   const spacing = [25, 50, 100, 250, 500, 1000, 2500].find(s => s * zoom >= 40) || 2500;
   g.lineWidth = 1;
   for (let i = Math.floor((me.x - w / 2 / zoom) / spacing); i <= Math.ceil((me.x + w / 2 / zoom) / spacing); i++) { g.strokeStyle = i % 4 ? "#1b2330" : "#2a3546"; g.beginPath(); g.moveTo(sx(i * spacing), 0); g.lineTo(sx(i * spacing), h); g.stroke(); }
   for (let i = Math.floor((me.y - h / 2 / zoom) / spacing); i <= Math.ceil((me.y + h / 2 / zoom) / spacing); i++) { g.strokeStyle = i % 4 ? "#1b2330" : "#2a3546"; g.beginPath(); g.moveTo(0, sy(i * spacing)); g.lineTo(w, sy(i * spacing)); g.stroke(); }
-  for (const [r, c] of [[setup.arena_radius, "#d29922"], [setup.arena_radius + setup.ramp, "#8b3a3a"]]) { g.strokeStyle = c; g.beginPath(); g.arc(sx(0), sy(0), r * zoom, 0, 7); g.stroke(); }
+  if (!hitRange) for (const [r, c] of [[setup.arena_radius, "#d29922"], [setup.arena_radius + setup.ramp, "#8b3a3a"]]) { g.strokeStyle = c; g.beginPath(); g.arc(sx(0), sy(0), r * zoom, 0, 7); g.stroke(); }
   g.strokeStyle = "#4d7cfe55";
-  for (const [fx, fy, r, band] of setup.fields) { for (const rr of [r - band / 2, r + band / 2]) if (rr > 0) { g.beginPath(); g.arc(sx(fx), sy(fy), rr * zoom, 0, 7); g.stroke(); } }
-  g.strokeStyle = "#3b6ea8"; g.lineWidth = 2; g.beginPath(); trail.forEach(([x, y], i) => (i ? g.lineTo(sx(x), sy(y)) : g.moveTo(sx(x), sy(y)))); g.stroke();
+  if (!hitRange) for (const [fx, fy, r, band] of setup.fields) { for (const rr of [r - band / 2, r + band / 2]) if (rr > 0) { g.beginPath(); g.arc(sx(fx), sy(fy), rr * zoom, 0, 7); g.stroke(); } }
+  if (hitRange) drawRings(me, w, h, sx, sy);
+  g.strokeStyle = "#3b6ea8"; g.lineWidth = 2; g.beginPath(); if (!hitRange) trail.forEach(([x, y], i) => (i ? g.lineTo(sx(x), sy(y)) : g.moveTo(sx(x), sy(y)))); g.stroke();
   g.strokeStyle = "#ffd166";
   for (const t of bulletTrails.values()) {
     const [x, y, dx, dy] = t[0]; g.beginPath();
@@ -459,19 +533,22 @@ function frame() {
   }
   // Sight outlines (lean.game.core.sight_pairs): reach p / (1 - e cos a) at angle a off the nose.
   for (const [p, color] of [[foe, "#ff6b6b40"], [me, "#58a6ff40"]]) {
-    if (!p.alive) continue;
+    if (!p.alive || hitRange) continue;
     g.strokeStyle = color; g.lineWidth = 1; g.beginPath();
     for (let k = 0; k <= 96; k++) { const a = 2 * Math.PI * k / 96, reach = p.vision_range / (1 - p.vision_eccentricity * Math.cos(a)); const X = sx(p.x + reach * Math.cos(p.heading + a)), Y = sy(p.y + reach * Math.sin(p.heading + a)); k ? g.lineTo(X, Y) : g.moveTo(X, Y); }
     g.stroke();
   }
+  if (hitRange) drawEgg(me, cur.egg, sx, sy);
   for (const [p, color] of [[foe, "#ff6b6b"], [me, "#58a6ff"]]) {
     if (!p.alive) continue;
+    if (trueSize && cur.radii) { drawTrueShip(p, cur.egg || cur.radii, color, sx, sy); continue; }
     const size = Math.max(12, 10 / zoom), c = Math.cos(p.heading), s = Math.sin(p.heading);
     g.fillStyle = color; g.strokeStyle = "#fff"; g.lineWidth = 1; g.beginPath();
     [[1.6, 0], [-1, 0.8], [-0.5, 0], [-1, -0.8]].forEach(([u, v], i) => { const X = sx(p.x + size * (u * c - v * s)), Y = sy(p.y + size * (u * s + v * c)); i ? g.lineTo(X, Y) : g.moveTo(X, Y); });
     g.closePath(); if (p.seen) g.fill(); g.stroke();
     const track = p.heading - p.angle; g.strokeStyle = "#7ee787"; g.beginPath(); g.moveTo(sx(p.x), sy(p.y)); g.lineTo(sx(p.x + 0.5 * p.speed * Math.cos(track)), sy(p.y + 0.5 * p.speed * Math.sin(track))); g.stroke();
   }
+  if (hitRange) { hitRangeHud(); return; }
   const r = cur.readout, p = $("preset").value.replace(/^saved:/, "");
   $("hud").textContent = `ship    ${p} (as tuned in Ships), ${$("factor").value}x real time
 speed   ${shown("speed", r.speed, 1)}

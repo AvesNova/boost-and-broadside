@@ -227,3 +227,118 @@ def field_list(state) -> list[tuple[float, float, float, float, float]]:
         (float(x), float(y), float(r), float(b), float(t) / card.LN_SQRT2)
         for x, y, r, b, t in zip(*columns)
     ]
+
+
+class HitRange(World):
+    """The hit-range mode: slot 1 is a target pinned at the origin (zero velocity, heading set by
+    the page), slot 0 the shooter pinned to a point, facing the target. Each tick both poses are
+    overwritten (before and after the step, so bullets leave the pinned muzzle and the frame
+    shows the pinned poses); everything else is the real step: the guns, bullet flight, the hit
+    test, the egg, damage. The target is refilled when it dies. Statistics over a rolling window
+    of ticks: damage, real shots fired and hits."""
+
+    WINDOW_SECONDS = 1.0
+
+    def __init__(
+        self, config: core.GameConfig, player_type: int = 0, opponent_type: int = 0, seed: int = 0
+    ):
+        super().__init__(config, player_type, opponent_type, opponent_on=True, seed=seed)
+
+    def reset(self) -> None:
+        super().reset()
+        self.window = deque(maxlen=max(1, round(self.WINDOW_SECONDS / self.h)))
+        # no refractive-index fields: a clean range (they are moved far off the map)
+        self.state.fields[:, 0] = 1e7
+        self.state.fields[:, 1] = 1e7
+        self.shooter_speed = float(self.state.speed[0, 0])
+        self.shooter_ground = math.hypot(
+            float(self.state.velocity_x[0, 0]), float(self.state.velocity_y[0, 0])
+        )
+        self.target_heading = 0.0
+        self.shooter_xy = (-200.0, 0.0)
+        self.target_kills = 0
+        self.alive_ticks = 0
+        self.kill_times: list[float] = []
+
+    def _pin(self) -> None:
+        s = self.state
+        sx, sy = self.shooter_xy
+        face = math.atan2(-sy, -sx)
+        for slot, (x, y, heading, speed, ground) in enumerate(
+            [
+                (sx, sy, face, self.shooter_speed, self.shooter_ground),
+                (0.0, 0.0, self.target_heading, 0.0, 0.0),
+            ]
+        ):
+            s.x[0, slot], s.y[0, slot] = x, y
+            s.heading_cos[0, slot], s.heading_sin[0, slot] = math.cos(heading), math.sin(heading)
+            s.speed[0, slot] = speed
+            s.velocity_x[0, slot], s.velocity_y[0, slot] = (
+                ground * math.cos(heading),
+                ground * math.sin(heading),
+            )
+            s.angle[0, slot] = 0.0
+            s.angle_cos[0, slot], s.angle_sin[0, slot] = 1.0, 0.0
+            s.nose_rate[0, slot] = 0.0
+        s.alive[0, 0] = s.alive[0, 1] = True
+
+    def _real_ids(self) -> set:
+        s = self.state
+        return {
+            (k, int(s.bullet_fired_tick[0, 0, k]))
+            for k in range(s.bullet_x.shape[2])
+            if int(s.bullet_moves_left[0, 0, k]) > 0 and bool(s.bullet_real[0, 0, k])
+        }
+
+    @torch.no_grad()
+    def advance_range(
+        self, shooter_xy: tuple[float, float], target_heading: float, fire: bool
+    ) -> None:
+        self.shooter_xy, self.target_heading = shooter_xy, target_heading
+        self._pin()
+        before = self._real_ids()
+        self.previous = self.poses()
+        action = torch.zeros(1, 2, 3, dtype=torch.long)
+        action[0, 0, 2] = int(fire)
+        self.state, out = core.tick(self.config, self.state, action, self.generator)
+        self.tick += 1
+        s = self.state
+        shots = len(self._real_ids() - before)
+        hits = int((out.shot_outcome[0, 0] == 1).sum())
+        damage = float(out.hit_damage[0, 0, 1])
+        self.window.append((damage, shots, hits))
+        if damage > 0.0 or self.alive_ticks:
+            self.alive_ticks += 1  # the kill clock starts at the first damage
+        if bool(out.died[0, 1]):
+            self.target_kills += 1
+            self.kill_times.append(self.alive_ticks * self.h)
+            self.alive_ticks = 0
+            s.shield[0, 1] = self.constant("max_shield", 1)
+        s.shield[0, 0] = self.constant("max_shield", 0)
+        self._pin()
+
+    def range_readout(self) -> dict:
+        window = max(len(self.window), 1) * self.h
+        damage = sum(w[0] for w in self.window) / window
+        full = self.constant("max_shield", 1)
+        sx, sy = self.shooter_xy
+        # aspect: 0 = shooter dead astern of the target, 180 = head on
+        bearing = (math.atan2(sy, sx) - self.target_heading + math.pi) % (2 * math.pi) - math.pi
+        return dict(
+            distance=math.hypot(sx, sy),
+            aspect=180.0 - abs(math.degrees(bearing)),
+            damage_per_second=damage,
+            shots=sum(w[1] for w in self.window),
+            hits=sum(w[2] for w in self.window),
+            window_seconds=window,
+            full_shield=full,
+            shield=float(self.state.shield[0, 1]),
+            implied_time_to_kill=full / damage if damage > 0 else None,
+            kills=self.target_kills,
+            last_kill_time=self.kill_times[-1] if self.kill_times else None,
+        )
+
+    def egg(self) -> dict:
+        """The target's egg and circle rows as the game holds them (core.HIT_MODEL names)."""
+        names = ("egg_front", "egg_rear", "egg_half_width", "hit_radius", "core_radius")
+        return {n: self.constant(n, 1) for n in names}

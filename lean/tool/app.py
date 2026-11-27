@@ -343,6 +343,7 @@ async def sandbox(websocket: WebSocket):
                 bool(start.get("opponent", True)),
                 start.get("ticks") is None,
                 start.get("ticks"),
+                start.get("mode", "sandbox"),
             ),
         )
         process.start()
