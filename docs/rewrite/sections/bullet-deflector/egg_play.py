@@ -34,7 +34,7 @@ import numpy as np
 import torch
 
 from lean import game, scripted
-from lean.contract import POWERS, compile_dynamic
+from lean.contract import POWERS, REAL, compile_dynamic
 from lean.game import card, core
 
 HEAD_ON = math.cos(math.radians(30.0))
@@ -159,7 +159,11 @@ def run_cell(name, config, size, envs, ticks, model, egg, god, agent_call, step_
         state, out = step_call(
             state, action, game.draw_noise(config, envs, slots, generator, device)
         )
-        real = state.bullet_real
+        # Real shots among the bullets that reported: real before the tick, or written this
+        # tick by a ship that fired (a hit makes a bullet CONTACTED).
+        slots = before.bullet_state.shape[-1]
+        written = torch.arange(slots, device=device) == (before.tick % slots)[:, None, None]
+        real = torch.where(written, state.fired[..., None], before.bullet_state == REAL)
         ended = (out.shot_outcome >= 0) & real
         acc["real_ended"] += float(ended.sum())
         acc["real_enemy"] += float(((out.shot_outcome == 1) & real).sum())
