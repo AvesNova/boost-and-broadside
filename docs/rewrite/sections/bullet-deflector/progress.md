@@ -354,3 +354,29 @@ So fields cost ~0.29 ms off (28% of the tick: in flight, bullet motion and sight
 change which slots are live, not the work). The egg's extra over off: 0.12 ms with
 everything on, 0.20 ms without fields (the fields' kernels hide part of it).
 Next: final checks (tests, ruff, compile check).
+
+## 15:10 egg speed: H kept, I dropped; final checks
+
+| try | what | measured | kept |
+|---|---|---|---|
+| H | the egg's semi-axes as derived runtime rows of inverses (`inverse_egg_front`, `inverse_egg_rear`, `inverse_egg_half_width`, written by `hit_model_constants` with the semi-axes, so `with_hit_model` changes them with no recompile); `egg_entry` and `egg_turn` multiply | pair kernel (ncu) 329.7 / 329.3 -> 315.7 us; tick egg 1.079 / 1.080 vs D0 1.093 / 1.142 ms | yes |
+| I | H + one inverse of the turned remainder's squared length (two divides -> one) and copysign for the turn's side | pair kernel 315.7 -> 314.8 us, tick total up 4 us | no (not measurable) |
+
+Final, quiet machine (15:07, load ~1.3), base 180d16a8 vs egg-speed 177b12ac, 2 rounds:
+off 1.084 / 0.976 -> 0.973 / 0.972 ms; **egg 1.425 / 1.385 -> 1.126 / 1.081 ms** (the egg's
+extra over off ~0.41 -> ~0.13 ms). CPU eager equivalence against base: bitwise for A and D0;
+with H within rounding (over 100 resynced ticks, 512 envs: bullet block 3.7e-4 m, damage
+1.1e-5, the same 185 hit pairs).
+
+Checks: lean/game quick tier 117 passed (the egg tests in test_deflector.py among them);
+lean/scripted, tool, sandbox quick tier 73 passed; ruff clean. Compile check (cold, baseline
+not updated): advance 3,296 traced operations (unchanged; core baseline 2,856, +15%), act
+4,590, 4 graphs, 0 graph breaks, no recompiles, cold 295.0 s (budget 260 s): the same three
+tripwire failures as before this branch.
+
+Open: (1) the egg's pair kernel is compute-bound and register-limited (127 registers, 33%
+occupancy); fewer per-pair operations would need inductor to keep post-reduction work fused
+(F and G show it splits the damage out) or a hand-written kernel (last in the speed order).
+(2) Off gains 0.06 ms from assembling the moved block column by column (cut C) but the egg
+loses; the ghost-only prototype gets the same off gain (-0.2 ms) for a rule change.
+(3) Fields are the largest single cost (~0.29 ms of ~1.0 off).
