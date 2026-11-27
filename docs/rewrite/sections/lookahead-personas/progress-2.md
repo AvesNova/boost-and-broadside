@@ -112,3 +112,14 @@ performance profile. Data: ~/avesnova/boost-and-broadside/data/lookahead-persona
   blur around crowd-known dropped in favour of the same around the robust centre.
 - Next: around 16v16 (ETA 01:15), active rounds 1-2 (ETA 01:40), ladder + round robin (ETA
   02:15, worst 02:45), behaviour around the centre (ETA 02:40, worst 03:15), write-up.
+- 01:50 active rounds 1 and 2 done (24 points x 2 references x 3 sizes x 128 games). The r0
+  surface predicted round 1's scores with r 0.81 / 0.95 / 0.93 (1v1 / 4v4 / 16v16), RMSE
+  0.08 / 0.07 / 0.12 against a binomial SE of 0.044. Final fit (517 agents, 627,456 games):
+  82.7% of the coin-to-saturated deviance held out, per size, lambda 100.
+- 01:50 decision: robust centre = the centroid of a coordinate-wise Metropolis sample of the
+  region within 50 Elo (mean over sizes) of the peak, inside the data's 2-98% support per size.
+  Seven rows sit at their support edge there (threat, collision, horizon, temperature, speed
+  weight, power temperature, fire tolerance): the surface would go further than the data.
+- 01:50 round robin 1v1 done (6 agents, 1,024 games per pair): no cycles at 2 SE.
+- Next: ladder (16 agents, SE 0.05, three sizes) ETA 02:20 (worst 02:50), behaviour around the
+  centre ETA 02:45 (worst 03:15), write-up ETA 03:15.
