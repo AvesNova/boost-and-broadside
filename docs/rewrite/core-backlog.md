@@ -68,7 +68,7 @@ Every planned item, in order, with its status. Decisions behind the items are in
 | E1 | Behaviour decisions from imugi-behaviours.md (core-decisions.md "Scripted opponent") | superseded 2026-11-27: the look-ahead agent (E6) replaced the rule-based agent |
 | E2 | Basic fighter manoeuvres for the new physics (after A settles) | superseded 2026-11-27 by E6 |
 | E3 | Reads its team's view, never the state (with fog) | done (worklog 03:45; both teams in one call via `enemy_view`, 06:34) |
-| E5 | Flying straight for a while after the merge before turning (author 2026-11-26; measured on branch `merge-turn`, docs/rewrite/sections/merge-turn/results.md) | superseded 2026-11-27 by E6; merge turn re-measured there (look-ahead 1v1 no fields: 1.17 / 2.97 s); one final review of the scripted agent after all fixes |
+| E5 | Flying straight for a while after the merge before turning (author 2026-11-26; measured on branch `merge-turn` (unmerged), its docs/rewrite/sections/merge-turn/results.md) | superseded 2026-11-27 by E6; merge turn re-measured there (look-ahead 1v1 no fields: 1.17 / 2.97 s); one final review of the scripted agent after all fixes |
 | E6 | Look-ahead scoring agent (author 2026-11-26; core-decisions.md "Scripted look-ahead") | done: merged 4bc9b2f7 (2026-11-27); hit worth through `core.hit_damage`, `store_crowd` the default; one final review after all fixes (queue item 7) |
 | E4 | Retreat or extend: none for now (decision 5.7); only a carefully designed rule, if ever (the game should make a badly timed escape from a committed fight fatal) | backlog |
 
