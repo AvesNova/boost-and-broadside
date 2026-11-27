@@ -70,7 +70,6 @@ def play(store_path, size, cap, games, minutes, step, envs):
 def report(store_path, out):
     store = Store(store_path)
     yard, personas = chosen_agents()
-    labels = {yard.id: "yardstick"} | {agent.id: label for label, agent in personas}
     result = {}
     for size, cap in CAPS.items():
         evaluator = Evaluator(store, config_of(cap))

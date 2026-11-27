@@ -32,11 +32,9 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import skill2  # noqa: E402
 
-from lean import game  # noqa: E402
 from lean.eval import Evaluator, ScriptedAgent, Store  # noqa: E402
 from lean.eval.rating import ELO_PER_NAT  # noqa: E402
 from lean.scripted import PARAMETERS, ScriptedConfig  # noqa: E402
-from lean.scripted.parameters import SAMPLED  # noqa: E402
 
 SIZES = (1, 4, 16)
 # Inert in round 1 (boundary, seek, disengaged energy) and in round 2's fits: not searched.
@@ -211,9 +209,7 @@ def verify(data, named, sizes, target, minutes, envs, opponents):
                 if first in opponents or second in opponents:
                     pairings.append((agents[first], agents[second], (size, size)))
         while (time.perf_counter() - started) / 60.0 < minutes:
-            rows = evaluator.adaptive(
-                pairings, target_error=target, budget=4096, round_games=4096
-            )
+            rows = evaluator.adaptive(pairings, target_error=target, budget=4096, round_games=4096)
             worst = max(row["error"] for row in rows)
             log(f"verify {size}v{size}: worst error {worst:.4f}")
             if worst <= target:

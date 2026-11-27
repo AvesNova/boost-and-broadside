@@ -104,8 +104,7 @@ def report(store_path, out):
         )
         at_clock = dict(
             store.connection.execute(
-                "SELECT agent_b, AVG(length >= ?) FROM games WHERE conditions = ? "
-                "GROUP BY agent_b",
+                "SELECT agent_b, AVG(length >= ?) FROM games WHERE conditions = ? GROUP BY agent_b",
                 (CLOCKS[size], conditions),
             ).fetchall()
         )

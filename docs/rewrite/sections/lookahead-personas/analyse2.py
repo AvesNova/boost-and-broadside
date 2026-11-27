@@ -259,9 +259,11 @@ def main() -> None:
         strong = [
             s for s in setups if abs(fitted[s]["slope"][k]) > 2.5 * fitted[s]["slope_error"][k]
         ]
-        flip = len(signs) > 1 and any(
-            fitted[s]["slope"][k] > 2.5 * fitted[s]["slope_error"][k] for s in setups
-        ) and any(fitted[s]["slope"][k] < -2.5 * fitted[s]["slope_error"][k] for s in setups)
+        flip = (
+            len(signs) > 1
+            and any(fitted[s]["slope"][k] > 2.5 * fitted[s]["slope_error"][k] for s in setups)
+            and any(fitted[s]["slope"][k] < -2.5 * fitted[s]["slope_error"][k] for s in setups)
+        )
         entry["flip"] = bool(flip)
         entry["strong_in"] = strong
         dependence[name] = entry
@@ -269,8 +271,7 @@ def main() -> None:
         rows.append(cells)
     result["dependence"] = dependence
     print(
-        table(["row"] + [f"{b} minus {a}" for a, b in pairs] + ["sign flips (2.5 SE)"], rows)
-        + "\n"
+        table(["row"] + [f"{b} minus {a}" for a, b in pairs] + ["sign flips (2.5 SE)"], rows) + "\n"
     )
     # Style per size.
     result["style"] = {}

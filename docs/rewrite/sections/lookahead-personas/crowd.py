@@ -73,8 +73,11 @@ def run(size, ticks, envs, seed):
                 state, out.done, game.deal(config, envs, slots, sizes, generator, here)
             )
         if tick % 600 == 0:
-            print(f"  {size}v{size} tick {tick}, {time.perf_counter() - started:.0f} s",
-                  file=sys.stderr, flush=True)
+            print(
+                f"  {size}v{size} tick {tick}, {time.perf_counter() - started:.0f} s",
+                file=sys.stderr,
+                flush=True,
+            )
     result = {}
     for name, items in gathered.items():
         values = np.concatenate(items)
@@ -113,8 +116,12 @@ def main():
             continue
         result[key] = run(size, arguments.ticks, arguments.envs, 5000 + size)
         out.write_text(json.dumps(result, indent=1))
-        print(key, json.dumps({k: round(v["mean"], 2) for k, v in result[key].items()}),
-              file=sys.stderr, flush=True)
+        print(
+            key,
+            json.dumps({k: round(v["mean"], 2) for k, v in result[key].items()}),
+            file=sys.stderr,
+            flush=True,
+        )
 
 
 if __name__ == "__main__":

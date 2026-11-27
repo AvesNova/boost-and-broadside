@@ -63,7 +63,9 @@ def main():
         entry = {
             "plain_u": float(grid[best]),
             "plain_gain": float(each.mean(0)[best] - each.mean(0)[np.argmin(abs(grid - 0.5))]),
-            "best_u_per_size": {s: float(grid[int(np.argmax(each[i]))]) for i, s in enumerate(SIZES)},
+            "best_u_per_size": {
+                s: float(grid[int(np.argmax(each[i]))]) for i, s in enumerate(SIZES)
+            },
         }
         if name in CROWDED:
             # u + v w_s per size, on the grid of (u, v).
@@ -75,7 +77,9 @@ def main():
             total /= len(SIZES)
             index = np.unravel_index(int(np.argmax(total)), total.shape)
             gain = float(total[index] - each.mean(0)[best])
-            entry.update({"crowd_u": float(uu[index]), "crowd_v": float(vv[index]), "crowd_gain": gain})
+            entry.update(
+                {"crowd_u": float(uu[index]), "crowd_v": float(vv[index]), "crowd_gain": gain}
+            )
             if gain >= CROWD_GAIN:
                 crowded.append(name)
                 x0[name] = (float(uu[index]), float(vv[index]))
@@ -100,7 +104,9 @@ def main():
             for j, s_value in enumerate(v_grid):
                 total = np.mean(
                     [
-                        surrogate(fits[size], k_index, np.clip(grid + shifts[j, i], U_LOW_FIT, U_HIGH_FIT))
+                        surrogate(
+                            fits[size], k_index, np.clip(grid + shifts[j, i], U_LOW_FIT, U_HIGH_FIT)
+                        )
                         for i, size in enumerate(SIZES)
                     ],
                     axis=0,
