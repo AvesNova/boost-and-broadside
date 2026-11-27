@@ -280,11 +280,12 @@ def scripted_rows(opponent: Opponent, state, carry: CollectCarry) -> dict | None
     member take that member's row of the league's `persona_table` (row 0 the yardstick, then
     the personas); every other ship (the live policy's, whose teacher is the yardstick, and a
     network's) the yardstick's row, or its persona of carry.persona when one is drawn
-    (LearnConfig.persona_spread). Before the league opens (no table: the BC stage) this is
-    carry.persona itself. No host read: the slots' rows are device tensors, so a load or a
-    new persona is new data for the compiled tick, never a new graph."""
+    (LearnConfig.persona_spread). The same in both stages (in BC every slot is the
+    yardstick's), so both run one scripted graph; without a league, carry.persona itself. No
+    host read: the slots' rows are device tensors, so a load or a new persona is new data for
+    the compiled tick, never a new graph."""
     league = opponent.league
-    if league is None or league.persona_table is None:
+    if league is None:
         return carry.persona
     envs = state.exists.shape[0]
     league_envs = carry.member.shape[0]
@@ -719,8 +720,7 @@ def collect(
     if compiled:
         from lean.learn.compiled import graphs
 
-        opened = opponent.league is not None and opponent.league.opened
-        compiled_graphs = graphs(config.compile_shapes, "league" if opened else "")
+        compiled_graphs = graphs(config.compile_shapes)
         act_part, advance_part = compiled_graphs.act, compiled_graphs.advance
         networks, merge = compiled_graphs.slot_actions, compiled_graphs.merge_league
         generator = None

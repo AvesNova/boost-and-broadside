@@ -7,8 +7,8 @@ Run it at the end of every step that touches lean/ (on the GPU; about 4 minutes 
 laptop's 4070). It runs the run's two stages in miniature with lean.learn.compiled's graphs
 and a fresh, empty inductor cache (a temporary TORCHINDUCTOR_CACHE_DIR, so the compile is
 cold): 64 environments, one 16-tick segment and one BC update with the scripted agent the
-only league member (no network), then two league snapshots, one more segment (now with the
-routing graph) and one RL update. With `dynamic=True` the graphs do not depend on these
+only league member (no network), then the league opened (RL's start) with two snapshots, one
+more segment (now with the routing graph) and one RL update. With `dynamic=True` the graphs do not depend on these
 sizes, so the miniature compiles what a run compiles.
 
 Per compiled function it records each Dynamo graph's traced operations (FX call nodes) and
@@ -94,10 +94,10 @@ def run(game_settings: dict) -> float:
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.manual_seed(0)
-    # league_capacity_factor 15: every network member's fixed capacity is the whole league (C = L),
+    # league_capacity_factor 12 (= league_slots): every slot's capacity is the whole league (C = L),
     # so the members placed by hand below fit the table (the graphs are the same at any C).
     config = dataclasses.replace(LearnConfig(), segments_per_update=1, segment_ticks=16, minibatches=2, epochs=1,
-                                 league_capacity_factor=15.0)
+                                 league_capacity_factor=12.0)
     game_config = game.GameConfig(training_spawn=True, **game_settings)
     policy = model.Policy(model.ModelConfig.for_arena(game_config.arena_radius)).to(device)
     league = League(config, device)
@@ -116,12 +116,14 @@ def run(game_settings: dict) -> float:
     state, carry = segment(state, carry)  # BC: the league has no network yet
     learn_update(config, policy, optimiser, store, cloning=True, generator=generator, compiled=True)
     averages.update(policy, 10**9)
+    league.open(policy, averages, slot=carry.slot)  # RL's start: the personas and the EMA join
     for index in range(2):
         step = league.schedule.points(10**12)[index]
         league.after_update(policy, averages, step - 1, step, carry.member, carry.slot)
-    # Every member plays some league games (scripted, EMA, uniform, the two snapshots).
-    member = torch.arange(carry.member.shape[0], device=device) % league.present_count()
-    carry = dataclasses.replace(carry, member=member, slot=league.member_slot[member])
+    # Every loaded slot plays some league games (the yardstick, personas, averages, snapshots).
+    loaded = [slot for slot, state in enumerate(league.slot_state) if state == "loaded"]
+    slot = torch.tensor(loaded, device=device)[torch.arange(carry.member.shape[0], device=device) % len(loaded)]
+    carry = dataclasses.replace(carry, member=league.slot_member[slot], slot=slot)
     state, carry = segment(state, carry)  # RL: the routing graph plays the networks
     learn_update(config, policy, optimiser, store, teacher_weight=0.5, generator=generator, compiled=True)
     if device.type == "cuda":

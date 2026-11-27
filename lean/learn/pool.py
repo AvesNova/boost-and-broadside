@@ -187,8 +187,7 @@ class League:
     `slot_loaded` bool (takes new games), `slot_network` bool (a network plays it),
     `slot_persona` long (its scripted parameter row; 0 for networks); `capacity` () long (C,
     set by the first `prepare`); `persona_table` (1 + personas, rows) float32 (row 0 the
-    yardstick), None until `open` (the BC stage: every scripted ship plays the yardstick's
-    numbers).
+    yardstick; in the BC stage only row 0 plays).
 
     Host side: `kinds`, `slot_state`, `slot_holder` (the member a slot holds, None when free),
     `slot_source` (what its weights or parameters are: ("ema",), ("uniform",), ("snapshot",
@@ -239,8 +238,10 @@ class League:
         self.slot_network = torch.zeros(entries, dtype=torch.bool, device=device)
         self.slot_persona = torch.zeros(entries, dtype=torch.long, device=device)
         self.capacity = torch.zeros((), dtype=torch.long, device=device)
-        self.persona_table: Tensor | None = None
-        self.parameter_rows: tuple[str, ...] = ()
+        # The scripted members' parameter rows, row 0 the yardstick: built for every stage (the
+        # BC stage reads row 0 only), so both stages run one scripted graph.
+        self.parameter_rows = persona_rows(self.personas)
+        self.persona_table = self._persona_table(ScriptedConfig())
         self.width = 0  # W = C, the slots' row capacity (prepare)
         self.slot_state = [FREE] * self.slot_count
         self.slot_holder: list[int | None] = [None] * self.slot_count
@@ -466,21 +467,26 @@ class League:
         for steps in [steps for steps in self.stored if steps not in used]:
             del self.stored[steps]
 
-    def open(self, policy, averages, scripted_config: ScriptedConfig | None = None, slot=None):
-        """RL's start: the personas and the EMA join the pool (the uniform average too once it
-        holds an update), the per-row parameter table is built (row 0 the yardstick,
-        `scripted_config`, then the personas), and level 1 loads the slots. `slot` the carry's
-        (L,) when games are running (default: none, so every slot can be reloaded)."""
-        if self.opened:
-            raise RuntimeError("the league is already open")
-        self.template = template(policy)
-        scripted_config = scripted_config or ScriptedConfig()
-        self.parameter_rows = persona_rows(self.personas)
+    def _persona_table(self, scripted_config: ScriptedConfig) -> Tensor:
+        """(1 + personas, rows) float32: the yardstick's values, then each persona's (the rows
+        it does not name the yardstick's)."""
         table = [[scripted_config.values[name] for name in self.parameter_rows]]
         for _, named in self.personas:
             values = {**scripted_config.values, **dict(named)}
             table.append([values[name] for name in self.parameter_rows])
-        self.persona_table = torch.tensor(table, dtype=torch.float32, device=self.device)
+        return torch.tensor(table, dtype=torch.float32, device=self.device)
+
+    def open(self, policy, averages, scripted_config: ScriptedConfig | None = None, slot=None):
+        """RL's start: the personas and the EMA join the pool (the uniform average too once it
+        holds an update) and level 1 loads the slots. `scripted_config` the yardstick (default
+        ScriptedConfig(): the parameter table's values are rebuilt around it, in place). `slot`
+        the carry's (L,) when games are running (default: none, so every slot can be
+        reloaded)."""
+        if self.opened:
+            raise RuntimeError("the league is already open")
+        self.template = template(policy)
+        if scripted_config is not None:
+            self.persona_table.copy_(self._persona_table(scripted_config))
         for index in range(len(self.personas)):
             self._start_member(self.first_persona + index)
         self._start_member(EMA)
@@ -648,8 +654,7 @@ class League:
         directory). `averages` (already loaded) give the averages' slots back."""
         for name in self.TENSORS:
             setattr(self, name, state[name].to(self.device).clone())
-        table = state["persona_table"]
-        self.persona_table = None if table is None else table.to(self.device).clone()
+        self.persona_table = state["persona_table"].to(self.device).clone()
         self.parameter_rows = tuple(state["parameter_rows"])
         self.slot_state = list(state["slot_state"])
         self.slot_holder = list(state["slot_holder"])
