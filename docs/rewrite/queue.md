@@ -15,7 +15,7 @@ core when sensible (author 2026-11-27).
 ## Running
 
 - 8c Heads (`heads-8c`, lean/learn + lean/model).
-- 8b Scripted one-tick action delay (`scripted-delay`, lean/scripted), beside 8a (disjoint files).
+- 8b Scripted one-tick action delay (`scripted-delay`, lean/scripted), beside 8c (disjoint files).
 
 ## Done
 
