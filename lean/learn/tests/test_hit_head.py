@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from lean import game
-from lean.game.tests.values import game_value
+from lean.contract import BULLET_SLOTS
 from lean.learn import collect, make_optimiser, update
 from lean.learn.tests.setting import StepRecorder, small
 from lean.learn.training import hit_loss
@@ -74,24 +74,16 @@ def test_the_update_trains_the_hit_head_only_from_labelled_rows(labelled):
         assert metrics["hit"] == 0 and metrics["hit_labelled"] == 0 and not any(moved)
 
 
-@pytest.mark.parametrize("ghost_bullets", [True, False])
-def test_real_game_labels(ghost_bullets):
-    """Guards the labels with lean.game: with ghost bullets most own rows are labelled;
-    without them only rows whose applied action (the observation's pending one, chosen on the
-    tick before) pulled the trigger can be (the mask covers the rest), and every label is one
-    of the three classes."""
+def test_real_game_labels():
+    """Guards the labels with lean.game: every ship writes a bullet every tick (a ghost unless
+    it fired) and a bullet reports within its BULLET_SLOTS ticks, so the own rows that many
+    ticks before the rollout's end are labelled; every label is one of the three classes."""
     config, game_config, policy, opponent, state, carry, generator = small(
-        game_config=game.GameConfig(ghost_bullets=ghost_bullets)
+        game_config=game.GameConfig()
     )
     rollout = collect(config, game_config, policy, opponent, state, carry, 24, generator)
     label, own = rollout.hit_label, rollout.observation.own
     assert ((label >= -1) & (label <= 2)).all()
-    if ghost_bullets:
-        # Every living ship emits every tick; a bullet lives up to its bullet_moves ticks, so
-        # every row that many ticks before the rollout's end has ended its bullet.
-        ended = label.shape[0] - int(game_value("bullet_moves", game_config))
-        assert ended > 0
-        assert (label[:ended][own[:ended]] >= 0).float().mean() > 0.9
-    else:
-        pulled = rollout.observation.pending % 2 == 1  # NO_PENDING (42) is even
-        assert not (label[own] >= 0)[~pulled[own]].any()
+    ended = label.shape[0] - BULLET_SLOTS
+    assert ended > 0
+    assert (label[:ended][own[:ended]] >= 0).float().mean() > 0.9

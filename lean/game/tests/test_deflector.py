@@ -8,7 +8,7 @@ import math
 import pytest
 import torch
 
-from lean.contract import BULLET_SLOTS
+from lean.contract import BULLET_SLOTS, CONTACTED, GHOST, REAL
 from lean.game import card, core
 
 torch.set_num_threads(1)
@@ -16,11 +16,12 @@ CPU = torch.device("cpu")
 SLOT = 3  # the test bullet's slot in the shooter's ring
 
 
-def crossing(config, offsets, aspects, start_x=-30.0, real=True, moves=5, target_speed=1.0):
+def crossing(config, offsets, aspects, start_x=-30.0, real=True, target_speed=1.0):
     """E = len(offsets) environments: a target at the origin with its nose at `aspects` (the
     bullet's path off the nose, radians; 0 head-on), nearly still, and the shooter's bullet at
     (start_x, offset) relative to it flying +x at the bullet launch speed: the bullet passes the
-    target at `offset` this tick. The shooter sits far away, not firing."""
+    target at `offset` this tick. The shooter sits far away, not firing. The tick is the one
+    after the bullet's slot's, so the bullet has BULLET_SLOTS - 1 ticks to fly."""
     offsets = torch.as_tensor(offsets, dtype=torch.float32)
     aspects = torch.as_tensor(aspects, dtype=torch.float32)
     envs = len(offsets)
@@ -50,13 +51,12 @@ def crossing(config, offsets, aspects, start_x=-30.0, real=True, moves=5, target
     bullets[:, core.BULLET_Y, 0, SLOT] = offsets
     bullets[:, core.BULLET_DIR_X, 0, SLOT] = 1.0
     bullets[:, core.BULLET_SPEED, 0, SLOT] = speed
-    counts = state.bullet_counts.clone()
-    counts[:, core.MOVES_LEFT, 0, SLOT] = moves
-    bullet_real = state.bullet_real.clone()
-    bullet_real[:, 0, SLOT] = real
-    next_slot = torch.full((envs, 2), float(SLOT + 1))
+    bullet_state = state.bullet_state.clone()
+    bullet_state[:, 0, SLOT] = REAL if real else GHOST
     return state.replace(
-        bullets=bullets, bullet_counts=counts, bullet_real=bullet_real, next_slot=next_slot
+        bullets=bullets,
+        bullet_state=bullet_state,
+        tick=torch.full((envs,), SLOT + 1, dtype=torch.long),
     )
 
 
@@ -140,13 +140,13 @@ def test_exactly_one_turn_per_pass():
         (0.0, 0.0, 0),  # head-on: the target's own move is along the line, b stays 0
         (0.0, math.pi, 0),
     ):
-        state = crossing(EGG, [offset] * len(starts), [aspect] * len(starts), moves=8, start_x=FAR)
+        state = crossing(EGG, [offset] * len(starts), [aspect] * len(starts), start_x=FAR)
         state = state.replace(bullets=_shifted(state.bullets, starts))
         turns = torch.zeros(len(starts), dtype=torch.long)
         before = bullet(state)
         for after, _ in run(EGG, state, ticks=6):
             now = bullet(after)
-            alive = after.bullet_moves_left[:, 0, SLOT] > 0
+            alive = after.bullet_state[:, 0, SLOT] != CONTACTED
             changed = (now[2] - before[2]).abs() + (now[3] - before[3]).abs() > 1e-6
             turns += (changed & (alive | (turns == 0))).long()
             before = now
@@ -224,7 +224,7 @@ def test_ghosts_turn_like_real_bullets():
     ((real, _),) = run(EGG, crossing(EGG, offsets, aspects, real=True, start_x=FAR))
     ((ghost, _),) = run(EGG, crossing(EGG, offsets, aspects, real=False, start_x=FAR))
     assert torch.equal(real.bullets, ghost.bullets)
-    assert torch.equal(real.bullet_moves_left, ghost.bullet_moves_left)
+    assert torch.equal(real.bullet_state == CONTACTED, ghost.bullet_state == CONTACTED)
 
 
 def test_the_turn_matches_the_design_sketch():

@@ -7,7 +7,7 @@ import torch
 
 torch.set_num_threads(1)
 
-from lean.contract import FIRES, POWERS, STICKS  # noqa: E402
+from lean.contract import FIRES, POWERS, REAL, STICKS  # noqa: E402
 from lean.game import GameConfig, deal, draw_noise, observe, reset, step, take_deal  # noqa: E402
 
 CLOSE = GameConfig(arena_radius=700.0, spawn="mixed", clock_ticks=400)
@@ -49,7 +49,7 @@ def test_finite_and_padding_inert(sizes, ticks):
         assert (out.damage_taken[absent] == 0).all() and (out.hit_damage[absent] == 0).all()
         assert not observation.key_mask[absent].any() and not observation.own[absent].any()
         assert not state.alive[absent].any()
-        assert (state.bullet_moves_left[absent] == 0).all()
+        assert (state.bullet_state[absent] != REAL).all()  # an absent ship writes ghosts
         assert ((out.result >= 0) == out.done).all()
         deaths += int(out.died.sum())
         state = take_deal(state, out.done, deal(CLOSE, envs, slots, team_sizes, generator, "cpu"))
@@ -71,8 +71,7 @@ def test_swapping_teams_mirrors_the_outcome():
         "flags": 2,
         "identity": 2,
         "bullets": 2,
-        "bullet_counts": 2,
-        "bullet_real": 1,
+        "bullet_state": 1,
         "seen": 2,
         "ticks_since_seen": 1,
         "pending": 1,

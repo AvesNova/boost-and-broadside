@@ -6,7 +6,7 @@ import math
 
 import torch
 
-from lean.contract import FIRES, POWERS, STICKS
+from lean.contract import FIRES, POWERS, REAL, STICKS
 from lean.game import GameConfig, card, core, draw_noise, observe, reset, step
 from lean.game.tests.values import game_value
 from lean.scripted import ScriptedConfig, act, chaser_act, draw_uniforms, personas
@@ -345,7 +345,7 @@ def perturb_hidden(state, slots):
     def bump(value, by):
         return torch.where(change, value + by, value)
 
-    bullets = change[..., None].expand_as(state.bullet_moves_left)
+    bullets = change[..., None].expand_as(state.bullet_state)
     return core.with_velocity(
         state.replace(
             x=bump(state.x, 123.0),
@@ -362,8 +362,7 @@ def perturb_hidden(state, slots):
             log_index=torch.where(change, 0.1, state.log_index),
             gradient_x=torch.where(change, 0.1, state.gradient_x),
             gradient_y=torch.where(change, 0.1, state.gradient_y),
-            bullet_moves_left=torch.where(bullets, 5, state.bullet_moves_left),
-            bullet_real=torch.where(bullets, True, state.bullet_real),
+            bullet_state=torch.where(bullets, REAL, state.bullet_state),
         )
     )
 
