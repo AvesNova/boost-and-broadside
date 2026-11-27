@@ -98,3 +98,17 @@ performance profile. Data: ~/avesnova/boost-and-broadside/data/lookahead-persona
   box past each edge) against crowd-known at 1v1/4v4/16v16, SE 0.03. Behaviour: a state set
   per size around crowd-known, Saltelli (base 32) JSD to the centre, label blur at 0.25/0.5/1.
   The old-yardstick data of step 2 (106 agents, three sizes) is reused for the interaction fit.
+
+### 01:08 revised brief (coordinator 00:55): one skill surface, robust centre, ladder test
+- Pool (round 2 only, one game version, study clocks; round 1 left out: other conditions and
+  version, and its personas are round 2's population): 492 agents, 1,398 pairings, 559,104
+  games before the around games finish.
+- Surface: Bradley-Terry on outcomes, f quadratic (linear, square, all 210 products) in the
+  per-size effective unit coordinates (crowd rows folded in by the size's mean crowd weight),
+  ridge. 5-fold CV over agents (references kept in training): held-out deviance explains 84.0%
+  of the coin-to-saturated gap per size (lambda 100), 82.0% with a shared f + per-size linear
+  and square terms, 75.9% additive (no products). Chosen: per size, with products. No GP needed.
+- Decisions: around-crowd-known 16v16 at SE 0.04 (loose Elo is fine); the screening Saltelli /
+  blur around crowd-known dropped in favour of the same around the robust centre.
+- Next: around 16v16 (ETA 01:15), active rounds 1-2 (ETA 01:40), ladder + round robin (ETA
+  02:15, worst 02:45), behaviour around the centre (ETA 02:40, worst 03:15), write-up.
