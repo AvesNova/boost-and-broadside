@@ -173,14 +173,193 @@ Games per size (all pairings): 8192 / 8192 / 8192 / 8192 / 8192. plain-half and 
 - The old yardstick saturates at 8v8 and 16v16 (these candidates score 95-99.7% against it):
   Elo above about 1500 there rests on the head-to-head games.
 
-### 4. Tuning
+### 4. CMA-ES search (stopped on the author's redirect)
 
-(CMA-ES results: to be written.)
+`tune.py cma`: 19 rows (boundary and seek left out) + 5 crowd ratios + store_crowd, popsize 12,
+192 games per candidate and size; generations 1-16 rated against crowd-known, 17-24 against
+the generation-16 mean (at 16v16 the population scored 85-90% against crowd-known). Stopped
+after 24 generations at 00:42 (author: generation 1 was already good enough; over-optimising
+risks a brittle point). Table in `tables-2.md`; journal `data/.../cma/cma.jsonl`.
 
-### 5. Re-centring
+- Population mean against crowd-known: 982 (generation 1) -> 1176 (16); against the
+  generation-16 mean: 981 (17) -> 1004 (24). Sigma 0.138 -> 0.183 (never contracted).
+- In the ladder (section 6), the CMA's best evaluated point (cma-top1) is 1277 / 1476 / 2325
+  against the old yardstick, the generation-16 mean 1229 / 1433 / 2284.
 
-(To be written.)
+### 5. The skill surface
+
+**Data** (`surface.py`): every round-2 game with one game version, the study clocks, fields
+and fog, equal sizes 1, 4, 16: the step-2 skill games, the screen, the CMA evaluations, the
+around-crowd-known games (90 agents against crowd-known: every row at u = -0.5 and 1.5 of its
+box around crowd-known, and 48 spread-1 personas around it, SE 0.03 / 0.03 / 0.04) and two
+rounds of active sampling (24 points near the top, each against crowd-known and the
+generation-16 mean, 128 games per pairing and size). In all: 517 agents, 1,638 pairings,
+627,456 games (1v1 233,728, 4v4 233,728, 16v16 160,000). Round 1's games are left out: other
+conditions (1v1 without fog and fields, 60 s clock) and an older game version; its 64
+personas are round 2's population anyway.
+
+**Model**: Bradley-Terry on the pairings' outcomes, P(A beats B) = sigmoid(f(A) - f(B)), f a
+quadratic (21 linear, 21 squared, 210 products) in each agent's effective unit coordinates at
+that size (a crowded row's value is duel x ratio^w_s, w_s the size's mean crowd weight of the
+agent's measure; the store weight is scaled by store_crowd's mean factor), ridge (lambda 100 on
+the squares and products, 10 on the linear terms). Laplace covariance for the uncertainty.
+
+| model (5-fold CV over agents, references kept in training) | held-out deviance explained (coin to saturated) |
+|---|---|
+| per size, linear + squares + products, lambda 100 | 82.7% |
+| shared quadratic + per-size linear and squares, lambda 100 | 81.6% |
+| per size, additive (no products), best lambda (fit on 559k games) | 75.9% |
+
+Per size with products fits best, so no GP. Checks: the first surface (before active
+sampling) predicted the scores of active round 1 with r 0.81 / 0.95 / 0.93 (1v1 / 4v4 /
+16v16), RMSE 0.08 / 0.07 / 0.12 in score against a binomial SE of 0.044 (so the surface's own
+error is about 0.06-0.11 in score, 40-80 Elo, near the top). Against the ladder's Elo (16
+agents, fresh games) the final surface has r 0.98 / 0.99 / 1.00 over all agents; within the
+top group (11 agents above crowd-known) r 0.46 / 0.61 / 0.86: the surface ranks the near-equal
+top agents only roughly.
+
+**Where skill peaks** (mean over the three sizes, inside the data's 2-98% range per size;
+relative Elo, offsets arbitrary): the robust centre (the centroid of a uniform sample of the
+region within 50 Elo of the peak, 960 samples) is 41 below the peak on the surface (632
+against 673; per size -43 / -48 / -32), with a smaller predicted SD (10 against 15). The top is
+flat in many directions: of 28 directions at the centre, five have curvatures within +-3.2
+Elo per box^2 (caution, the power horizon, the crowd rows of angles, energy, aggression and the
+store, the field weight) while the steepest is -301 (energy weight against angles weight and
+the energy crowd ratio), -179 (stickiness against preferred speed and temperature) and -137
+(preferred speed with stickiness).
+
+Seven rows sit at the edge of the data at the centre (threat weight, collision weight, horizon,
+temperature at the low edge; speed weight, power temperature, fire tolerance at the high edge,
+all about half a box past round 1's box): the surface would go further than any game has.
+
+The rows (old yardstick / robust centre; full table with the peak and the region in
+`tables-2-surface.md`):
+
+| row | old | centre | row | old | centre |
+|---|---|---|---|---|---|
+| threat_weight | 1 | 0.573 | caution | 0 | 1.66 |
+| angles_weight | 0.3 | 0.509 | temperature | 0.05 | 0.0223 |
+| energy_weight | 0.25 | 0.305 | stickiness | 0.05 | 0.0437 |
+| aggression | 0.5 | 0.924 | store_weight | 0.5 | 0.283 |
+| speed_weight | 0.3 | 0.623 | power_horizon | 3 | 5.13 |
+| collision_weight | 3 | 1.63 | power_temperature | 0.05 | 0.105 |
+| horizon | 1.5 | 0.806 | power_stickiness | 0.3 | 0.200 |
+| preferred_speed | 0.9 | 0.870 | disengaged_energy_weight | 0.5 | 0.358 |
+| reply_temperature | 0.2 | 0.0857 | fire_tolerance | 1 | 1.85 |
+| boundary / field / seek | 2 / 0.3 / 0.1 | 1.98 / 0.40 / 0.078 | crowd measure, half | - | known enemies, 1 |
+
+Crowd ratios at the centre (crowd value / duel value): angles 0.52, energy 0.65, aggression
+0.16, speed 2.0, preferred speed 1.44, reply temperature 6.1; store_crowd 0.38.
+
+**Couplings** (largest products, Elo per box^2, SE 12-14): 1v1 angles x aggression -58, speed
+x reply temperature -57, angles x speed +49, speed x temperature -44; 4v4 angles x aggression
+-43, energy x stickiness -42, angles x energy +41, energy x speed -41; 16v16 angles x energy
++103, energy x speed -67, energy x horizon +55, caution x stickiness +54. Interactions are small
+against the main effects: on the surface ST - S1 is at most 0.02 for every row and size.
+
+**Sobol indices of skill on the surface** (spread-1 box around the old yardstick, uniform),
+first order; ST within 0.02 of it:
+
+| 1v1 | S1 | 4v4 | S1 | 16v16 | S1 |
+|---|---|---|---|---|---|
+| angles_weight | 0.33 | speed_weight | 0.22 | horizon | 0.16 |
+| temperature | 0.16 | fire_tolerance | 0.15 | fire_tolerance | 0.15 |
+| aggression | 0.15 | horizon | 0.10 | angles_weight | 0.13 |
+| energy_weight | 0.07 | collision_weight | 0.08 | speed_weight | 0.12 |
+| reply_temperature | 0.07 | energy_weight | 0.08 | energy_weight | 0.11 |
+| (Elo sd over the box) | 66 | | 67 | aggression | 0.10 (sd 172) |
+
+**Working ranges** (`tables-2-surface.md`: per row and size the slice through the centre
+where f is within 50 and 100 Elo of the slice's best). Narrow: horizon (16v16: about 0.13 box
+either side), fire tolerance (16v16 within 50 Elo only from u 1.12), temperature (1v1 within 50
+only below u -0.09), threat and collision weight (low end of the data). Wide (flat over the
+data): caution, power horizon, power temperature, power stickiness, disengaged energy, store
+weight, and boundary, field and seek (inert, as before).
+
+**Degenerate play** (the 90 around-crowd-known agents; flags: shots under half the centre's,
+draws over 20%, speed under 0.8 x the centre's, Elo under 800): one failure mode, team
+stalling from **stickiness**: the stickiness at 0.29 with the temperature 0.027 (ratio 10.5;
+u = 1.5 around crowd-known) and two spread-1 personas with ratios 8.7 and 9.0 fire under half
+the centre's shots and lose almost every team game (4v4 and 16v16 Elo near -75, the floor of
+the fit; persona26 492 at 4v4), while their 1v1 Elo is normal (946, 981). Other losses are
+plain weakness without a degenerate signature: the energy weight at u 1.5 (786 at 4v4, 507 at
+16v16), the preferred speed at u -0.5 (555 at 16v16, slow 0.82 corner speeds). No agent drew
+over 20%; ramming cannot be read (hits count bullets and collisions together).
+
+### 6. Validation: the adaptive ladder and a round robin
+
+16 agents (the robust centre, the surface peak, cma-top1 and cma-top2, the generation-16
+mean, the old yardstick, crowd-known, round-1 personas 14, 27, 00, and six league candidates),
+every pair, fresh store, adaptive (lean.eval `adaptive`) to a score SE of 0.05 per pair: 16,384
+games per size (137 per pair). Elo with the old yardstick at 1000 (full tables with style in
+`tables-2-ladder.md`):
+
+| agent | 1v1 | 4v4 | 16v16 |
+|---|---|---|---|
+| robust-centre | 1278 +- 13 | 1482 +- 17 | 2335 +- 80 |
+| surface-peak | 1285 | 1493 | 2363 |
+| cma-top1 | 1277 | 1476 | 2325 |
+| cma-top2 | 1316 | 1439 | 2232 |
+| cma-mean-g16 | 1229 | 1433 | 2284 |
+| league1-6 (range) | 1193-1290 | 1445-1481 | 2304-2353 |
+| crowd-known | 1171 | 1260 | 1940 |
+| r1-persona14 / 27 / 00 | 1079 / 1033 / 843 | 929 / 1008 / 1035 | 794 / 1045 / 1246 |
+| old yardstick | 1000 | 1000 | 1000 |
+
+- The robust centre is 11 Elo below the best agent at 4v4 (the surface peak), 28 at 16v16
+  (the surface peak; SE 80 there) and 38 at 1v1 (cma-top2, which is 43 and 103 below the
+  centre at 4v4 and 16v16). It is above cma-top1 and the generation-16 mean at every size.
+- With the robust centre at 1000, the old yardstick is 722 (1v1), 518 (4v4) and about -335
+  (16v16; the old yardstick wins almost no 16v16 game against the top group, so that number
+  rests on the chain through crowd-known and the round-1 personas).
+- **Round robin** (1v1, 6 of the agents, 1,024 games per pair, 15,360 games): Elo cma-top1 1276,
+  generation-16 mean 1239, crowd-known 1169, persona14 1075, persona27 1045, yardstick 1000 (SE
+  7). The ladder (137 games per pair) gives the same order (Kendall tau +1.00) and every
+  rating within 0.8 combined SE of the round robin's (differences +0.1, -0.6, +0.1, +0.3, -0.8
+  SE): the ladder's reported SEs are not too small; with five comparisons they may be
+  somewhat conservative.
+- **Non-transitivity**: no cycle (A > B > C > A with every edge 2 SE from even) in the round
+  robin or in any size's ladder.
+- Ladder cost: 16,384 games per size for 120 pairs at SE 0.05 (1v1 about 2 minutes, 4v4 about
+  2.5, 16v16 about 14 on the laptop).
+
+### 7. Behaviour around the robust centre
+
+BEHAVIOUR
 
 ## Recommendations (not measured; for the author)
 
-(To be written.)
+- **Game clock.** Today's 60 s ends only 40% (1v1), 72% (4v4) and 68% (16v16) of games by a
+  wipe. 90 s gives 93-97% at 4v4-16v16 and is the clock I would recommend for team games; 1v1
+  needs about 400 s for 90% (fog loses contact; the mirror never reaches 90%), so a 1v1 clock
+  is a choice between long games and many clock decisions. One shared default: 90 s, with the
+  1v1 study clock kept for 1v1 evaluation.
+- **Crowd rows.** Keep them (off by default on this branch until the author decides): every
+  crowd candidate beat the best single point at 1v1 and 2v2 by 120-290 Elo, and the top region
+  of the surface uses them (angles and aggression down in crowds, speed, preferred speed and
+  the reply temperature up). The shared measure: the known enemies, crowd_half 1. Rows that
+  the data never moved in crowds (collision, horizon, temperature, fire tolerance) can be
+  dropped from `CROWDED` (6 of 10 kept).
+- **Proposed yardstick: the robust centre** (`candidates/robust-centre.json`). It is within
+  11 / 28 / 38 Elo of the best tested agent at 4v4 / 16v16 / 1v1, in a flat region; it is not the
+  sharp peak. Caveat: seven of its rows sit at the edge of the explored range, so a later
+  round might move them further (threat, collision, horizon, temperature lower; speed weight,
+  power temperature, fire tolerance higher).
+- **Persona box** (`proposal-2.json`): centred on the robust centre; boundary, seek and field
+  weight held (inert at every size); per row a half-width of half the narrowest 50-Elo slice
+  over the sizes, clipped to 0.1-0.5 of round 1's box: horizon 0.078 (log units; round 1 0.3),
+  fire tolerance 0.135, temperature 0.204, threat 0.186, collision 0.192, energy 0.242, speed
+  0.283, reply temperature 0.322, stickiness 0.358, angles 0.381, aggression 0.492, preferred
+  speed 0.133; caution, store, power rows and disengaged energy keep round 1's widths.
+- **BC good region**: draw on that box, reject draws whose surface mean over the three sizes
+  is more than 50 Elo below the centre's, and reject stickiness / temperature > 5 (the stalling
+  failure). Label blur: BLUR
+- **League personas** (`candidates/league1.json` ... `league6.json`): six points of the 50-Elo
+  region, picked far apart in rows that change behaviour. In the ladder they are within 97 Elo
+  of each other at 1v1 (1193-1290), 36 at 4v4 and 49 at 16v16, all at the level of the
+  centre. Their style differs little at 4v4 and 16v16 (store 0.15-0.23 and 0.05-0.10); at 1v1
+  league1 and league5 are the distinct ones (store 0.71 / 0.69, speed 0.95 / 0.93, turning 0.55
+  / 0.58 against the others' 0.56-0.66, 0.81-0.88, 0.64-0.66). LEAGUEJS If the league needs
+  clearly different styles at equal Elo in team games, the top region alone does not provide
+  them: the store, climb and dive regimes that separate round-1 personas (store 0.16-0.75 at
+  16v16) all lie well below the top in skill.
