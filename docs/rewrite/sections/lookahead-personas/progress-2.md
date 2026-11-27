@@ -123,3 +123,8 @@ performance profile. Data: ~/avesnova/boost-and-broadside/data/lookahead-persona
 - 01:50 round robin 1v1 done (6 agents, 1,024 games per pair): no cycles at 2 SE.
 - Next: ladder (16 agents, SE 0.05, three sizes) ETA 02:20 (worst 02:50), behaviour around the
   centre ETA 02:45 (worst 03:15), write-up ETA 03:15.
+- 02:10 ladder done (16,384 games per size), behaviour around the centre done (states,
+  Saltelli base 32, blur, league JS). GPU for the revised brief: about 01:20-02:09 (active
+  rounds, ladder, round robin, behaviour), within the 2 h budget.
+- 02:15 decision: league set = league1, 2, 3, 5, 6 (league4 dropped: closest to the centre and
+  to league5 in JS). results-2.md written (summary at the top). Done apart from the final checks.

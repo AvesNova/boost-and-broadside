@@ -1,6 +1,43 @@
 # Look-ahead personas, round 2: the persona test as it will be evaluated
 
-(Summary: to be written at the end.)
+## Summary (2026-11-28 02:15)
+
+Measured (sections 1-7; laptop RTX 4070, GPU shared with the league agent):
+
+- **Clocks.** At today's 60 s a wipe ends 40% / 72% / 68% of 1v1 / 4v4 / 16v16 games. Study
+  clocks (p90 of wipe times): 1v1 400 s, 2v2 140 s, 4v4 90 s, 8v8 80 s, 16v16 80 s (90-95% of
+  games wiped before them). 1v1 has a fog tail: the yardstick mirror never reaches 90%.
+- **Skill spread** (64 spread-1 personas around the old yardstick): sd 71 / 57 / 155 Elo at
+  1v1 / 4v4 / 16v16. 4v4 and 16v16 Elo agree (r +0.90); 1v1 is its own game (r +0.08, -0.27).
+- **Size-dependent rows**: angles weight, aggression, energy weight, reply temperature,
+  preferred speed flip sign 1v1 -> 16v16; speed weight, horizon, fire tolerance, store and
+  threat weight grow with size; 4v4 sits about halfway. Temperature: colder wins at every size.
+- **Crowd rows** (new, off by default): duel and crowd values interpolated by a crowd weight;
+  measure chosen by games: **known enemies**, crowd_half 1. The crowd configurations beat the
+  best single point by 120-290 Elo at 1v1 and 2v2 and match it at 4v4-16v16.
+- **Skill surface**: one Bradley-Terry fit on 627,456 games (517 agents), f quadratic with
+  products per size; 82.7% of the explainable deviance held out (additive: 75.9%). Near-
+  additive (ST - S1 <= 0.02); largest coupling angles x energy at 16v16 (+103 Elo per box^2),
+  angles x aggression at 1v1 and 4v4 (-58, -43). The top is flat (five directions with
+  curvature within +-3.2 Elo per box^2) and pressed against the explored range in seven rows.
+- **Robust centre** (centroid of the 50-Elo region): in a fresh 16-agent ladder 1278 / 1482 /
+  2335 against the old yardstick at 1v1 / 4v4 / 16v16, within 38 / 11 / 28 Elo of the best
+  tested agent; the old yardstick is 722 / 518 / about -335 with the centre at 1000. The CMA's
+  best point (stopped at generation 24): 1277 / 1476 / 2325.
+- **Ladder test**: the adaptive ladder (137 games per pair) and a 1v1 round robin (1,024 per
+  pair) agree in order (Kendall tau 1.00) and within 0.8 SE per agent; no cycles anywhere.
+- **Behaviour** around the centre is moved by the preferred speed, the store weight, the
+  power stickiness, the temperatures and stickiness; the skill rows (fire tolerance,
+  aggression, threat, collision, reply temperature) barely move the label. Label blur
+  1.0-1.7% / 3.8-6.1% / 13-19% at spreads 0.25 / 0.5 / 1. One degenerate mode: stickiness over
+  about 8 x the temperature stalls team play (Elo near the floor at 4v4 / 16v16, normal at 1v1).
+
+Proposed (for the author; section "Recommendations"): the robust centre as the new
+yardstick (`candidates/robust-centre.json`), the persona box `proposal-2.json` (inert rows
+held, narrowed where skill falls off), BC sampling at half that box with a 50-Elo and a
+stickiness / temperature <= 5 rule, five league personas (league1, 2, 3, 5, 6) at the
+centre's level with JS 0.02-0.11 between them, a 90 s game clock for team games.
+
 
 Author's request 2026-11-27 ~20:15: 1v1, 4v4 and 16v16, always with fields and fog, longer
 match lengths allowed. Branch `personas-2` from core 2770a376, laptop RTX 4070 (performance
@@ -325,7 +362,54 @@ games per size (137 per pair). Elo with the old yardstick at 1000 (full tables w
 
 ### 7. Behaviour around the robust centre
 
-BEHAVIOUR
+State sets around the robust centre (`blur2.py states`: games with sampled actions, each
+team the centre (1/3) or spread-1 personas around it (2/3), fields, fog, the study clocks):
+12,012 / 21,494 / 21,999 ship-states (1v1 / 4v4 / 16v16). Full tables in `tables-2-behaviour.md`.
+
+**Which rows change behaviour** (Saltelli, base 32: 736 configurations of the spread-1 box
+around the centre per size; Sobol indices of the mean per-state JS from the centre; base 32
+is coarse, so the intervals are wide, ST +- up to 0.6 for the largest):
+
+| row | 1v1 S1 / ST | 4v4 S1 / ST | 16v16 S1 / ST |
+|---|---|---|---|
+| preferred_speed | 0.53 / 1.10 | 0.64 / 1.13 | 0.19 / 0.58 |
+| store_weight | 0.07 / 0.34 | 0.06 / 0.22 | -0.03 / 0.08 |
+| power_stickiness | -0.03 / 0.10 | -0.04 / 0.08 | 0.07 / 0.31 |
+| temperature | -0.03 / 0.10 | 0.01 / 0.06 | -0.09 / 0.18 |
+| stickiness | 0.02 / 0.06 | 0.02 / 0.05 | 0.01 / 0.17 |
+| horizon | -0.03 / 0.02 | -0.06 / 0.04 | -0.17 / 0.19 |
+| speed_weight | -0.04 / 0.03 | -0.01 / 0.03 | -0.03 / 0.15 |
+| power_temperature | 0.02 / 0.01 | 0.02 / 0.02 | -0.10 / 0.18 |
+| angles_weight | 0.00 / 0.00 | 0.00 / 0.01 | 0.05 / 0.14 |
+
+- Around the centre (cold flight softmax, temperature 0.022) the label is moved mostly by the
+  preferred speed, then the store weight and the power stickiness (the power head), the two
+  temperatures and stickiness; at 16v16 also the horizon, the speed and angles weights. ST
+  well above S1 for these rows: their effects on the label interact.
+- Rows that drive skill but hardly move the label (ST <= 0.01 at every size): fire tolerance,
+  aggression, threat weight, collision weight, reply temperature, caution. Skill and behaviour
+  are carried by different rows: the skill rows mostly act on rare decisions (the trigger,
+  engagement choice) that the per-state JS barely sees.
+- Inert for behaviour as for skill: boundary, seek and field weight (ST 0.00-0.004).
+
+**Label blur** (64 personas, the same unit points at each spread, around the centre; boundary,
+seek and field held; spreads of round 1's widths):
+
+| size | centre entropy | blur at spread 0.25 | 0.5 | 1 |
+|---|---|---|---|---|
+| 1v1 | 1.040 | 0.018 (1.7%) | 0.064 (6.0%) | 0.212 (18.8%) |
+| 4v4 | 0.893 | 0.016 (1.7%) | 0.057 (6.1%) | 0.187 (19.2%) |
+| 16v16 | 0.828 | 0.009 (1.0%) | 0.033 (3.8%) | 0.118 (13.3%) |
+
+The blur is about twice round 1's (round 1 at spread 1: 9-12%): the colder centre makes each
+persona's labels sharper, so the same spread moves them further apart. Still about quadratic
+in the spread.
+
+**The league candidates' behaviour** (pairwise mean JS on these states): between the six
+candidates 0.02-0.08 (1v1), 0.02-0.10 (4v4), 0.02-0.11 (16v16); each against the robust centre
+0.01-0.07; against the old yardstick 0.05-0.11 (1v1) and 0.21-0.28 (4v4, 16v16). league2 is the
+most distinct in team games (0.07-0.11 from the others), league1 and league5 in 1v1; league4 is
+closest to the centre (0.011-0.018 at the team sizes).
 
 ## Recommendations (not measured; for the author)
 
@@ -353,13 +437,19 @@ BEHAVIOUR
   speed 0.133; caution, store, power rows and disengaged energy keep round 1's widths.
 - **BC good region**: draw on that box, reject draws whose surface mean over the three sizes
   is more than 50 Elo below the centre's, and reject stickiness / temperature > 5 (the stalling
-  failure). Label blur: BLUR
+  failure). Label blur (measured around the centre on round 1's widths): 1.0-1.7% of the label
+  entropy at spread 0.25, 3.8-6.1% at 0.5, 13-19% at 1. The proposed box is about 0.5-1 of round
+  1's widths per row, so it sits between the 0.5 and 1 figures; for BC I would sample it at
+  half its width (blur roughly 2-4%) unless the student is told the persona.
 - **League personas** (`candidates/league1.json` ... `league6.json`): six points of the 50-Elo
   region, picked far apart in rows that change behaviour. In the ladder they are within 97 Elo
   of each other at 1v1 (1193-1290), 36 at 4v4 and 49 at 16v16, all at the level of the
   centre. Their style differs little at 4v4 and 16v16 (store 0.15-0.23 and 0.05-0.10); at 1v1
   league1 and league5 are the distinct ones (store 0.71 / 0.69, speed 0.95 / 0.93, turning 0.55
-  / 0.58 against the others' 0.56-0.66, 0.81-0.88, 0.64-0.66). LEAGUEJS If the league needs
+  / 0.58 against the others' 0.56-0.66, 0.81-0.88, 0.64-0.66). Their labels differ by a JS of 0.02-0.11 from each other (as much as a typical spread-1
+  persona from the centre, a third to a half of the old yardstick's distance from the centre
+  in team games). Proposed league set (5): league1, league2, league3, league5, league6 (league4
+  dropped: closest to the centre and to league5). If the league needs
   clearly different styles at equal Elo in team games, the top region alone does not provide
   them: the store, climb and dive regimes that separate round-1 personas (store 0.16-0.75 at
   16v16) all lie well below the top in skill.
