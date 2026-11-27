@@ -127,4 +127,4 @@ performance profile. Data: ~/avesnova/boost-and-broadside/data/lookahead-persona
   Saltelli base 32, blur, league JS). GPU for the revised brief: about 01:20-02:09 (active
   rounds, ladder, round robin, behaviour), within the 2 h budget.
 - 02:15 decision: league set = league1, 2, 3, 5, 6 (league4 dropped: closest to the centre and
-  to league5 in JS). results-2.md written (summary at the top). Done apart from the final checks.
+  to league5 in JS). results-2.md written (summary at the top). Final checks: quick tier lean/scripted + lean/eval + lean/game 179 passed, 1 skipped; ruff clean on lean and this folder.
