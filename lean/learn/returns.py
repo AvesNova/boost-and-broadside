@@ -8,7 +8,7 @@ from torch import Tensor
 
 from lean.contract import LEVEL_NAMES
 from lean.learn.config import LearnConfig
-from lean.model.temporal import doubling_scan
+from lean.model.scan import linear_scan
 from lean.model.value import buffered_centres, symlog
 
 
@@ -62,14 +62,13 @@ def generalised_advantages(
     Returns (advantage, value target), both (T, E, N, LEVELS).
 
     A_t = delta_t + discount * lambda * (1 - done_t) * A_(t+1) runs backwards in time as
-    lean.model's doubling scan over the reversed ticks (log2 T whole-tensor rounds, no
-    Python loop over T); equal to the tick-by-tick recursion within float32 rounding.
+    lean.model's linear scan over the reversed ticks (one pass, float32).
     """
     alive = (~done).to(reward.dtype)[:, :, None, None]
     next_value = torch.cat([value[1:], bootstrap[None]])
     delta = reward + discounts * next_value * alive - value
     decay = discounts * gae_lambda * alive  # (T, E, 1, LEVELS)
-    reversed_advantage, _ = doubling_scan(decay.flip(0), delta.flip(0), torch.zeros_like(bootstrap))
+    reversed_advantage, _ = linear_scan(decay.flip(0), delta.flip(0), torch.zeros_like(bootstrap))
     advantage = reversed_advantage.flip(0)
     return advantage, advantage + value
 

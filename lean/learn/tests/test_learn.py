@@ -36,7 +36,7 @@ def test_gae_matches_hand_computed_case_and_stops_at_termination():
 
 
 def test_gae_scan_equals_the_tick_by_tick_recursion():
-    """The reverse doubling scan against the plain backward loop, per level, with episode ends."""
+    """The reverse linear scan against the plain backward loop, per level, with episode ends."""
     generator = torch.Generator().manual_seed(0)
     ticks, envs, slots = 128, 6, 3
     reward = torch.randn(ticks, envs, slots, LEVELS, generator=generator)
