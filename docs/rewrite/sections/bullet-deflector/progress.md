@@ -212,3 +212,34 @@ GPU tick, compiled `core.step`, 4070 laptop, performance profile, E 4096, 4v4, f
   260 s; author: provisionally raised). Baseline not updated.
 - Replays (11 mp4) in data/replays-2026-11-27-egg/: 1v1 egg, off, old rule (nose cone), egg
   60 deg, egg 20 mrad; 4v4 egg, off, egg 20 mrad.
+
+## 2026-11-27 13:50 egg speed, step 1: where the egg's time goes (branch egg-speed)
+
+Laptop 4070, performance profile, compiled `core.step`, E 4096, 4v4, fields and fog. The video
+player (2.3 GB, ~20% GPU) ran during the first bench, closed before the second; the desktop
+(gnome-shell on this GPU) shows ~17% utilisation at idle throughout.
+
+- bench_tick (median of 3 x 300 ticks), off / egg back to back: 1.277 / 1.765 ms (player on),
+  1.270 / 1.772 ms (player closed): **+0.50 ms (+39%)**. (The older 0.98 ms off did not
+  reproduce: 1.27 ms today in both conditions.)
+- Kernel profile (torch.profiler over 40 compiled ticks, 5 alternating off/egg rounds, per
+  kernel the minimum round): off 27 launches, 984 us of kernel time per tick; egg 31 launches,
+  1,408 us (**+424 us**). Hardware counters are not readable here (ncu: ERR_NVGPUCTRPERM), so
+  traffic is estimated from the generated kernels: a per-bullet f32 tensor (E, N K) is 1.6 MB,
+  a pair tensor (E, N K, N) 12.6 MB, the bullet block 12.6 MB; at ~250 GB/s one pass over a
+  per-bullet tensor is ~6 us.
+
+  | kernel (what it does) | off us | egg us | extra | launches added |
+  |---|---|---|---|---|
+  | pair reduction: swept test (+ egg entry, both halves) + first contact, (E, NK, N) in registers | 76 | 107 | +31 | 0 |
+  | egg_turn on the bend ship's pass + bent_hit + the fog's real_hits scatter: 23 loads, 10 per-bullet stores | - | 112 | +112 | 1 |
+  | gathers: the pass against bend ship / target (2 kernels in egg) | 11 | 10 + 48 | +48 | 1 |
+  | _damage + hit_taken / hit_damage scatters (recomputes the turn's cos; 33 loads) | 60 | 168 | +108 | 0 |
+  | _deflect: the turned head (E, 5, N, K), each row recomputing its part from ~8 per-bullet inputs | - | 156 | +156 | 1 |
+  | the cat: copy of the 3 tail columns into the new block | - | 28 | +28 | 1 |
+  | rest (fire, move, flight, fields, fog, ...) | 837 | 779 | -58 (L2 noise: the fire kernel 92 -> 39 us, the block hot in L2) | 0 |
+
+  Plainly: the egg's pair work is cheap (+31 us, it stays in registers); the cost is the
+  per-bullet chain after the reduction: ~45 per-bullet tensors materialised between six
+  kernels (turn, gathers, damage, deflect, cat), each pass ~6 us, plus a second full write of
+  the bullet block (head 156 + tail 28 us). Not atomics, not launches (+4).
