@@ -1,0 +1,126 @@
+{
+ "centre": {
+  "threat_weight": 0.5734642775658948,
+  "angles_weight": 0.5092277187157023,
+  "energy_weight": 0.30487606920505234,
+  "aggression": 0.923706251126726,
+  "speed_weight": 0.6231624573114537,
+  "collision_weight": 1.6273866013078684,
+  "boundary_weight": 1.984701948870424,
+  "field_weight": 0.4018629374768667,
+  "horizon": 0.8058822823347369,
+  "preferred_speed": 0.8696500561205087,
+  "reply_temperature": 0.08573858644264831,
+  "caution": 1.6578003765981175,
+  "temperature": 0.022344079164490514,
+  "stickiness": 0.043739802175543484,
+  "store_weight": 0.28270320846469366,
+  "power_horizon": 5.126928306011134,
+  "power_temperature": 0.10523671741801535,
+  "power_stickiness": 0.19972030313031336,
+  "disengaged_energy_weight": 0.35811253100698803,
+  "seek_weight": 0.07757967958584369,
+  "fire_tolerance": 1.8508634566928854,
+  "angles_weight_crowd": 0.5246379374048454,
+  "energy_weight_crowd": 0.6492291302745106,
+  "aggression_crowd": 0.1601431152784432,
+  "speed_weight_crowd": 1.9973314256201438,
+  "preferred_speed_crowd": 1.4435036283227338,
+  "reply_temperature_crowd": 6.145919289969727,
+  "store_crowd": 0.3835341839244253,
+  "crowd_measure": 1.0,
+  "crowd_half": 1.0
+ },
+ "box": {
+  "threat_weight": {
+   "law": "log",
+   "width": 0.1857596055482678,
+   "half_u": 0.3095993425804463
+  },
+  "angles_weight": {
+   "law": "log",
+   "width": 0.38080680348412055,
+   "half_u": 0.47600850435515063
+  },
+  "energy_weight": {
+   "law": "log",
+   "width": 0.24244598994450076,
+   "half_u": 0.30305748743062594
+  },
+  "aggression": {
+   "law": "log",
+   "width": 0.49196035229928453,
+   "half_u": 0.49196035229928453
+  },
+  "speed_weight": {
+   "law": "log",
+   "width": 0.28295929035693884,
+   "half_u": 0.3536991129461735
+  },
+  "collision_weight": {
+   "law": "log",
+   "width": 0.19224794994601305,
+   "half_u": 0.32041324991002174
+  },
+  "horizon": {
+   "law": "log",
+   "width": 0.07820493587391907,
+   "half_u": 0.1303415597898651
+  },
+  "preferred_speed": {
+   "law": "log",
+   "width": 0.13263660180581546,
+   "half_u": 0.4421220060193849
+  },
+  "reply_temperature": {
+   "law": "log",
+   "width": 0.32183064224133257,
+   "half_u": 0.32183064224133257
+  },
+  "caution": {
+   "law": "linear",
+   "width": 2.0,
+   "half_u": 0.5
+  },
+  "temperature": {
+   "law": "log",
+   "width": 0.20378520352471977,
+   "half_u": 0.2547315044058997
+  },
+  "stickiness": {
+   "law": "log",
+   "width": 0.35798058239707964,
+   "half_u": 0.35798058239707964
+  },
+  "store_weight": {
+   "law": "log",
+   "width": 0.4,
+   "half_u": 0.5
+  },
+  "power_horizon": {
+   "law": "log",
+   "width": 0.3,
+   "half_u": 0.5
+  },
+  "power_temperature": {
+   "law": "log",
+   "width": 0.4,
+   "half_u": 0.5
+  },
+  "power_stickiness": {
+   "law": "log",
+   "width": 0.5,
+   "half_u": 0.5
+  },
+  "disengaged_energy_weight": {
+   "law": "log",
+   "width": 0.5,
+   "half_u": 0.5
+  },
+  "fire_tolerance": {
+   "law": "log",
+   "width": 0.1347760391681942,
+   "half_u": 0.22462673194699034
+  }
+ }
+}

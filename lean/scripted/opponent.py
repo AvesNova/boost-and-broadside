@@ -55,7 +55,7 @@ from lean.game.core import (
 
 from . import kernels
 from . import paths as paths_module
-from .parameters import ScriptedConfig, value
+from .parameters import CROWDED, ScriptedConfig, value
 from .paths import CANDIDATES, FLIGHTS, POWER_LOOK, Paths, power_outlook, predict
 
 ENEMIES = 4  # the nearest known enemies each ship scores against
@@ -489,14 +489,11 @@ def _seek(state, enemies, own_paths: Paths, point_weight: Tensor, read) -> Tenso
     return (0.5 * (1.0 + toward) * point_weight).sum(-1) * has[..., None]
 
 
-def nearest_enemies(state, enemies, roam_cutoff) -> tuple[Tensor, Tensor, Tensor]:
-    """Per ship (E, N, ENEMIES): the nearest known living enemies' slots, their weights, and
-    whether there is one. A hidden enemy's distance is its last-seen distance plus its roam
-    (seconds since seen x its sustained speed); it is a candidate while the roam is at most the
-    cutoff (arena radii) and weighs 1 - roam / (cutoff x arena radius). Fewer than ENEMIES:
-    the rest are absent (weight 0, slot 0). Without fog no roam."""
+def known_enemies(state, enemies, roam_cutoff) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+    """Per ship and slot (E, N, N): whether the slot is a known living enemy (seen, or hidden
+    with a roam within the cutoff), its last-seen distance and its roam (metres), and the
+    cutoff (metres; a number or (E, N, 1))."""
     c = state.constants
-    envs, slots = state.x.shape
     same_team = state.team[:, :, None] == state.team[:, None, :]
     known = (enemies.exists & enemies.alive)[:, None, :] & ~same_team
     offset_x = enemies.x[:, None, :] - state.x[:, :, None]
@@ -508,7 +505,37 @@ def nearest_enemies(state, enemies, roam_cutoff) -> tuple[Tensor, Tensor, Tensor
         roam = (seconds * c["sustained_speed"])[:, None, :].expand_as(distance)
     else:
         roam = torch.zeros_like(distance)
-    known = known & (roam <= limit)
+    return known & (roam <= limit), distance, roam, limit
+
+
+def crowd_weight(state, enemies, near, read) -> Tensor | float:
+    """The crowd weight w (E, N) in [0, 1) (parameters.CROWDED): (m - 1) / (m - 1 +
+    crowd_half), m by `crowd_measure` (0 the scored enemies within CROWD_RANGE gun ranges,
+    `near`; 1 the known enemies; 2 my team's living ships), at least 1."""
+    measure = read("crowd_measure")
+    if isinstance(measure, Tensor) or measure > 0.5:
+        known = known_enemies(state, enemies, read("roam_cutoff"))[0].sum(-1).to(near.dtype)
+        alive = state.exists & state.alive
+        same = (state.team[:, :, None] == state.team[:, None, :]) & alive[:, None, :]
+        own = same.sum(-1).to(near.dtype)
+        if isinstance(measure, Tensor):
+            m = torch.where(measure < 0.5, near, torch.where(measure < 1.5, known, own))
+        else:
+            m = known if measure < 1.5 else own
+    else:
+        m = near
+    excess = (m - 1.0).clamp_min(0.0)
+    return excess / (excess + read("crowd_half"))
+
+
+def nearest_enemies(state, enemies, roam_cutoff) -> tuple[Tensor, Tensor, Tensor]:
+    """Per ship (E, N, ENEMIES): the nearest known living enemies' slots, their weights, and
+    whether there is one. A hidden enemy's distance is its last-seen distance plus its roam
+    (seconds since seen x its sustained speed); it is a candidate while the roam is at most the
+    cutoff (arena radii) and weighs 1 - roam / (cutoff x arena radius). Fewer than ENEMIES:
+    the rest are absent (weight 0, slot 0). Without fog no roam."""
+    envs, slots = state.x.shape
+    known, distance, roam, limit = known_enemies(state, enemies, roam_cutoff)
     score = torch.where(known, distance + roam, math.inf)
     padding = torch.full((envs, slots, ENEMIES), math.inf, device=score.device)
     nearest = torch.cat([score, padding], -1).topk(ENEMIES, -1, largest=False)
@@ -562,6 +589,26 @@ def explain(config: ScriptedConfig, state, team: int | None, persona) -> Choice:
     crowd_y = _at(enemies.y, enemy_slot) - state.y[..., None]
     near = (crowd_x * crowd_x + crowd_y * crowd_y) < (CROWD_RANGE * _lay(c["gun_range"], 1)) ** 2
     crowd = (enemy_weight * near).sum(-1)
+    # The crowd's rows (parameters.CROWDED): from here on each reads X x X_crowd^w. A ratio
+    # of 1 as a number (the yardstick's default) changes nothing and computes nothing.
+    duel_read = read
+    if any(
+        isinstance(value(config, persona, f"{name}_crowd"), Tensor)
+        or value(config, persona, f"{name}_crowd") != 1.0
+        for name in CROWDED
+    ):
+        weight = crowd_weight(state, enemies, crowd, duel_read)
+
+        def read(name: str, dims: int = 0):
+            if name not in CROWDED:
+                return duel_read(name, dims)
+            ratio = value(config, persona, f"{name}_crowd")
+            base = value(config, persona, name)
+            if not isinstance(ratio, Tensor) and ratio == 1.0:
+                return _lay(base, dims)
+            log_ratio = torch.log(ratio) if isinstance(ratio, Tensor) else math.log(ratio)
+            return _lay(base * torch.exp(weight * log_ratio), dims)
+
     own_paths, seen_paths, power_scores = _predict_views(
         c, state, enemies, config, read, engaged, crowd
     )

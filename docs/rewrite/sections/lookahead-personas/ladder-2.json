@@ -1,0 +1,3975 @@
+{
+ "ladder 1v1": {
+  "elo": {
+   "robust-centre": 1278.366653914592,
+   "surface-peak": 1285.1425368342839,
+   "cma-top1": 1277.494877723511,
+   "cma-top2": 1315.8228028122028,
+   "cma-mean-g16": 1229.3397480664867,
+   "yardstick": 1000.0,
+   "crowd-known": 1171.1432069096024,
+   "r1-persona14": 1079.0567625753918,
+   "r1-persona27": 1032.90640303288,
+   "r1-persona00": 843.1089484331476,
+   "league1": 1259.0306891688926,
+   "league2": 1244.0502409862888,
+   "league3": 1228.476263974295,
+   "league4": 1290.1317402849259,
+   "league5": 1193.2576467475283,
+   "league6": 1264.2045930595264
+  },
+  "error": {
+   "robust-centre": 13.097843429926542,
+   "surface-peak": 13.130711164828625,
+   "cma-top1": 12.902441424671954,
+   "cma-top2": 13.305433499949245,
+   "cma-mean-g16": 13.025989403077018,
+   "yardstick": 0.0,
+   "crowd-known": 12.713089310723555,
+   "r1-persona14": 13.045280374646275,
+   "r1-persona27": 13.44850811331714,
+   "r1-persona00": 17.350702856265286,
+   "league1": 12.816645129322078,
+   "league2": 12.952269132568325,
+   "league3": 12.818955237466822,
+   "league4": 13.12328121511865,
+   "league5": 13.035636565823722,
+   "league6": 13.054917622775507
+  },
+  "games": 16384,
+  "pairs": 120,
+  "styles": {
+   "league1": {
+    "conditions": "8411ed4813e3",
+    "agent": "48fdb56deba3",
+    "games": 2306,
+    "minutes": 3731.8577777777778,
+    "turning": 0.5527622226880148,
+    "store": 0.7135464665197678,
+    "speed": 0.954905789095366,
+    "shots": 24.696278767322323,
+    "climb": 0.3946723585988748,
+    "dive": 0.1177697613818795,
+    "two_circle": 0.6617168862409624,
+    "hits": 20765.0,
+    "hit_range": 0.16979837869947687
+   },
+   "robust-centre": {
+    "conditions": "8411ed4813e3",
+    "agent": "4e79df9c5f2e",
+    "games": 2184,
+    "minutes": 3888.3127777777777,
+    "turning": 0.6674593079003276,
+    "store": 0.5977724648237089,
+    "speed": 0.8248862127572726,
+    "shots": 22.89219131462761,
+    "climb": 0.36604265517620255,
+    "dive": 0.18751463609680463,
+    "two_circle": 0.6916198421799485,
+    "hits": 19895.0,
+    "hit_range": 0.17647110380103134
+   },
+   "yardstick": {
+    "conditions": "8411ed4813e3",
+    "agent": "4f681eecee49",
+    "games": 1538,
+    "minutes": 2674.623888888889,
+    "turning": 0.5196660049606144,
+    "store": 0.8881191702391436,
+    "speed": 0.9742236302418804,
+    "shots": 11.536201455531755,
+    "climb": 0.4568592510307265,
+    "dive": 0.03267583001805238,
+    "two_circle": 0.6191415118472804,
+    "hits": 7947.0,
+    "hit_range": 0.21049156077642087
+   },
+   "league5": {
+    "conditions": "8411ed4813e3",
+    "agent": "5514675dddf3",
+    "games": 2138,
+    "minutes": 3739.543888888889,
+    "turning": 0.5771648622031891,
+    "store": 0.686919416966095,
+    "speed": 0.9322342937351156,
+    "shots": 21.117013824769778,
+    "climb": 0.38400835871397865,
+    "dive": 0.11698797491494432,
+    "two_circle": 0.6898653796653796,
+    "hits": 16419.0,
+    "hit_range": 0.1892548853593761
+   },
+   "r1-persona27": {
+    "conditions": "8411ed4813e3",
+    "agent": "5e7f71ccb84a",
+    "games": 1648,
+    "minutes": 2605.0994444444445,
+    "turning": 0.5822371037659257,
+    "store": 0.9157170834757483,
+    "speed": 0.892614988626995,
+    "shots": 15.41246346108775,
+    "climb": 0.5020371369913581,
+    "dive": 0.0469883960497136,
+    "two_circle": 0.5893299939125651,
+    "hits": 10252.0,
+    "hit_range": 0.2059210097483369
+   },
+   "cma-mean-g16": {
+    "conditions": "8411ed4813e3",
+    "agent": "684b93800e8c",
+    "games": 2178,
+    "minutes": 3531.443333333333,
+    "turning": 0.6186545067031138,
+    "store": 0.6707819226357478,
+    "speed": 0.835886668345388,
+    "shots": 23.922230098552717,
+    "climb": 0.37195682344549713,
+    "dive": 0.17256699259572494,
+    "two_circle": 0.6227736388052703,
+    "hits": 19841.0,
+    "hit_range": 0.16811499476836853
+   },
+   "league3": {
+    "conditions": "8411ed4813e3",
+    "agent": "6a2761c7486b",
+    "games": 2256,
+    "minutes": 3756.5616666666665,
+    "turning": 0.6513160453612206,
+    "store": 0.6614687321355791,
+    "speed": 0.8198731039321564,
+    "shots": 23.623996589079464,
+    "climb": 0.3932545585790553,
+    "dive": 0.1607232145352776,
+    "two_circle": 0.6635005844585788,
+    "hits": 19517.0,
+    "hit_range": 0.18542478339930885
+   },
+   "r1-persona00": {
+    "conditions": "8411ed4813e3",
+    "agent": "760720324be0",
+    "games": 1154,
+    "minutes": 1824.581111111111,
+    "turning": 0.5068740283157839,
+    "store": 0.8316692682355348,
+    "speed": 1.0433097634645618,
+    "shots": 6.5960345236014595,
+    "climb": 0.4293292889753082,
+    "dive": 0.08659156470008642,
+    "two_circle": 0.5289082290552226,
+    "hits": 3072.0,
+    "hit_range": 0.1865154243168945
+   },
+   "surface-peak": {
+    "conditions": "8411ed4813e3",
+    "agent": "869c2aff425e",
+    "games": 2172,
+    "minutes": 3709.077222222222,
+    "turning": 0.6479088314718591,
+    "store": 0.5795649308860776,
+    "speed": 0.828522301267964,
+    "shots": 24.52308068838326,
+    "climb": 0.3478852706550701,
+    "dive": 0.18407049132765727,
+    "two_circle": 0.6859493547688341,
+    "hits": 20311.0,
+    "hit_range": 0.16974409597960094
+   },
+   "crowd-known": {
+    "conditions": "8411ed4813e3",
+    "agent": "9a4ceed17114",
+    "games": 2242,
+    "minutes": 3160.822222222222,
+    "turning": 0.6030842888981067,
+    "store": 0.797280424650298,
+    "speed": 0.7126742762181406,
+    "shots": 23.428397674304154,
+    "climb": 0.42469909376603837,
+    "dive": 0.08495134880516322,
+    "two_circle": 0.5870633789106899,
+    "hits": 18747.0,
+    "hit_range": 0.17456159569752683
+   },
+   "cma-top1": {
+    "conditions": "8411ed4813e3",
+    "agent": "9e2af4df6ef8",
+    "games": 2274,
+    "minutes": 3784.0261111111113,
+    "turning": 0.647417425913346,
+    "store": 0.5839616822043201,
+    "speed": 0.8361693305431969,
+    "shots": 24.773349138564495,
+    "climb": 0.3562212616867367,
+    "dive": 0.19456070232073508,
+    "two_circle": 0.6692860317661893,
+    "hits": 22047.0,
+    "hit_range": 0.16262490808424424
+   },
+   "league4": {
+    "conditions": "8411ed4813e3",
+    "agent": "afe4a3127024",
+    "games": 2190,
+    "minutes": 3589.613888888889,
+    "turning": 0.6497605359907944,
+    "store": 0.6523258412742248,
+    "speed": 0.8217492248454956,
+    "shots": 27.431362549825458,
+    "climb": 0.3785462843806321,
+    "dive": 0.17366522707100188,
+    "two_circle": 0.6515168874266042,
+    "hits": 21599.0,
+    "hit_range": 0.16906445594958516
+   },
+   "cma-top2": {
+    "conditions": "8411ed4813e3",
+    "agent": "e6362cd6e147",
+    "games": 2094,
+    "minutes": 3353.5233333333335,
+    "turning": 0.6422750732148708,
+    "store": 0.671016619354064,
+    "speed": 0.8029071438378652,
+    "shots": 26.88694576947429,
+    "climb": 0.38270114582639614,
+    "dive": 0.14177095996217576,
+    "two_circle": 0.6600029094720855,
+    "hits": 20868.0,
+    "hit_range": 0.16861377427101318
+   },
+   "league6": {
+    "conditions": "8411ed4813e3",
+    "agent": "e7840c6baff3",
+    "games": 2198,
+    "minutes": 3781.4894444444444,
+    "turning": 0.6556218809137669,
+    "store": 0.5635239021919856,
+    "speed": 0.8101401300918637,
+    "shots": 23.593348946424843,
+    "climb": 0.34086392472337107,
+    "dive": 0.18246308296216615,
+    "two_circle": 0.6851483067416392,
+    "hits": 19839.0,
+    "hit_range": 0.18024283313971745
+   },
+   "r1-persona14": {
+    "conditions": "8411ed4813e3",
+    "agent": "ecdcb11a0c38",
+    "games": 1936,
+    "minutes": 3321.0655555555554,
+    "turning": 0.5292414516224545,
+    "store": 0.8764455250508278,
+    "speed": 0.9329697759954215,
+    "shots": 11.10155743186842,
+    "climb": 0.41879697914892783,
+    "dive": 0.02331698092881167,
+    "two_circle": 0.6899482325155937,
+    "hits": 11666.0,
+    "hit_range": 0.16952000394177422
+   },
+   "league2": {
+    "conditions": "8411ed4813e3",
+    "agent": "efa1ecbe868b",
+    "games": 2260,
+    "minutes": 3639.176111111111,
+    "turning": 0.6350471268145705,
+    "store": 0.573080363525654,
+    "speed": 0.8791418743402606,
+    "shots": 23.531699864300787,
+    "climb": 0.3347654849227931,
+    "dive": 0.20079529600488022,
+    "two_circle": 0.6595698392768843,
+    "hits": 19981.0,
+    "hit_range": 0.16557723383383466
+   }
+  },
+  "cycles": [],
+  "scores": {
+   "league1|league5": [
+    168,
+    99.0
+   ],
+   "league5|league1": [
+    168,
+    69.0
+   ],
+   "league1|league3": [
+    172,
+    86.0
+   ],
+   "league3|league1": [
+    172,
+    86.0
+   ],
+   "league1|league4": [
+    172,
+    87.5
+   ],
+   "league4|league1": [
+    172,
+    84.5
+   ],
+   "league1|league6": [
+    174,
+    85.5
+   ],
+   "league6|league1": [
+    174,
+    88.5
+   ],
+   "league1|league2": [
+    172,
+    81.5
+   ],
+   "league2|league1": [
+    172,
+    90.5
+   ],
+   "robust-centre|league1": [
+    174,
+    93.0
+   ],
+   "league1|robust-centre": [
+    174,
+    81.0
+   ],
+   "robust-centre|yardstick": [
+    70,
+    60.0
+   ],
+   "yardstick|robust-centre": [
+    70,
+    10.0
+   ],
+   "robust-centre|league5": [
+    164,
+    104.0
+   ],
+   "league5|robust-centre": [
+    164,
+    60.0
+   ],
+   "robust-centre|r1-persona27": [
+    70,
+    59.5
+   ],
+   "r1-persona27|robust-centre": [
+    70,
+    10.5
+   ],
+   "robust-centre|cma-mean-g16": [
+    168,
+    96.5
+   ],
+   "cma-mean-g16|robust-centre": [
+    168,
+    71.5
+   ],
+   "robust-centre|league3": [
+    170,
+    100.5
+   ],
+   "league3|robust-centre": [
+    170,
+    69.5
+   ],
+   "robust-centre|r1-persona00": [
+    70,
+    63.5
+   ],
+   "r1-persona00|robust-centre": [
+    70,
+    6.5
+   ],
+   "robust-centre|surface-peak": [
+    172,
+    85.0
+   ],
+   "surface-peak|robust-centre": [
+    172,
+    87.0
+   ],
+   "robust-centre|crowd-known": [
+    140,
+    97.0
+   ],
+   "crowd-known|robust-centre": [
+    140,
+    43.0
+   ],
+   "robust-centre|cma-top1": [
+    172,
+    82.5
+   ],
+   "cma-top1|robust-centre": [
+    172,
+    89.5
+   ],
+   "robust-centre|league4": [
+    170,
+    72.0
+   ],
+   "league4|robust-centre": [
+    170,
+    98.0
+   ],
+   "robust-centre|cma-top2": [
+    168,
+    72.0
+   ],
+   "cma-top2|robust-centre": [
+    168,
+    96.0
+   ],
+   "robust-centre|league6": [
+    172,
+    93.0
+   ],
+   "league6|robust-centre": [
+    172,
+    79.0
+   ],
+   "robust-centre|r1-persona14": [
+    132,
+    104.5
+   ],
+   "r1-persona14|robust-centre": [
+    132,
+    27.5
+   ],
+   "robust-centre|league2": [
+    172,
+    85.5
+   ],
+   "league2|robust-centre": [
+    172,
+    86.5
+   ],
+   "yardstick|league1": [
+    132,
+    34.5
+   ],
+   "league1|yardstick": [
+    132,
+    97.5
+   ],
+   "yardstick|league5": [
+    68,
+    14.0
+   ],
+   "league5|yardstick": [
+    68,
+    54.0
+   ],
+   "yardstick|r1-persona27": [
+    168,
+    69.5
+   ],
+   "r1-persona27|yardstick": [
+    168,
+    98.5
+   ],
+   "yardstick|league3": [
+    126,
+    25.0
+   ],
+   "league3|yardstick": [
+    126,
+    101.0
+   ],
+   "yardstick|r1-persona00": [
+    142,
+    108.0
+   ],
+   "r1-persona00|yardstick": [
+    142,
+    34.0
+   ],
+   "yardstick|crowd-known": [
+    144,
+    40.0
+   ],
+   "crowd-known|yardstick": [
+    144,
+    104.0
+   ],
+   "yardstick|league4": [
+    68,
+    7.5
+   ],
+   "league4|yardstick": [
+    68,
+    60.5
+   ],
+   "yardstick|league6": [
+    68,
+    12.5
+   ],
+   "league6|yardstick": [
+    68,
+    55.5
+   ],
+   "yardstick|r1-persona14": [
+    152,
+    60.5
+   ],
+   "r1-persona14|yardstick": [
+    152,
+    91.5
+   ],
+   "yardstick|league2": [
+    68,
+    13.5
+   ],
+   "league2|yardstick": [
+    68,
+    54.5
+   ],
+   "league5|league6": [
+    164,
+    60.0
+   ],
+   "league6|league5": [
+    164,
+    104.0
+   ],
+   "r1-persona27|league1": [
+    124,
+    30.5
+   ],
+   "league1|r1-persona27": [
+    124,
+    93.5
+   ],
+   "r1-persona27|league5": [
+    132,
+    35.0
+   ],
+   "league5|r1-persona27": [
+    132,
+    97.0
+   ],
+   "r1-persona27|league3": [
+    68,
+    10.0
+   ],
+   "league3|r1-persona27": [
+    68,
+    58.0
+   ],
+   "r1-persona27|r1-persona00": [
+    126,
+    101.0
+   ],
+   "r1-persona00|r1-persona27": [
+    126,
+    25.0
+   ],
+   "r1-persona27|league4": [
+    68,
+    11.0
+   ],
+   "league4|r1-persona27": [
+    68,
+    57.0
+   ],
+   "r1-persona27|league6": [
+    68,
+    7.0
+   ],
+   "league6|r1-persona27": [
+    68,
+    61.0
+   ],
+   "r1-persona27|league2": [
+    142,
+    41.0
+   ],
+   "league2|r1-persona27": [
+    142,
+    101.0
+   ],
+   "cma-mean-g16|league1": [
+    162,
+    69.0
+   ],
+   "league1|cma-mean-g16": [
+    162,
+    93.0
+   ],
+   "cma-mean-g16|yardstick": [
+    68,
+    57.5
+   ],
+   "yardstick|cma-mean-g16": [
+    68,
+    10.5
+   ],
+   "cma-mean-g16|league5": [
+    164,
+    99.5
+   ],
+   "league5|cma-mean-g16": [
+    164,
+    64.5
+   ],
+   "cma-mean-g16|r1-persona27": [
+    124,
+    96.0
+   ],
+   "r1-persona27|cma-mean-g16": [
+    124,
+    28.0
+   ],
+   "cma-mean-g16|league3": [
+    172,
+    78.5
+   ],
+   "league3|cma-mean-g16": [
+    172,
+    93.5
+   ],
+   "cma-mean-g16|r1-persona00": [
+    68,
+    61.0
+   ],
+   "r1-persona00|cma-mean-g16": [
+    68,
+    7.0
+   ],
+   "cma-mean-g16|crowd-known": [
+    170,
+    91.5
+   ],
+   "crowd-known|cma-mean-g16": [
+    170,
+    78.5
+   ],
+   "cma-mean-g16|league4": [
+    172,
+    78.5
+   ],
+   "league4|cma-mean-g16": [
+    172,
+    93.5
+   ],
+   "cma-mean-g16|league6": [
+    168,
+    66.0
+   ],
+   "league6|cma-mean-g16": [
+    168,
+    102.0
+   ],
+   "cma-mean-g16|r1-persona14": [
+    68,
+    55.0
+   ],
+   "r1-persona14|cma-mean-g16": [
+    68,
+    13.0
+   ],
+   "cma-mean-g16|league2": [
+    170,
+    81.0
+   ],
+   "league2|cma-mean-g16": [
+    170,
+    89.0
+   ],
+   "league3|league5": [
+    172,
+    89.0
+   ],
+   "league5|league3": [
+    172,
+    83.0
+   ],
+   "league3|league4": [
+    172,
+    68.0
+   ],
+   "league4|league3": [
+    172,
+    104.0
+   ],
+   "league3|league6": [
+    166,
+    72.5
+   ],
+   "league6|league3": [
+    166,
+    93.5
+   ],
+   "r1-persona00|league1": [
+    68,
+    9.0
+   ],
+   "league1|r1-persona00": [
+    68,
+    59.0
+   ],
+   "r1-persona00|league5": [
+    68,
+    10.5
+   ],
+   "league5|r1-persona00": [
+    68,
+    57.5
+   ],
+   "r1-persona00|league3": [
+    68,
+    6.0
+   ],
+   "league3|r1-persona00": [
+    68,
+    62.0
+   ],
+   "r1-persona00|league4": [
+    68,
+    10.0
+   ],
+   "league4|r1-persona00": [
+    68,
+    58.0
+   ],
+   "r1-persona00|league6": [
+    68,
+    7.5
+   ],
+   "league6|r1-persona00": [
+    68,
+    60.5
+   ],
+   "r1-persona00|league2": [
+    68,
+    7.0
+   ],
+   "league2|r1-persona00": [
+    68,
+    61.0
+   ],
+   "surface-peak|league1": [
+    164,
+    95.0
+   ],
+   "league1|surface-peak": [
+    164,
+    69.0
+   ],
+   "surface-peak|yardstick": [
+    68,
+    60.5
+   ],
+   "yardstick|surface-peak": [
+    68,
+    7.5
+   ],
+   "surface-peak|league5": [
+    164,
+    98.5
+   ],
+   "league5|surface-peak": [
+    164,
+    65.5
+   ],
+   "surface-peak|r1-persona27": [
+    68,
+    54.0
+   ],
+   "r1-persona27|surface-peak": [
+    68,
+    14.0
+   ],
+   "surface-peak|cma-mean-g16": [
+    164,
+    98.5
+   ],
+   "cma-mean-g16|surface-peak": [
+    164,
+    65.5
+   ],
+   "surface-peak|league3": [
+    162,
+    96.0
+   ],
+   "league3|surface-peak": [
+    162,
+    66.0
+   ],
+   "surface-peak|r1-persona00": [
+    68,
+    63.0
+   ],
+   "r1-persona00|surface-peak": [
+    68,
+    5.0
+   ],
+   "surface-peak|crowd-known": [
+    144,
+    93.0
+   ],
+   "crowd-known|surface-peak": [
+    144,
+    51.0
+   ],
+   "surface-peak|cma-top1": [
+    172,
+    82.0
+   ],
+   "cma-top1|surface-peak": [
+    172,
+    90.0
+   ],
+   "surface-peak|league4": [
+    172,
+    87.0
+   ],
+   "league4|surface-peak": [
+    172,
+    85.0
+   ],
+   "surface-peak|cma-top2": [
+    172,
+    80.0
+   ],
+   "cma-top2|surface-peak": [
+    172,
+    92.0
+   ],
+   "surface-peak|league6": [
+    172,
+    91.5
+   ],
+   "league6|surface-peak": [
+    172,
+    80.5
+   ],
+   "surface-peak|r1-persona14": [
+    144,
+    109.0
+   ],
+   "r1-persona14|surface-peak": [
+    144,
+    35.0
+   ],
+   "surface-peak|league2": [
+    166,
+    88.5
+   ],
+   "league2|surface-peak": [
+    166,
+    77.5
+   ],
+   "crowd-known|league1": [
+    156,
+    52.5
+   ],
+   "league1|crowd-known": [
+    156,
+    103.5
+   ],
+   "crowd-known|league5": [
+    150,
+    54.0
+   ],
+   "league5|crowd-known": [
+    150,
+    96.0
+   ],
+   "crowd-known|r1-persona27": [
+    124,
+    97.5
+   ],
+   "r1-persona27|crowd-known": [
+    124,
+    26.5
+   ],
+   "crowd-known|league3": [
+    162,
+    68.0
+   ],
+   "league3|crowd-known": [
+    162,
+    94.0
+   ],
+   "crowd-known|r1-persona00": [
+    68,
+    57.0
+   ],
+   "r1-persona00|crowd-known": [
+    68,
+    11.0
+   ],
+   "crowd-known|league4": [
+    166,
+    63.5
+   ],
+   "league4|crowd-known": [
+    166,
+    102.5
+   ],
+   "crowd-known|league6": [
+    156,
+    53.0
+   ],
+   "league6|crowd-known": [
+    156,
+    103.0
+   ],
+   "crowd-known|r1-persona14": [
+    170,
+    97.5
+   ],
+   "r1-persona14|crowd-known": [
+    170,
+    72.5
+   ],
+   "crowd-known|league2": [
+    172,
+    74.0
+   ],
+   "league2|crowd-known": [
+    172,
+    98.0
+   ],
+   "cma-top1|league1": [
+    170,
+    79.5
+   ],
+   "league1|cma-top1": [
+    170,
+    90.5
+   ],
+   "cma-top1|yardstick": [
+    128,
+    103.0
+   ],
+   "yardstick|cma-top1": [
+    128,
+    25.0
+   ],
+   "cma-top1|league5": [
+    134,
+    90.5
+   ],
+   "league5|cma-top1": [
+    134,
+    43.5
+   ],
+   "cma-top1|r1-persona27": [
+    144,
+    103.0
+   ],
+   "r1-persona27|cma-top1": [
+    144,
+    41.0
+   ],
+   "cma-top1|cma-mean-g16": [
+    172,
+    93.0
+   ],
+   "cma-mean-g16|cma-top1": [
+    172,
+    79.0
+   ],
+   "cma-top1|league3": [
+    164,
+    104.0
+   ],
+   "league3|cma-top1": [
+    164,
+    60.0
+   ],
+   "cma-top1|r1-persona00": [
+    68,
+    62.5
+   ],
+   "r1-persona00|cma-top1": [
+    68,
+    5.5
+   ],
+   "cma-top1|crowd-known": [
+    152,
+    96.0
+   ],
+   "crowd-known|cma-top1": [
+    152,
+    56.0
+   ],
+   "cma-top1|league4": [
+    170,
+    80.0
+   ],
+   "league4|cma-top1": [
+    170,
+    90.0
+   ],
+   "cma-top1|cma-top2": [
+    166,
+    75.5
+   ],
+   "cma-top2|cma-top1": [
+    166,
+    90.5
+   ],
+   "cma-top1|league6": [
+    166,
+    97.5
+   ],
+   "league6|cma-top1": [
+    166,
+    68.5
+   ],
+   "cma-top1|r1-persona14": [
+    124,
+    90.0
+   ],
+   "r1-persona14|cma-top1": [
+    124,
+    34.0
+   ],
+   "cma-top1|league2": [
+    172,
+    93.5
+   ],
+   "league2|cma-top1": [
+    172,
+    78.5
+   ],
+   "league4|league5": [
+    146,
+    96.5
+   ],
+   "league5|league4": [
+    146,
+    49.5
+   ],
+   "league4|league6": [
+    166,
+    98.0
+   ],
+   "league6|league4": [
+    166,
+    68.0
+   ],
+   "cma-top2|league1": [
+    170,
+    92.5
+   ],
+   "league1|cma-top2": [
+    170,
+    77.5
+   ],
+   "cma-top2|yardstick": [
+    68,
+    59.0
+   ],
+   "yardstick|cma-top2": [
+    68,
+    9.0
+   ],
+   "cma-top2|league5": [
+    160,
+    108.0
+   ],
+   "league5|cma-top2": [
+    160,
+    52.0
+   ],
+   "cma-top2|r1-persona27": [
+    68,
+    59.5
+   ],
+   "r1-persona27|cma-top2": [
+    68,
+    8.5
+   ],
+   "cma-top2|cma-mean-g16": [
+    168,
+    104.0
+   ],
+   "cma-mean-g16|cma-top2": [
+    168,
+    64.0
+   ],
+   "cma-top2|league3": [
+    170,
+    101.0
+   ],
+   "league3|cma-top2": [
+    170,
+    69.0
+   ],
+   "cma-top2|r1-persona00": [
+    68,
+    63.5
+   ],
+   "r1-persona00|cma-top2": [
+    68,
+    4.5
+   ],
+   "cma-top2|crowd-known": [
+    168,
+    109.5
+   ],
+   "crowd-known|cma-top2": [
+    168,
+    58.5
+   ],
+   "cma-top2|league4": [
+    172,
+    92.5
+   ],
+   "league4|cma-top2": [
+    172,
+    79.5
+   ],
+   "cma-top2|league6": [
+    166,
+    94.5
+   ],
+   "league6|cma-top2": [
+    166,
+    71.5
+   ],
+   "cma-top2|r1-persona14": [
+    68,
+    57.0
+   ],
+   "r1-persona14|cma-top2": [
+    68,
+    11.0
+   ],
+   "cma-top2|league2": [
+    142,
+    99.0
+   ],
+   "league2|cma-top2": [
+    142,
+    43.0
+   ],
+   "r1-persona14|league1": [
+    128,
+    28.0
+   ],
+   "league1|r1-persona14": [
+    128,
+    100.0
+   ],
+   "r1-persona14|league5": [
+    142,
+    42.0
+   ],
+   "league5|r1-persona14": [
+    142,
+    100.0
+   ],
+   "r1-persona14|r1-persona27": [
+    154,
+    88.5
+   ],
+   "r1-persona27|r1-persona14": [
+    154,
+    65.5
+   ],
+   "r1-persona14|league3": [
+    140,
+    39.0
+   ],
+   "league3|r1-persona14": [
+    140,
+    101.0
+   ],
+   "r1-persona14|r1-persona00": [
+    68,
+    58.0
+   ],
+   "r1-persona00|r1-persona14": [
+    68,
+    10.0
+   ],
+   "r1-persona14|league4": [
+    136,
+    32.0
+   ],
+   "league4|r1-persona14": [
+    136,
+    104.0
+   ],
+   "r1-persona14|league6": [
+    152,
+    42.0
+   ],
+   "league6|r1-persona14": [
+    152,
+    110.0
+   ],
+   "r1-persona14|league2": [
+    158,
+    50.5
+   ],
+   "league2|r1-persona14": [
+    158,
+    107.5
+   ],
+   "league2|league5": [
+    142,
+    89.0
+   ],
+   "league5|league2": [
+    142,
+    53.0
+   ],
+   "league2|league3": [
+    172,
+    95.0
+   ],
+   "league3|league2": [
+    172,
+    77.0
+   ],
+   "league2|league4": [
+    172,
+    74.0
+   ],
+   "league4|league2": [
+    172,
+    98.0
+   ],
+   "league2|league6": [
+    172,
+    81.5
+   ],
+   "league6|league2": [
+    172,
+    90.5
+   ]
+  }
+ },
+ "ladder 4v4": {
+  "elo": {
+   "robust-centre": 1481.8841556953328,
+   "surface-peak": 1493.1985534693451,
+   "cma-top1": 1476.0716524933991,
+   "cma-top2": 1439.3541609624888,
+   "cma-mean-g16": 1433.3925283527665,
+   "yardstick": 1000.0,
+   "crowd-known": 1260.265659322593,
+   "r1-persona14": 928.9162267063588,
+   "r1-persona27": 1007.6347599942244,
+   "r1-persona00": 1035.4602131758206,
+   "league1": 1444.8127890635812,
+   "league2": 1448.026164231599,
+   "league3": 1465.76167048949,
+   "league4": 1465.916531189123,
+   "league5": 1478.729605642489,
+   "league6": 1480.8995555265988
+  },
+  "error": {
+   "robust-centre": 16.789998809290413,
+   "surface-peak": 16.896601366019794,
+   "cma-top1": 16.828908199771973,
+   "cma-top2": 16.693521840162177,
+   "cma-mean-g16": 16.712580257342587,
+   "yardstick": 0.0,
+   "crowd-known": 17.421639611836817,
+   "r1-persona14": 16.25562059613129,
+   "r1-persona27": 15.710209144591001,
+   "r1-persona00": 15.616635537076123,
+   "league1": 16.795281617946618,
+   "league2": 16.698685853827232,
+   "league3": 16.75303494967462,
+   "league4": 16.821242320249077,
+   "league5": 16.78700585073922,
+   "league6": 16.845117011130725
+  },
+  "games": 16384,
+  "pairs": 120,
+  "styles": {
+   "league1": {
+    "conditions": "2061d85557ee",
+    "agent": "48fdb56deba3",
+    "games": 2278,
+    "minutes": 4504.884444444444,
+    "turning": 0.5424499728196259,
+    "store": 0.2333960919772916,
+    "speed": 0.8528669583635848,
+    "shots": 141.37388158433464,
+    "climb": 0.14575968898943273,
+    "dive": 0.35774712188942576,
+    "two_circle": 0.5897496347713166,
+    "hits": 103717.0,
+    "hit_range": 0.2596768333812429
+   },
+   "robust-centre": {
+    "conditions": "2061d85557ee",
+    "agent": "4e79df9c5f2e",
+    "games": 2358,
+    "minutes": 4711.043888888888,
+    "turning": 0.5445979830608433,
+    "store": 0.181165432628223,
+    "speed": 0.8607632859444306,
+    "shots": 145.689791092538,
+    "climb": 0.13104290756978962,
+    "dive": 0.3835279960952273,
+    "two_circle": 0.5965951549600758,
+    "hits": 111116.0,
+    "hit_range": 0.26462742487206875
+   },
+   "yardstick": {
+    "conditions": "2061d85557ee",
+    "agent": "4f681eecee49",
+    "games": 1396,
+    "minutes": 2986.8955555555553,
+    "turning": 0.5340078104133389,
+    "store": 0.6542434081453641,
+    "speed": 0.7078648368303607,
+    "shots": 69.98135559551612,
+    "climb": 0.3880839117240271,
+    "dive": 0.1450253440398541,
+    "two_circle": 0.5477313843108053,
+    "hits": 46499.0,
+    "hit_range": 0.2377926459595522
+   },
+   "league5": {
+    "conditions": "2061d85557ee",
+    "agent": "5514675dddf3",
+    "games": 2356,
+    "minutes": 4664.34,
+    "turning": 0.5383598394056465,
+    "store": 0.22105445820142766,
+    "speed": 0.8517147302642898,
+    "shots": 150.32909264762003,
+    "climb": 0.14842209425365885,
+    "dive": 0.3597191075741096,
+    "two_circle": 0.59125507083236,
+    "hits": 111339.0,
+    "hit_range": 0.26337518972504637
+   },
+   "r1-persona27": {
+    "conditions": "2061d85557ee",
+    "agent": "5e7f71ccb84a",
+    "games": 1386,
+    "minutes": 2845.975,
+    "turning": 0.541108056114337,
+    "store": 0.7106686974726555,
+    "speed": 0.6630138245824231,
+    "shots": 85.29238661618602,
+    "climb": 0.43628691983122364,
+    "dive": 0.1080186345042853,
+    "two_circle": 0.5401996562725923,
+    "hits": 48363.0,
+    "hit_range": 0.24654393888165882
+   },
+   "cma-mean-g16": {
+    "conditions": "2061d85557ee",
+    "agent": "684b93800e8c",
+    "games": 2358,
+    "minutes": 4810.545555555555,
+    "turning": 0.5467762838633918,
+    "store": 0.16501158528288679,
+    "speed": 0.843443161386156,
+    "shots": 139.61971511200738,
+    "climb": 0.14355093935984622,
+    "dive": 0.40423527846575963,
+    "two_circle": 0.5897380223490165,
+    "hits": 108557.0,
+    "hit_range": 0.2630387685966295
+   },
+   "league3": {
+    "conditions": "2061d85557ee",
+    "agent": "6a2761c7486b",
+    "games": 2368,
+    "minutes": 4759.6738888888885,
+    "turning": 0.5451134432295958,
+    "store": 0.18782606435748303,
+    "speed": 0.8577078333065038,
+    "shots": 143.55206174839478,
+    "climb": 0.11855434073272761,
+    "dive": 0.4124208789747851,
+    "two_circle": 0.5924463386244564,
+    "hits": 110557.0,
+    "hit_range": 0.2630708278601894
+   },
+   "r1-persona00": {
+    "conditions": "2061d85557ee",
+    "agent": "760720324be0",
+    "games": 1380,
+    "minutes": 3126.7105555555554,
+    "turning": 0.5517891628742241,
+    "store": 0.5096373243955664,
+    "speed": 0.7971942422026972,
+    "shots": 77.08100756936781,
+    "climb": 0.32094414452959885,
+    "dive": 0.26782015675330784,
+    "two_circle": 0.5421233142479197,
+    "hits": 48343.0,
+    "hit_range": 0.2482834425130759
+   },
+   "surface-peak": {
+    "conditions": "2061d85557ee",
+    "agent": "869c2aff425e",
+    "games": 2254,
+    "minutes": 4450.207777777778,
+    "turning": 0.5439224186036757,
+    "store": 0.14397233956565156,
+    "speed": 0.8637383114650911,
+    "shots": 147.6636671396367,
+    "climb": 0.1259783875259757,
+    "dive": 0.4119386934992049,
+    "two_circle": 0.5934502970147959,
+    "hits": 106520.0,
+    "hit_range": 0.2564071155769783
+   },
+   "crowd-known": {
+    "conditions": "2061d85557ee",
+    "agent": "9a4ceed17114",
+    "games": 1600,
+    "minutes": 3278.0822222222223,
+    "turning": 0.49874859080885364,
+    "store": 0.34906209016454337,
+    "speed": 0.8400872986493128,
+    "shots": 98.80106051166773,
+    "climb": 0.1664628437901022,
+    "dive": 0.2587696939335126,
+    "two_circle": 0.5857374893387113,
+    "hits": 58606.0,
+    "hit_range": 0.2587482087949525
+   },
+   "cma-top1": {
+    "conditions": "2061d85557ee",
+    "agent": "9e2af4df6ef8",
+    "games": 2298,
+    "minutes": 4664.598888888889,
+    "turning": 0.5449303846299516,
+    "store": 0.13427863740931162,
+    "speed": 0.8678999139832545,
+    "shots": 137.5432304647369,
+    "climb": 0.11767213996487491,
+    "dive": 0.42827786311982524,
+    "two_circle": 0.5922716482780582,
+    "hits": 107235.0,
+    "hit_range": 0.25669282657725384
+   },
+   "league4": {
+    "conditions": "2061d85557ee",
+    "agent": "afe4a3127024",
+    "games": 2284,
+    "minutes": 4515.9,
+    "turning": 0.5388268857444438,
+    "store": 0.17066314152492568,
+    "speed": 0.8675715181629511,
+    "shots": 147.50193759826394,
+    "climb": 0.13715070946851987,
+    "dive": 0.40554436054336407,
+    "two_circle": 0.5880613317278242,
+    "hits": 106492.0,
+    "hit_range": 0.2653628008967874
+   },
+   "cma-top2": {
+    "conditions": "2061d85557ee",
+    "agent": "e6362cd6e147",
+    "games": 2394,
+    "minutes": 4712.529444444444,
+    "turning": 0.5335525755040964,
+    "store": 0.24258181944625712,
+    "speed": 0.8315793384243693,
+    "shots": 136.91946280795418,
+    "climb": 0.14485179167168186,
+    "dive": 0.3315375689370877,
+    "two_circle": 0.5931048227441775,
+    "hits": 107672.0,
+    "hit_range": 0.2519845522399592
+   },
+   "league6": {
+    "conditions": "2061d85557ee",
+    "agent": "e7840c6baff3",
+    "games": 2288,
+    "minutes": 4402.876111111111,
+    "turning": 0.5366215795558889,
+    "store": 0.14956110905746076,
+    "speed": 0.861400494043062,
+    "shots": 152.02539955889947,
+    "climb": 0.11948654269803691,
+    "dive": 0.41245350103852574,
+    "two_circle": 0.58452612983241,
+    "hits": 107239.0,
+    "hit_range": 0.26117500743924305
+   },
+   "r1-persona14": {
+    "conditions": "2061d85557ee",
+    "agent": "ecdcb11a0c38",
+    "games": 1366,
+    "minutes": 2754.398888888889,
+    "turning": 0.5205217189957558,
+    "store": 0.7207336828462367,
+    "speed": 0.6678245523662463,
+    "shots": 63.958782698705384,
+    "climb": 0.4277111884464406,
+    "dive": 0.10160051053688263,
+    "two_circle": 0.5408330440065967,
+    "hits": 40999.0,
+    "hit_range": 0.2260098828135425
+   },
+   "league2": {
+    "conditions": "2061d85557ee",
+    "agent": "efa1ecbe868b",
+    "games": 2404,
+    "minutes": 4669.314444444444,
+    "turning": 0.5462579208035061,
+    "store": 0.18922470693432739,
+    "speed": 0.8572883052930804,
+    "shots": 150.48140543115656,
+    "climb": 0.13036103563145007,
+    "dive": 0.35360068323139515,
+    "two_circle": 0.5842848337134107,
+    "hits": 111315.0,
+    "hit_range": 0.2590681348866285
+   }
+  },
+  "cycles": [],
+  "scores": {
+   "league1|league5": [
+    188,
+    76.5
+   ],
+   "league5|league1": [
+    188,
+    111.5
+   ],
+   "league1|league3": [
+    192,
+    86.5
+   ],
+   "league3|league1": [
+    192,
+    105.5
+   ],
+   "league1|league4": [
+    194,
+    90.0
+   ],
+   "league4|league1": [
+    194,
+    104.0
+   ],
+   "league1|league6": [
+    194,
+    91.0
+   ],
+   "league6|league1": [
+    194,
+    103.0
+   ],
+   "league1|league2": [
+    196,
+    99.0
+   ],
+   "league2|league1": [
+    196,
+    97.0
+   ],
+   "robust-centre|league1": [
+    198,
+    108.0
+   ],
+   "league1|robust-centre": [
+    198,
+    90.0
+   ],
+   "robust-centre|yardstick": [
+    70,
+    69.5
+   ],
+   "yardstick|robust-centre": [
+    70,
+    0.5
+   ],
+   "robust-centre|league5": [
+    188,
+    101.0
+   ],
+   "league5|robust-centre": [
+    188,
+    87.0
+   ],
+   "robust-centre|r1-persona27": [
+    70,
+    67.0
+   ],
+   "r1-persona27|robust-centre": [
+    70,
+    3.0
+   ],
+   "robust-centre|cma-mean-g16": [
+    190,
+    113.0
+   ],
+   "cma-mean-g16|robust-centre": [
+    190,
+    77.0
+   ],
+   "robust-centre|league3": [
+    176,
+    104.5
+   ],
+   "league3|robust-centre": [
+    176,
+    71.5
+   ],
+   "robust-centre|r1-persona00": [
+    70,
+    69.0
+   ],
+   "r1-persona00|robust-centre": [
+    70,
+    1.0
+   ],
+   "robust-centre|surface-peak": [
+    198,
+    90.5
+   ],
+   "surface-peak|robust-centre": [
+    198,
+    107.5
+   ],
+   "robust-centre|crowd-known": [
+    152,
+    118.0
+   ],
+   "crowd-known|robust-centre": [
+    152,
+    34.0
+   ],
+   "robust-centre|cma-top1": [
+    198,
+    101.5
+   ],
+   "cma-top1|robust-centre": [
+    198,
+    96.5
+   ],
+   "robust-centre|league4": [
+    190,
+    97.0
+   ],
+   "league4|robust-centre": [
+    190,
+    93.0
+   ],
+   "robust-centre|cma-top2": [
+    196,
+    110.0
+   ],
+   "cma-top2|robust-centre": [
+    196,
+    86.0
+   ],
+   "robust-centre|league6": [
+    194,
+    83.0
+   ],
+   "league6|robust-centre": [
+    194,
+    111.0
+   ],
+   "robust-centre|r1-persona14": [
+    70,
+    66.0
+   ],
+   "r1-persona14|robust-centre": [
+    70,
+    4.0
+   ],
+   "robust-centre|league2": [
+    198,
+    101.0
+   ],
+   "league2|robust-centre": [
+    198,
+    97.0
+   ],
+   "yardstick|league1": [
+    68,
+    6.0
+   ],
+   "league1|yardstick": [
+    68,
+    62.0
+   ],
+   "yardstick|league5": [
+    68,
+    1.0
+   ],
+   "league5|yardstick": [
+    68,
+    67.0
+   ],
+   "yardstick|r1-persona27": [
+    188,
+    85.0
+   ],
+   "r1-persona27|yardstick": [
+    188,
+    103.0
+   ],
+   "yardstick|league3": [
+    68,
+    9.5
+   ],
+   "league3|yardstick": [
+    68,
+    58.5
+   ],
+   "yardstick|r1-persona00": [
+    194,
+    97.0
+   ],
+   "r1-persona00|yardstick": [
+    194,
+    97.0
+   ],
+   "yardstick|crowd-known": [
+    68,
+    13.0
+   ],
+   "crowd-known|yardstick": [
+    68,
+    55.0
+   ],
+   "yardstick|league4": [
+    68,
+    5.0
+   ],
+   "league4|yardstick": [
+    68,
+    63.0
+   ],
+   "yardstick|league6": [
+    68,
+    4.0
+   ],
+   "league6|yardstick": [
+    68,
+    64.0
+   ],
+   "yardstick|r1-persona14": [
+    196,
+    114.0
+   ],
+   "r1-persona14|yardstick": [
+    196,
+    82.0
+   ],
+   "yardstick|league2": [
+    68,
+    1.0
+   ],
+   "league2|yardstick": [
+    68,
+    67.0
+   ],
+   "league5|league6": [
+    196,
+    105.0
+   ],
+   "league6|league5": [
+    196,
+    91.0
+   ],
+   "r1-persona27|league1": [
+    68,
+    6.0
+   ],
+   "league1|r1-persona27": [
+    68,
+    62.0
+   ],
+   "r1-persona27|league5": [
+    68,
+    4.0
+   ],
+   "league5|r1-persona27": [
+    68,
+    64.0
+   ],
+   "r1-persona27|league3": [
+    68,
+    4.0
+   ],
+   "league3|r1-persona27": [
+    68,
+    64.0
+   ],
+   "r1-persona27|r1-persona00": [
+    198,
+    91.0
+   ],
+   "r1-persona00|r1-persona27": [
+    198,
+    107.0
+   ],
+   "r1-persona27|league4": [
+    68,
+    4.0
+   ],
+   "league4|r1-persona27": [
+    68,
+    64.0
+   ],
+   "r1-persona27|league6": [
+    68,
+    5.0
+   ],
+   "league6|r1-persona27": [
+    68,
+    63.0
+   ],
+   "r1-persona27|league2": [
+    68,
+    1.0
+   ],
+   "league2|r1-persona27": [
+    68,
+    67.0
+   ],
+   "cma-mean-g16|league1": [
+    198,
+    93.5
+   ],
+   "league1|cma-mean-g16": [
+    198,
+    104.5
+   ],
+   "cma-mean-g16|yardstick": [
+    68,
+    62.0
+   ],
+   "yardstick|cma-mean-g16": [
+    68,
+    6.0
+   ],
+   "cma-mean-g16|league5": [
+    194,
+    84.5
+   ],
+   "league5|cma-mean-g16": [
+    194,
+    109.5
+   ],
+   "cma-mean-g16|r1-persona27": [
+    68,
+    64.0
+   ],
+   "r1-persona27|cma-mean-g16": [
+    68,
+    4.0
+   ],
+   "cma-mean-g16|league3": [
+    198,
+    85.5
+   ],
+   "league3|cma-mean-g16": [
+    198,
+    112.5
+   ],
+   "cma-mean-g16|r1-persona00": [
+    68,
+    57.0
+   ],
+   "r1-persona00|cma-mean-g16": [
+    68,
+    11.0
+   ],
+   "cma-mean-g16|crowd-known": [
+    156,
+    113.0
+   ],
+   "crowd-known|cma-mean-g16": [
+    156,
+    43.0
+   ],
+   "cma-mean-g16|league4": [
+    194,
+    93.5
+   ],
+   "league4|cma-mean-g16": [
+    194,
+    100.5
+   ],
+   "cma-mean-g16|league6": [
+    196,
+    81.0
+   ],
+   "league6|cma-mean-g16": [
+    196,
+    115.0
+   ],
+   "cma-mean-g16|r1-persona14": [
+    68,
+    63.0
+   ],
+   "r1-persona14|cma-mean-g16": [
+    68,
+    5.0
+   ],
+   "cma-mean-g16|league2": [
+    194,
+    99.0
+   ],
+   "league2|cma-mean-g16": [
+    194,
+    95.0
+   ],
+   "league3|league5": [
+    198,
+    102.0
+   ],
+   "league5|league3": [
+    198,
+    96.0
+   ],
+   "league3|league4": [
+    194,
+    97.5
+   ],
+   "league4|league3": [
+    194,
+    96.5
+   ],
+   "league3|league6": [
+    198,
+    95.5
+   ],
+   "league6|league3": [
+    198,
+    102.5
+   ],
+   "r1-persona00|league1": [
+    68,
+    10.0
+   ],
+   "league1|r1-persona00": [
+    68,
+    58.0
+   ],
+   "r1-persona00|league5": [
+    68,
+    9.0
+   ],
+   "league5|r1-persona00": [
+    68,
+    59.0
+   ],
+   "r1-persona00|league3": [
+    68,
+    1.0
+   ],
+   "league3|r1-persona00": [
+    68,
+    67.0
+   ],
+   "r1-persona00|league4": [
+    68,
+    2.0
+   ],
+   "league4|r1-persona00": [
+    68,
+    66.0
+   ],
+   "r1-persona00|league6": [
+    68,
+    3.5
+   ],
+   "league6|r1-persona00": [
+    68,
+    64.5
+   ],
+   "r1-persona00|league2": [
+    68,
+    10.0
+   ],
+   "league2|r1-persona00": [
+    68,
+    58.0
+   ],
+   "surface-peak|league1": [
+    182,
+    98.5
+   ],
+   "league1|surface-peak": [
+    182,
+    83.5
+   ],
+   "surface-peak|yardstick": [
+    68,
+    60.0
+   ],
+   "yardstick|surface-peak": [
+    68,
+    8.0
+   ],
+   "surface-peak|league5": [
+    196,
+    108.0
+   ],
+   "league5|surface-peak": [
+    196,
+    88.0
+   ],
+   "surface-peak|r1-persona27": [
+    68,
+    63.0
+   ],
+   "r1-persona27|surface-peak": [
+    68,
+    5.0
+   ],
+   "surface-peak|cma-mean-g16": [
+    174,
+    103.5
+   ],
+   "cma-mean-g16|surface-peak": [
+    174,
+    70.5
+   ],
+   "surface-peak|league3": [
+    194,
+    95.0
+   ],
+   "league3|surface-peak": [
+    194,
+    99.0
+   ],
+   "surface-peak|r1-persona00": [
+    68,
+    62.0
+   ],
+   "r1-persona00|surface-peak": [
+    68,
+    6.0
+   ],
+   "surface-peak|crowd-known": [
+    68,
+    56.0
+   ],
+   "crowd-known|surface-peak": [
+    68,
+    12.0
+   ],
+   "surface-peak|cma-top1": [
+    198,
+    101.0
+   ],
+   "cma-top1|surface-peak": [
+    198,
+    97.0
+   ],
+   "surface-peak|league4": [
+    194,
+    111.0
+   ],
+   "league4|surface-peak": [
+    194,
+    83.0
+   ],
+   "surface-peak|cma-top2": [
+    186,
+    109.5
+   ],
+   "cma-top2|surface-peak": [
+    186,
+    76.5
+   ],
+   "surface-peak|league6": [
+    196,
+    99.0
+   ],
+   "league6|surface-peak": [
+    196,
+    97.0
+   ],
+   "surface-peak|r1-persona14": [
+    68,
+    66.0
+   ],
+   "r1-persona14|surface-peak": [
+    68,
+    2.0
+   ],
+   "surface-peak|league2": [
+    196,
+    113.5
+   ],
+   "league2|surface-peak": [
+    196,
+    82.5
+   ],
+   "crowd-known|league1": [
+    68,
+    9.5
+   ],
+   "league1|crowd-known": [
+    68,
+    58.5
+   ],
+   "crowd-known|league5": [
+    144,
+    30.0
+   ],
+   "league5|crowd-known": [
+    144,
+    114.0
+   ],
+   "crowd-known|r1-persona27": [
+    68,
+    56.0
+   ],
+   "r1-persona27|crowd-known": [
+    68,
+    12.0
+   ],
+   "crowd-known|league3": [
+    166,
+    43.5
+   ],
+   "league3|crowd-known": [
+    166,
+    122.5
+   ],
+   "crowd-known|r1-persona00": [
+    68,
+    55.0
+   ],
+   "r1-persona00|crowd-known": [
+    68,
+    13.0
+   ],
+   "crowd-known|league4": [
+    68,
+    12.0
+   ],
+   "league4|crowd-known": [
+    68,
+    56.0
+   ],
+   "crowd-known|league6": [
+    68,
+    10.0
+   ],
+   "league6|crowd-known": [
+    68,
+    58.0
+   ],
+   "crowd-known|r1-persona14": [
+    68,
+    60.0
+   ],
+   "r1-persona14|crowd-known": [
+    68,
+    8.0
+   ],
+   "crowd-known|league2": [
+    188,
+    57.0
+   ],
+   "league2|crowd-known": [
+    188,
+    131.0
+   ],
+   "cma-top1|league1": [
+    198,
+    105.0
+   ],
+   "league1|cma-top1": [
+    198,
+    93.0
+   ],
+   "cma-top1|yardstick": [
+    68,
+    64.0
+   ],
+   "yardstick|cma-top1": [
+    68,
+    4.0
+   ],
+   "cma-top1|league5": [
+    196,
+    92.0
+   ],
+   "league5|cma-top1": [
+    196,
+    104.0
+   ],
+   "cma-top1|r1-persona27": [
+    68,
+    65.0
+   ],
+   "r1-persona27|cma-top1": [
+    68,
+    3.0
+   ],
+   "cma-top1|cma-mean-g16": [
+    196,
+    98.0
+   ],
+   "cma-mean-g16|cma-top1": [
+    196,
+    98.0
+   ],
+   "cma-top1|league3": [
+    196,
+    109.0
+   ],
+   "league3|cma-top1": [
+    196,
+    87.0
+   ],
+   "cma-top1|r1-persona00": [
+    68,
+    65.0
+   ],
+   "r1-persona00|cma-top1": [
+    68,
+    3.0
+   ],
+   "cma-top1|crowd-known": [
+    68,
+    57.0
+   ],
+   "crowd-known|cma-top1": [
+    68,
+    11.0
+   ],
+   "cma-top1|league4": [
+    196,
+    98.0
+   ],
+   "league4|cma-top1": [
+    196,
+    98.0
+   ],
+   "cma-top1|cma-top2": [
+    194,
+    97.0
+   ],
+   "cma-top2|cma-top1": [
+    194,
+    97.0
+   ],
+   "cma-top1|league6": [
+    196,
+    102.0
+   ],
+   "league6|cma-top1": [
+    196,
+    94.0
+   ],
+   "cma-top1|r1-persona14": [
+    68,
+    64.0
+   ],
+   "r1-persona14|cma-top1": [
+    68,
+    4.0
+   ],
+   "cma-top1|league2": [
+    190,
+    114.0
+   ],
+   "league2|cma-top1": [
+    190,
+    76.0
+   ],
+   "league4|league5": [
+    194,
+    97.0
+   ],
+   "league5|league4": [
+    194,
+    97.0
+   ],
+   "league4|league6": [
+    194,
+    93.0
+   ],
+   "league6|league4": [
+    194,
+    101.0
+   ],
+   "cma-top2|league1": [
+    198,
+    102.0
+   ],
+   "league1|cma-top2": [
+    198,
+    96.0
+   ],
+   "cma-top2|yardstick": [
+    68,
+    65.0
+   ],
+   "yardstick|cma-top2": [
+    68,
+    3.0
+   ],
+   "cma-top2|league5": [
+    192,
+    87.0
+   ],
+   "league5|cma-top2": [
+    192,
+    105.0
+   ],
+   "cma-top2|r1-persona27": [
+    68,
+    65.0
+   ],
+   "r1-persona27|cma-top2": [
+    68,
+    3.0
+   ],
+   "cma-top2|cma-mean-g16": [
+    196,
+    100.0
+   ],
+   "cma-mean-g16|cma-top2": [
+    196,
+    96.0
+   ],
+   "cma-top2|league3": [
+    192,
+    81.5
+   ],
+   "league3|cma-top2": [
+    192,
+    110.5
+   ],
+   "cma-top2|r1-persona00": [
+    68,
+    57.0
+   ],
+   "r1-persona00|cma-top2": [
+    68,
+    11.0
+   ],
+   "cma-top2|crowd-known": [
+    182,
+    127.5
+   ],
+   "crowd-known|cma-top2": [
+    182,
+    54.5
+   ],
+   "cma-top2|league4": [
+    196,
+    99.5
+   ],
+   "league4|cma-top2": [
+    196,
+    96.5
+   ],
+   "cma-top2|league6": [
+    196,
+    93.0
+   ],
+   "league6|cma-top2": [
+    196,
+    103.0
+   ],
+   "cma-top2|r1-persona14": [
+    68,
+    66.0
+   ],
+   "r1-persona14|cma-top2": [
+    68,
+    2.0
+   ],
+   "cma-top2|league2": [
+    194,
+    77.5
+   ],
+   "league2|cma-top2": [
+    194,
+    116.5
+   ],
+   "r1-persona14|league1": [
+    68,
+    5.0
+   ],
+   "league1|r1-persona14": [
+    68,
+    63.0
+   ],
+   "r1-persona14|league5": [
+    68,
+    1.5
+   ],
+   "league5|r1-persona14": [
+    68,
+    66.5
+   ],
+   "r1-persona14|r1-persona27": [
+    182,
+    68.0
+   ],
+   "r1-persona27|r1-persona14": [
+    182,
+    114.0
+   ],
+   "r1-persona14|league3": [
+    68,
+    2.0
+   ],
+   "league3|r1-persona14": [
+    68,
+    66.0
+   ],
+   "r1-persona14|r1-persona00": [
+    170,
+    57.0
+   ],
+   "r1-persona00|r1-persona14": [
+    170,
+    113.0
+   ],
+   "r1-persona14|league4": [
+    68,
+    1.0
+   ],
+   "league4|r1-persona14": [
+    68,
+    67.0
+   ],
+   "r1-persona14|league6": [
+    68,
+    5.0
+   ],
+   "league6|r1-persona14": [
+    68,
+    63.0
+   ],
+   "r1-persona14|league2": [
+    68,
+    4.0
+   ],
+   "league2|r1-persona14": [
+    68,
+    64.0
+   ],
+   "league2|league5": [
+    198,
+    89.5
+   ],
+   "league5|league2": [
+    198,
+    108.5
+   ],
+   "league2|league3": [
+    192,
+    99.5
+   ],
+   "league3|league2": [
+    192,
+    92.5
+   ],
+   "league2|league4": [
+    198,
+    91.5
+   ],
+   "league4|league2": [
+    198,
+    106.5
+   ],
+   "league2|league6": [
+    188,
+    84.0
+   ],
+   "league6|league2": [
+    188,
+    104.0
+   ]
+  }
+ },
+ "ladder 16v16": {
+  "elo": {
+   "robust-centre": 2335.37077056365,
+   "surface-peak": 2363.2806283911314,
+   "cma-top1": 2325.1777148313113,
+   "cma-top2": 2231.6733817988443,
+   "cma-mean-g16": 2284.291640970746,
+   "yardstick": 1000.0,
+   "crowd-known": 1940.2573115141754,
+   "r1-persona14": 793.5399089070258,
+   "r1-persona27": 1045.4289075906468,
+   "r1-persona00": 1246.4681657508143,
+   "league1": 2304.450920897548,
+   "league2": 2313.023505984903,
+   "league3": 2308.3595299297494,
+   "league4": 2353.066813893569,
+   "league5": 2321.367228127432,
+   "league6": 2320.72459101442
+  },
+  "error": {
+   "robust-centre": 80.02818552320352,
+   "surface-peak": 80.05363872849388,
+   "cma-top1": 80.02478595768432,
+   "cma-top2": 79.98389820874183,
+   "cma-mean-g16": 80.02262646569156,
+   "yardstick": 0.0,
+   "crowd-known": 80.16817767295535,
+   "r1-persona14": 26.620931621758523,
+   "r1-persona27": 20.517247958727104,
+   "r1-persona00": 24.878681525406158,
+   "league1": 80.02285229759683,
+   "league2": 80.02229879387625,
+   "league3": 80.02411300957085,
+   "league4": 80.0458176405815,
+   "league5": 80.0297571062517,
+   "league6": 80.0248585804977
+  },
+  "games": 16384,
+  "pairs": 120,
+  "styles": {
+   "league1": {
+    "conditions": "94cd2b028d0c",
+    "agent": "48fdb56deba3",
+    "games": 2432,
+    "minutes": 15200.81111111111,
+    "turning": 0.4711032598406664,
+    "store": 0.05729674640824167,
+    "speed": 0.9413447406241069,
+    "shots": 228.66082438583322,
+    "climb": 0.059661399647533433,
+    "dive": 0.5278562255084341,
+    "two_circle": 0.5722020348527118,
+    "hits": 498543.0,
+    "hit_range": 0.30049568466827214
+   },
+   "robust-centre": {
+    "conditions": "94cd2b028d0c",
+    "agent": "4e79df9c5f2e",
+    "games": 2464,
+    "minutes": 14856.005555555555,
+    "turning": 0.4782860728601714,
+    "store": 0.05550421669918226,
+    "speed": 0.9193452211179922,
+    "shots": 239.11972748768642,
+    "climb": 0.06334647304999362,
+    "dive": 0.5313868577653407,
+    "two_circle": 0.5677032018669315,
+    "hits": 512247.0,
+    "hit_range": 0.29729637517139085
+   },
+   "yardstick": {
+    "conditions": "94cd2b028d0c",
+    "agent": "4f681eecee49",
+    "games": 1336,
+    "minutes": 7839.017777777778,
+    "turning": 0.4975213731425535,
+    "store": 0.4550652728252116,
+    "speed": 0.7047283014599907,
+    "shots": 106.52750429617316,
+    "climb": 0.2403801014752982,
+    "dive": 0.25540331300009805,
+    "two_circle": 0.5204602698919766,
+    "hits": 174129.0,
+    "hit_range": 0.24775627976309927
+   },
+   "league5": {
+    "conditions": "94cd2b028d0c",
+    "agent": "5514675dddf3",
+    "games": 2420,
+    "minutes": 14025.111666666666,
+    "turning": 0.4875976626211057,
+    "store": 0.05643240506635208,
+    "speed": 0.8876393079859205,
+    "shots": 245.7397190063965,
+    "climb": 0.08157257294168505,
+    "dive": 0.5292730289610291,
+    "two_circle": 0.5599793200390495,
+    "hits": 498717.0,
+    "hit_range": 0.2901516119334074
+   },
+   "r1-persona27": {
+    "conditions": "94cd2b028d0c",
+    "agent": "5e7f71ccb84a",
+    "games": 1270,
+    "minutes": 7079.252222222222,
+    "turning": 0.49599353478482583,
+    "store": 0.5244571538293565,
+    "speed": 0.6603971334634375,
+    "shots": 129.32015575405248,
+    "climb": 0.3152012916618469,
+    "dive": 0.1928583323379886,
+    "two_circle": 0.5154667345118266,
+    "hits": 167321.0,
+    "hit_range": 0.2579055675040564
+   },
+   "cma-mean-g16": {
+    "conditions": "94cd2b028d0c",
+    "agent": "684b93800e8c",
+    "games": 2402,
+    "minutes": 14953.497222222222,
+    "turning": 0.4705896186677995,
+    "store": 0.049492060173388204,
+    "speed": 0.9370011447903815,
+    "shots": 222.09032112331954,
+    "climb": 0.061416142154780216,
+    "dive": 0.5378731731094492,
+    "two_circle": 0.5680087259895745,
+    "hits": 484461.0,
+    "hit_range": 0.2955657127061454
+   },
+   "league3": {
+    "conditions": "94cd2b028d0c",
+    "agent": "6a2761c7486b",
+    "games": 2430,
+    "minutes": 14495.191666666666,
+    "turning": 0.4835741890653778,
+    "store": 0.0486073878758428,
+    "speed": 0.913953217603595,
+    "shots": 231.42826098079652,
+    "climb": 0.05066779807633528,
+    "dive": 0.5672968181594319,
+    "two_circle": 0.5686952177049228,
+    "hits": 495690.0,
+    "hit_range": 0.2900865470271957
+   },
+   "r1-persona00": {
+    "conditions": "94cd2b028d0c",
+    "agent": "760720324be0",
+    "games": 1220,
+    "minutes": 7450.331111111111,
+    "turning": 0.5117911985418098,
+    "store": 0.3782801796567856,
+    "speed": 0.7872158036028819,
+    "shots": 125.78179224845788,
+    "climb": 0.17922335442809553,
+    "dive": 0.3490498110598515,
+    "two_circle": 0.5260581998054907,
+    "hits": 171215.0,
+    "hit_range": 0.2630246774868246
+   },
+   "surface-peak": {
+    "conditions": "94cd2b028d0c",
+    "agent": "869c2aff425e",
+    "games": 2380,
+    "minutes": 14171.962777777777,
+    "turning": 0.48079492478360936,
+    "store": 0.049683274162473076,
+    "speed": 0.9094297489450134,
+    "shots": 239.1681415727995,
+    "climb": 0.06597827565091058,
+    "dive": 0.5374726381702088,
+    "two_circle": 0.5617868749191797,
+    "hits": 496988.0,
+    "hit_range": 0.29136878867471233
+   },
+   "crowd-known": {
+    "conditions": "94cd2b028d0c",
+    "agent": "9a4ceed17114",
+    "games": 1104,
+    "minutes": 8305.952777777778,
+    "turning": 0.4121187515112153,
+    "store": 0.09690556642024455,
+    "speed": 1.0211517267226535,
+    "shots": 139.69186089093398,
+    "climb": 0.06279907014480578,
+    "dive": 0.46746306113119,
+    "two_circle": 0.5834378808953058,
+    "hits": 180721.0,
+    "hit_range": 0.31008797460339005
+   },
+   "cma-top1": {
+    "conditions": "94cd2b028d0c",
+    "agent": "9e2af4df6ef8",
+    "games": 2462,
+    "minutes": 15215.568333333333,
+    "turning": 0.4768741066122224,
+    "store": 0.044270462759232666,
+    "speed": 0.9291566647574551,
+    "shots": 223.6590132847486,
+    "climb": 0.05616542676337025,
+    "dive": 0.5495920972463035,
+    "two_circle": 0.5670195769135032,
+    "hits": 507496.0,
+    "hit_range": 0.29449693256558995
+   },
+   "league4": {
+    "conditions": "94cd2b028d0c",
+    "agent": "afe4a3127024",
+    "games": 2398,
+    "minutes": 14764.865,
+    "turning": 0.4744318879839252,
+    "store": 0.04771818571241284,
+    "speed": 0.9325695027631428,
+    "shots": 241.8171788228338,
+    "climb": 0.06460276549166627,
+    "dive": 0.5409713457514775,
+    "two_circle": 0.5701706918650304,
+    "hits": 504597.0,
+    "hit_range": 0.3027368063547729
+   },
+   "cma-top2": {
+    "conditions": "94cd2b028d0c",
+    "agent": "e6362cd6e147",
+    "games": 2422,
+    "minutes": 15079.09111111111,
+    "turning": 0.47125622513941673,
+    "store": 0.06583565739510625,
+    "speed": 0.9226608339499567,
+    "shots": 218.51555745107538,
+    "climb": 0.06458140492110415,
+    "dive": 0.5116180742399593,
+    "two_circle": 0.5694954611864835,
+    "hits": 481637.0,
+    "hit_range": 0.29744636187263335
+   },
+   "league6": {
+    "conditions": "94cd2b028d0c",
+    "agent": "e7840c6baff3",
+    "games": 2452,
+    "minutes": 14543.505555555555,
+    "turning": 0.4742382911654725,
+    "store": 0.053308725945854604,
+    "speed": 0.9139522528905489,
+    "shots": 241.26968471226752,
+    "climb": 0.05945410532612686,
+    "dive": 0.5379322805788456,
+    "two_circle": 0.5660216305482257,
+    "hits": 506854.0,
+    "hit_range": 0.2938302686711959
+   },
+   "r1-persona14": {
+    "conditions": "94cd2b028d0c",
+    "agent": "ecdcb11a0c38",
+    "games": 1122,
+    "minutes": 5581.844444444444,
+    "turning": 0.47742711489232953,
+    "store": 0.5668600823238421,
+    "speed": 0.6541557497140329,
+    "shots": 96.30132214361642,
+    "climb": 0.28102817467742647,
+    "dive": 0.14850417822862216,
+    "two_circle": 0.5113010315283134,
+    "hits": 109221.0,
+    "hit_range": 0.24305541797752184
+   },
+   "league2": {
+    "conditions": "94cd2b028d0c",
+    "agent": "efa1ecbe868b",
+    "games": 2454,
+    "minutes": 14161.972777777777,
+    "turning": 0.486949185634095,
+    "store": 0.10398283802719845,
+    "speed": 0.8913444998066468,
+    "shots": 246.17198851493973,
+    "climb": 0.07193822768963724,
+    "dive": 0.4533032140727726,
+    "two_circle": 0.5587946272845843,
+    "hits": 502857.0,
+    "hit_range": 0.2917828745344876
+   }
+  },
+  "cycles": [],
+  "scores": {
+   "league1|league5": [
+    214,
+    102.0
+   ],
+   "league5|league1": [
+    214,
+    112.0
+   ],
+   "league1|league3": [
+    214,
+    113.5
+   ],
+   "league3|league1": [
+    214,
+    100.5
+   ],
+   "league1|league4": [
+    208,
+    85.5
+   ],
+   "league4|league1": [
+    208,
+    122.5
+   ],
+   "league1|league6": [
+    214,
+    115.0
+   ],
+   "league6|league1": [
+    214,
+    99.0
+   ],
+   "league1|league2": [
+    212,
+    90.5
+   ],
+   "league2|league1": [
+    212,
+    121.5
+   ],
+   "robust-centre|league1": [
+    214,
+    117.0
+   ],
+   "league1|robust-centre": [
+    214,
+    97.0
+   ],
+   "robust-centre|yardstick": [
+    70,
+    70.0
+   ],
+   "yardstick|robust-centre": [
+    70,
+    0.0
+   ],
+   "robust-centre|league5": [
+    212,
+    115.0
+   ],
+   "league5|robust-centre": [
+    212,
+    97.0
+   ],
+   "robust-centre|r1-persona27": [
+    70,
+    70.0
+   ],
+   "r1-persona27|robust-centre": [
+    70,
+    0.0
+   ],
+   "robust-centre|cma-mean-g16": [
+    210,
+    112.0
+   ],
+   "cma-mean-g16|robust-centre": [
+    210,
+    98.0
+   ],
+   "robust-centre|league3": [
+    214,
+    109.0
+   ],
+   "league3|robust-centre": [
+    214,
+    105.0
+   ],
+   "robust-centre|r1-persona00": [
+    70,
+    70.0
+   ],
+   "r1-persona00|robust-centre": [
+    70,
+    0.0
+   ],
+   "robust-centre|surface-peak": [
+    212,
+    92.0
+   ],
+   "surface-peak|robust-centre": [
+    212,
+    120.0
+   ],
+   "robust-centre|crowd-known": [
+    70,
+    61.0
+   ],
+   "crowd-known|robust-centre": [
+    70,
+    9.0
+   ],
+   "robust-centre|cma-top1": [
+    214,
+    103.0
+   ],
+   "cma-top1|robust-centre": [
+    214,
+    111.0
+   ],
+   "robust-centre|league4": [
+    214,
+    111.0
+   ],
+   "league4|robust-centre": [
+    214,
+    103.0
+   ],
+   "robust-centre|cma-top2": [
+    206,
+    134.0
+   ],
+   "cma-top2|robust-centre": [
+    206,
+    72.0
+   ],
+   "robust-centre|league6": [
+    214,
+    113.0
+   ],
+   "league6|robust-centre": [
+    214,
+    101.0
+   ],
+   "robust-centre|r1-persona14": [
+    70,
+    70.0
+   ],
+   "r1-persona14|robust-centre": [
+    70,
+    0.0
+   ],
+   "robust-centre|league2": [
+    204,
+    121.0
+   ],
+   "league2|robust-centre": [
+    204,
+    83.0
+   ],
+   "yardstick|league1": [
+    68,
+    0.0
+   ],
+   "league1|yardstick": [
+    68,
+    68.0
+   ],
+   "yardstick|league5": [
+    68,
+    0.0
+   ],
+   "league5|yardstick": [
+    68,
+    68.0
+   ],
+   "yardstick|r1-persona27": [
+    200,
+    90.0
+   ],
+   "r1-persona27|yardstick": [
+    200,
+    110.0
+   ],
+   "yardstick|league3": [
+    68,
+    0.0
+   ],
+   "league3|yardstick": [
+    68,
+    68.0
+   ],
+   "yardstick|r1-persona00": [
+    150,
+    29.0
+   ],
+   "r1-persona00|yardstick": [
+    150,
+    121.0
+   ],
+   "yardstick|crowd-known": [
+    68,
+    1.0
+   ],
+   "crowd-known|yardstick": [
+    68,
+    67.0
+   ],
+   "yardstick|league4": [
+    68,
+    0.0
+   ],
+   "league4|yardstick": [
+    68,
+    68.0
+   ],
+   "yardstick|league6": [
+    68,
+    0.0
+   ],
+   "league6|yardstick": [
+    68,
+    68.0
+   ],
+   "yardstick|r1-persona14": [
+    168,
+    123.0
+   ],
+   "r1-persona14|yardstick": [
+    168,
+    45.0
+   ],
+   "yardstick|league2": [
+    68,
+    0.0
+   ],
+   "league2|yardstick": [
+    68,
+    68.0
+   ],
+   "league5|league6": [
+    212,
+    112.5
+   ],
+   "league6|league5": [
+    212,
+    99.5
+   ],
+   "r1-persona27|league1": [
+    68,
+    0.0
+   ],
+   "league1|r1-persona27": [
+    68,
+    68.0
+   ],
+   "r1-persona27|league5": [
+    68,
+    0.0
+   ],
+   "league5|r1-persona27": [
+    68,
+    68.0
+   ],
+   "r1-persona27|league3": [
+    68,
+    0.0
+   ],
+   "league3|r1-persona27": [
+    68,
+    68.0
+   ],
+   "r1-persona27|r1-persona00": [
+    184,
+    44.0
+   ],
+   "r1-persona00|r1-persona27": [
+    184,
+    140.0
+   ],
+   "r1-persona27|league4": [
+    68,
+    0.0
+   ],
+   "league4|r1-persona27": [
+    68,
+    68.0
+   ],
+   "r1-persona27|league6": [
+    68,
+    0.0
+   ],
+   "league6|r1-persona27": [
+    68,
+    68.0
+   ],
+   "r1-persona27|league2": [
+    68,
+    0.0
+   ],
+   "league2|r1-persona27": [
+    68,
+    68.0
+   ],
+   "cma-mean-g16|league1": [
+    214,
+    103.0
+   ],
+   "league1|cma-mean-g16": [
+    214,
+    111.0
+   ],
+   "cma-mean-g16|yardstick": [
+    68,
+    68.0
+   ],
+   "yardstick|cma-mean-g16": [
+    68,
+    0.0
+   ],
+   "cma-mean-g16|league5": [
+    196,
+    77.0
+   ],
+   "league5|cma-mean-g16": [
+    196,
+    119.0
+   ],
+   "cma-mean-g16|r1-persona27": [
+    68,
+    68.0
+   ],
+   "r1-persona27|cma-mean-g16": [
+    68,
+    0.0
+   ],
+   "cma-mean-g16|league3": [
+    206,
+    101.0
+   ],
+   "league3|cma-mean-g16": [
+    206,
+    105.0
+   ],
+   "cma-mean-g16|r1-persona00": [
+    68,
+    68.0
+   ],
+   "r1-persona00|cma-mean-g16": [
+    68,
+    0.0
+   ],
+   "cma-mean-g16|crowd-known": [
+    68,
+    61.0
+   ],
+   "crowd-known|cma-mean-g16": [
+    68,
+    7.0
+   ],
+   "cma-mean-g16|league4": [
+    204,
+    79.0
+   ],
+   "league4|cma-mean-g16": [
+    204,
+    125.0
+   ],
+   "cma-mean-g16|league6": [
+    208,
+    90.0
+   ],
+   "league6|cma-mean-g16": [
+    208,
+    118.0
+   ],
+   "cma-mean-g16|r1-persona14": [
+    68,
+    68.0
+   ],
+   "r1-persona14|cma-mean-g16": [
+    68,
+    0.0
+   ],
+   "cma-mean-g16|league2": [
+    214,
+    102.0
+   ],
+   "league2|cma-mean-g16": [
+    214,
+    112.0
+   ],
+   "league3|league5": [
+    200,
+    113.0
+   ],
+   "league5|league3": [
+    200,
+    87.0
+   ],
+   "league3|league4": [
+    202,
+    81.0
+   ],
+   "league4|league3": [
+    202,
+    121.0
+   ],
+   "league3|league6": [
+    200,
+    91.0
+   ],
+   "league6|league3": [
+    200,
+    109.0
+   ],
+   "r1-persona00|league1": [
+    68,
+    0.0
+   ],
+   "league1|r1-persona00": [
+    68,
+    68.0
+   ],
+   "r1-persona00|league5": [
+    68,
+    0.0
+   ],
+   "league5|r1-persona00": [
+    68,
+    68.0
+   ],
+   "r1-persona00|league3": [
+    68,
+    0.0
+   ],
+   "league3|r1-persona00": [
+    68,
+    68.0
+   ],
+   "r1-persona00|league4": [
+    68,
+    0.0
+   ],
+   "league4|r1-persona00": [
+    68,
+    68.0
+   ],
+   "r1-persona00|league6": [
+    68,
+    0.0
+   ],
+   "league6|r1-persona00": [
+    68,
+    68.0
+   ],
+   "r1-persona00|league2": [
+    68,
+    0.0
+   ],
+   "league2|r1-persona00": [
+    68,
+    68.0
+   ],
+   "surface-peak|league1": [
+    184,
+    107.5
+   ],
+   "league1|surface-peak": [
+    184,
+    76.5
+   ],
+   "surface-peak|yardstick": [
+    68,
+    68.0
+   ],
+   "yardstick|surface-peak": [
+    68,
+    0.0
+   ],
+   "surface-peak|league5": [
+    214,
+    116.5
+   ],
+   "league5|surface-peak": [
+    214,
+    97.5
+   ],
+   "surface-peak|r1-persona27": [
+    68,
+    68.0
+   ],
+   "r1-persona27|surface-peak": [
+    68,
+    0.0
+   ],
+   "surface-peak|cma-mean-g16": [
+    194,
+    116.5
+   ],
+   "cma-mean-g16|surface-peak": [
+    194,
+    77.5
+   ],
+   "surface-peak|league3": [
+    212,
+    120.0
+   ],
+   "league3|surface-peak": [
+    212,
+    92.0
+   ],
+   "surface-peak|r1-persona00": [
+    68,
+    68.0
+   ],
+   "r1-persona00|surface-peak": [
+    68,
+    0.0
+   ],
+   "surface-peak|crowd-known": [
+    68,
+    61.0
+   ],
+   "crowd-known|surface-peak": [
+    68,
+    7.0
+   ],
+   "surface-peak|cma-top1": [
+    210,
+    125.0
+   ],
+   "cma-top1|surface-peak": [
+    210,
+    85.0
+   ],
+   "surface-peak|league4": [
+    214,
+    104.5
+   ],
+   "league4|surface-peak": [
+    214,
+    109.5
+   ],
+   "surface-peak|cma-top2": [
+    174,
+    123.0
+   ],
+   "cma-top2|surface-peak": [
+    174,
+    51.0
+   ],
+   "surface-peak|league6": [
+    214,
+    108.0
+   ],
+   "league6|surface-peak": [
+    214,
+    106.0
+   ],
+   "surface-peak|r1-persona14": [
+    68,
+    68.0
+   ],
+   "r1-persona14|surface-peak": [
+    68,
+    0.0
+   ],
+   "surface-peak|league2": [
+    212,
+    130.0
+   ],
+   "league2|surface-peak": [
+    212,
+    82.0
+   ],
+   "crowd-known|league1": [
+    68,
+    10.0
+   ],
+   "league1|crowd-known": [
+    68,
+    58.0
+   ],
+   "crowd-known|league5": [
+    68,
+    6.0
+   ],
+   "league5|crowd-known": [
+    68,
+    62.0
+   ],
+   "crowd-known|r1-persona27": [
+    68,
+    68.0
+   ],
+   "r1-persona27|crowd-known": [
+    68,
+    0.0
+   ],
+   "crowd-known|league3": [
+    68,
+    4.0
+   ],
+   "league3|crowd-known": [
+    68,
+    64.0
+   ],
+   "crowd-known|r1-persona00": [
+    68,
+    68.0
+   ],
+   "r1-persona00|crowd-known": [
+    68,
+    0.0
+   ],
+   "crowd-known|league4": [
+    68,
+    6.0
+   ],
+   "league4|crowd-known": [
+    68,
+    62.0
+   ],
+   "crowd-known|league6": [
+    68,
+    7.0
+   ],
+   "league6|crowd-known": [
+    68,
+    61.0
+   ],
+   "crowd-known|r1-persona14": [
+    68,
+    68.0
+   ],
+   "r1-persona14|crowd-known": [
+    68,
+    0.0
+   ],
+   "crowd-known|league2": [
+    68,
+    9.0
+   ],
+   "league2|crowd-known": [
+    68,
+    59.0
+   ],
+   "cma-top1|league1": [
+    214,
+    111.0
+   ],
+   "league1|cma-top1": [
+    214,
+    103.0
+   ],
+   "cma-top1|yardstick": [
+    68,
+    68.0
+   ],
+   "yardstick|cma-top1": [
+    68,
+    0.0
+   ],
+   "cma-top1|league5": [
+    214,
+    107.0
+   ],
+   "league5|cma-top1": [
+    214,
+    107.0
+   ],
+   "cma-top1|r1-persona27": [
+    68,
+    68.0
+   ],
+   "r1-persona27|cma-top1": [
+    68,
+    0.0
+   ],
+   "cma-top1|cma-mean-g16": [
+    210,
+    125.0
+   ],
+   "cma-mean-g16|cma-top1": [
+    210,
+    85.0
+   ],
+   "cma-top1|league3": [
+    214,
+    107.0
+   ],
+   "league3|cma-top1": [
+    214,
+    107.0
+   ],
+   "cma-top1|r1-persona00": [
+    68,
+    68.0
+   ],
+   "r1-persona00|cma-top1": [
+    68,
+    0.0
+   ],
+   "cma-top1|crowd-known": [
+    68,
+    65.0
+   ],
+   "crowd-known|cma-top1": [
+    68,
+    3.0
+   ],
+   "cma-top1|league4": [
+    210,
+    90.0
+   ],
+   "league4|cma-top1": [
+    210,
+    120.0
+   ],
+   "cma-top1|cma-top2": [
+    210,
+    133.5
+   ],
+   "cma-top2|cma-top1": [
+    210,
+    76.5
+   ],
+   "cma-top1|league6": [
+    214,
+    110.5
+   ],
+   "league6|cma-top1": [
+    214,
+    103.5
+   ],
+   "cma-top1|r1-persona14": [
+    68,
+    68.0
+   ],
+   "r1-persona14|cma-top1": [
+    68,
+    0.0
+   ],
+   "cma-top1|league2": [
+    212,
+    112.0
+   ],
+   "league2|cma-top1": [
+    212,
+    100.0
+   ],
+   "league4|league5": [
+    204,
+    116.5
+   ],
+   "league5|league4": [
+    204,
+    87.5
+   ],
+   "league4|league6": [
+    214,
+    111.0
+   ],
+   "league6|league4": [
+    214,
+    103.0
+   ],
+   "cma-top2|league1": [
+    204,
+    82.0
+   ],
+   "league1|cma-top2": [
+    204,
+    122.0
+   ],
+   "cma-top2|yardstick": [
+    68,
+    68.0
+   ],
+   "yardstick|cma-top2": [
+    68,
+    0.0
+   ],
+   "cma-top2|league5": [
+    200,
+    67.0
+   ],
+   "league5|cma-top2": [
+    200,
+    133.0
+   ],
+   "cma-top2|r1-persona27": [
+    68,
+    67.0
+   ],
+   "r1-persona27|cma-top2": [
+    68,
+    1.0
+   ],
+   "cma-top2|cma-mean-g16": [
+    206,
+    86.0
+   ],
+   "cma-mean-g16|cma-top2": [
+    206,
+    120.0
+   ],
+   "cma-top2|league3": [
+    214,
+    92.0
+   ],
+   "league3|cma-top2": [
+    214,
+    122.0
+   ],
+   "cma-top2|r1-persona00": [
+    68,
+    68.0
+   ],
+   "r1-persona00|cma-top2": [
+    68,
+    0.0
+   ],
+   "cma-top2|crowd-known": [
+    150,
+    127.0
+   ],
+   "crowd-known|cma-top2": [
+    150,
+    23.0
+   ],
+   "cma-top2|league4": [
+    174,
+    57.0
+   ],
+   "league4|cma-top2": [
+    174,
+    117.0
+   ],
+   "cma-top2|league6": [
+    208,
+    86.0
+   ],
+   "league6|cma-top2": [
+    208,
+    122.0
+   ],
+   "cma-top2|r1-persona14": [
+    68,
+    68.0
+   ],
+   "r1-persona14|cma-top2": [
+    68,
+    0.0
+   ],
+   "cma-top2|league2": [
+    204,
+    78.0
+   ],
+   "league2|cma-top2": [
+    204,
+    126.0
+   ],
+   "r1-persona14|league1": [
+    68,
+    0.0
+   ],
+   "league1|r1-persona14": [
+    68,
+    68.0
+   ],
+   "r1-persona14|league5": [
+    68,
+    0.0
+   ],
+   "league5|r1-persona14": [
+    68,
+    68.0
+   ],
+   "r1-persona14|r1-persona27": [
+    68,
+    10.0
+   ],
+   "r1-persona27|r1-persona14": [
+    68,
+    58.0
+   ],
+   "r1-persona14|league3": [
+    68,
+    0.0
+   ],
+   "league3|r1-persona14": [
+    68,
+    68.0
+   ],
+   "r1-persona14|r1-persona00": [
+    68,
+    2.0
+   ],
+   "r1-persona00|r1-persona14": [
+    68,
+    66.0
+   ],
+   "r1-persona14|league4": [
+    68,
+    0.0
+   ],
+   "league4|r1-persona14": [
+    68,
+    68.0
+   ],
+   "r1-persona14|league6": [
+    68,
+    0.0
+   ],
+   "league6|r1-persona14": [
+    68,
+    68.0
+   ],
+   "r1-persona14|league2": [
+    68,
+    0.0
+   ],
+   "league2|r1-persona14": [
+    68,
+    68.0
+   ],
+   "league2|league5": [
+    214,
+    107.5
+   ],
+   "league5|league2": [
+    214,
+    106.5
+   ],
+   "league2|league3": [
+    214,
+    109.0
+   ],
+   "league3|league2": [
+    214,
+    105.0
+   ],
+   "league2|league4": [
+    214,
+    111.5
+   ],
+   "league4|league2": [
+    214,
+    102.5
+   ],
+   "league2|league6": [
+    214,
+    100.0
+   ],
+   "league6|league2": [
+    214,
+    114.0
+   ]
+  }
+ },
+ "robin 1v1": {
+  "elo": {
+   "g16": 1238.7313714081859,
+   "crowd-known": 1169.149029502498,
+   "yardstick": 1000.0,
+   "persona14": 1075.254716461806,
+   "persona27": 1045.1666937905882,
+   "cma-top1": 1275.5231571655377
+  },
+  "error": {
+   "g16": 7.115637808261583,
+   "crowd-known": 6.889028649243509,
+   "yardstick": 0.0,
+   "persona14": 6.790127415362206,
+   "persona27": 6.813148280658627,
+   "cma-top1": 7.290672371894509
+  },
+  "games": 15360,
+  "pairs": 15,
+  "styles": {
+   "yardstick": {
+    "conditions": "8411ed4813e3",
+    "agent": "4f681eecee49",
+    "games": 5120,
+    "minutes": 9037.906666666666,
+    "turning": 0.5417185469201571,
+    "store": 0.8866876567955965,
+    "speed": 0.9502987259209087,
+    "shots": 9.667282836881107,
+    "climb": 0.4577621587889822,
+    "dive": 0.031028264165399166,
+    "two_circle": 0.6451774764510224,
+    "hits": 27295.0,
+    "hit_range": 0.18028368851622725
+   },
+   "persona27": {
+    "conditions": "8411ed4813e3",
+    "agent": "5e7f71ccb84a",
+    "games": 5120,
+    "minutes": 8368.473333333333,
+    "turning": 0.5789261840670262,
+    "store": 0.914033325280098,
+    "speed": 0.8783246625185565,
+    "shots": 15.644430565192696,
+    "climb": 0.5030081817657966,
+    "dive": 0.04601230863030108,
+    "two_circle": 0.5964002568198126,
+    "hits": 34372.0,
+    "hit_range": 0.19307747385796797
+   },
+   "g16": {
+    "conditions": "8411ed4813e3",
+    "agent": "684b93800e8c",
+    "games": 5120,
+    "minutes": 7570.2138888888885,
+    "turning": 0.58901153901053,
+    "store": 0.691343229886096,
+    "speed": 0.8377529197001568,
+    "shots": 33.477257541160036,
+    "climb": 0.36714425726265626,
+    "dive": 0.1666361988157534,
+    "two_circle": 0.5983865385147302,
+    "hits": 57160.0,
+    "hit_range": 0.17898008250967032
+   },
+   "crowd-known": {
+    "conditions": "8411ed4813e3",
+    "agent": "9a4ceed17114",
+    "games": 5120,
+    "minutes": 7409.186111111111,
+    "turning": 0.5938822190321549,
+    "store": 0.7968119463577588,
+    "speed": 0.7064630540588046,
+    "shots": 26.02849990645996,
+    "climb": 0.42404672577997204,
+    "dive": 0.08553683546738339,
+    "two_circle": 0.5910222691450647,
+    "hits": 49423.0,
+    "hit_range": 0.1796112336871713
+   },
+   "cma-top1": {
+    "conditions": "8411ed4813e3",
+    "agent": "9e2af4df6ef8",
+    "games": 5120,
+    "minutes": 7902.616111111111,
+    "turning": 0.6010011171406037,
+    "store": 0.6219497884736841,
+    "speed": 0.8512665044043194,
+    "shots": 33.28188998453325,
+    "climb": 0.35444760240789464,
+    "dive": 0.181835424541901,
+    "two_circle": 0.6256881161053149,
+    "hits": 59937.0,
+    "hit_range": 0.16999532070073614
+   },
+   "persona14": {
+    "conditions": "8411ed4813e3",
+    "agent": "ecdcb11a0c38",
+    "games": 5120,
+    "minutes": 9034.969444444445,
+    "turning": 0.5154977158196132,
+    "store": 0.8839117270872511,
+    "speed": 0.952413989623334,
+    "shots": 12.479953661529322,
+    "climb": 0.4102831928657448,
+    "dive": 0.0236565394521103,
+    "two_circle": 0.6701090986819246,
+    "hits": 36721.0,
+    "hit_range": 0.17479302934365482
+   }
+  },
+  "cycles": [],
+  "scores": {
+   "yardstick|persona27": [
+    1024,
+    432.5
+   ],
+   "persona27|yardstick": [
+    1024,
+    591.5
+   ],
+   "yardstick|cma-top1": [
+    1024,
+    159.5
+   ],
+   "cma-top1|yardstick": [
+    1024,
+    864.5
+   ],
+   "yardstick|persona14": [
+    1024,
+    392.5
+   ],
+   "persona14|yardstick": [
+    1024,
+    631.5
+   ],
+   "persona27|cma-top1": [
+    1024,
+    229.0
+   ],
+   "cma-top1|persona27": [
+    1024,
+    795.0
+   ],
+   "g16|yardstick": [
+    1024,
+    797.5
+   ],
+   "yardstick|g16": [
+    1024,
+    226.5
+   ],
+   "g16|persona27": [
+    1024,
+    800.0
+   ],
+   "persona27|g16": [
+    1024,
+    224.0
+   ],
+   "g16|crowd-known": [
+    1024,
+    596.5
+   ],
+   "crowd-known|g16": [
+    1024,
+    427.5
+   ],
+   "g16|cma-top1": [
+    1024,
+    458.5
+   ],
+   "cma-top1|g16": [
+    1024,
+    565.5
+   ],
+   "g16|persona14": [
+    1024,
+    743.5
+   ],
+   "persona14|g16": [
+    1024,
+    280.5
+   ],
+   "crowd-known|yardstick": [
+    1024,
+    725.0
+   ],
+   "yardstick|crowd-known": [
+    1024,
+    299.0
+   ],
+   "crowd-known|persona27": [
+    1024,
+    711.5
+   ],
+   "persona27|crowd-known": [
+    1024,
+    312.5
+   ],
+   "crowd-known|cma-top1": [
+    1024,
+    389.5
+   ],
+   "cma-top1|crowd-known": [
+    1024,
+    634.5
+   ],
+   "crowd-known|persona14": [
+    1024,
+    595.0
+   ],
+   "persona14|crowd-known": [
+    1024,
+    429.0
+   ],
+   "persona14|persona27": [
+    1024,
+    530.5
+   ],
+   "persona27|persona14": [
+    1024,
+    493.5
+   ],
+   "persona14|cma-top1": [
+    1024,
+    216.0
+   ],
+   "cma-top1|persona14": [
+    1024,
+    808.0
+   ]
+  }
+ },
+ "agreement": {
+  "kendall_tau": 1.0
+ }
+}

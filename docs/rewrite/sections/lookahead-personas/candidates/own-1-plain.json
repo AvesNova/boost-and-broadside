@@ -1,0 +1,52 @@
+{
+ "rows": [
+  "threat_weight",
+  "angles_weight",
+  "energy_weight",
+  "aggression",
+  "speed_weight",
+  "collision_weight",
+  "field_weight",
+  "horizon",
+  "preferred_speed",
+  "reply_temperature",
+  "caution",
+  "temperature",
+  "stickiness",
+  "store_weight",
+  "power_horizon",
+  "power_temperature",
+  "power_stickiness",
+  "disengaged_energy_weight",
+  "fire_tolerance"
+ ],
+ "crowded": [],
+ "measure": 0.0,
+ "half": 1.0,
+ "x0": [
+  -0.25,
+  0.2,
+  1.25,
+  0.22500000000000003,
+  1.25,
+  -0.225,
+  0.65,
+  -0.25,
+  1.0750000000000002,
+  1.25,
+  0.6000000000000001,
+  -0.25,
+  1.25,
+  -0.25,
+  1.25,
+  1.25,
+  0.10000000000000003,
+  0.050000000000000044,
+  1.25
+ ],
+ "predicted": {
+  "1v1": 951.3713710351084,
+  "4v4": 1347.3692459912418,
+  "16v16": 2016.8960345808105
+ }
+}

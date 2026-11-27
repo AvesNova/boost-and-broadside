@@ -1,0 +1,23 @@
+{
+ "threat_weight": 1.0734680041719007,
+ "angles_weight": 0.3343435601952208,
+ "energy_weight": 0.2875131389796969,
+ "aggression": 0.5945610106202949,
+ "speed_weight": 0.4090594385815764,
+ "collision_weight": 2.3036017733651395,
+ "boundary_weight": 2.001698658468812,
+ "field_weight": 0.4413656210992056,
+ "horizon": 1.2309130354194067,
+ "preferred_speed": 0.9202158319834483,
+ "reply_temperature": 0.2820540763466842,
+ "caution": -1.6715362409935945,
+ "temperature": 0.03740959375707666,
+ "stickiness": 0.0642763211446179,
+ "store_weight": 0.636414185048738,
+ "power_horizon": 3.544415145892796,
+ "power_temperature": 0.035670370549750904,
+ "power_stickiness": 0.3877248376144013,
+ "disengaged_energy_weight": 0.5387059520959754,
+ "seek_weight": 0.07699448952949454,
+ "fire_tolerance": 1.1093071368947462
+}

@@ -145,6 +145,36 @@ PARAMETERS: dict[str, Parameter] = {
     "ally_clearance": Parameter(2.0, "hit_radius",
                                 meaning="a team-mate this near the line of fire blocks"),
 }
+# The crowd (personas round 2, 2026-11-28; off by default until verified): each row X of
+# `CROWDED` has a duel value (its own row) and a crowd value (X x the row "X_crowd", a ratio, 1
+# off), interpolated in log by the crowd weight w = (m - 1) / (m - 1 + crowd_half), m the crowd
+# measure (`crowd_measure`, at least 1): the value read is X x X_crowd^w. A duel (m <= 1)
+# reads the row itself.
+CROWDED = (
+    "angles_weight",
+    "energy_weight",
+    "aggression",
+    "speed_weight",
+    "collision_weight",
+    "horizon",
+    "preferred_speed",
+    "temperature",
+    "reply_temperature",
+    "fire_tolerance",
+)
+PARAMETERS.update({
+    "crowd_measure": Parameter(0.0, "choice",
+                               meaning="the crowd measure m: 0 the scored enemies within 2 gun "
+                                       "ranges (as store_crowd), 1 the known enemies (seen, or "
+                                       "hidden within the roam cutoff), 2 my team's living "
+                                       "ships (me included)"),
+    "crowd_half": Parameter(1.0, "ships", meaning="the crowd weight is 1/2 at m = 1 + this"),
+})
+PARAMETERS.update({
+    f"{name}_crowd": Parameter(1.0, "ratio",
+                               meaning=f"{name} in a crowd against in a duel (1: no change)")
+    for name in CROWDED
+})
 # fmt: on
 SAMPLED = tuple(name for name, row in PARAMETERS.items() if row.law != FIXED)
 

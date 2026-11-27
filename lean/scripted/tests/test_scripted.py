@@ -162,6 +162,28 @@ def test_spread_zero_is_the_yardstick_and_full_rows_decide_alike():
     torch.testing.assert_close(full.joint, plain.joint, atol=1e-5, rtol=1e-5)
 
 
+@pytest.mark.parametrize("measure", [0.0, 1.0, 2.0])
+def test_the_crowd_rows_interpolate_between_duel_and_crowd(measure):
+    """parameters.CROWDED: the crowd ratio changes nothing in a duel (one ship a side) and
+    something in a crowd, and numbers and full tensor rows decide alike."""
+    crowded = ScriptedConfig().replace(
+        crowd_measure=measure, angles_weight_crowd=3.0, temperature_crowd=0.5
+    )
+    duel = random_state(8, 2, seed=21)
+    torch.testing.assert_close(
+        explain(crowded, duel, None, None).joint, explain(ScriptedConfig(), duel, None, None).joint
+    )
+    crowd = random_state(8, 16, seed=22)
+    plain = explain(ScriptedConfig(), crowd, None, None).joint
+    numbers = explain(crowded, crowd, None, None).joint
+    controlled = crowd.exists & crowd.alive
+    assert (numbers - plain)[controlled].abs().max() > 1e-3
+    table = torch.tensor([vector(crowded)])
+    rows = rows_of(table, torch.zeros(8, 16, dtype=torch.long))
+    full = explain(crowded, crowd, None, rows).joint
+    torch.testing.assert_close(full, numbers, atol=1e-5, rtol=1e-5)
+
+
 def test_randomness_only_from_sampling():
     state = random_state(8, 10, seed=4)
     persona = personas(ScriptedConfig(), 8, 10, torch.Generator().manual_seed(5), CPU, 1.0)
