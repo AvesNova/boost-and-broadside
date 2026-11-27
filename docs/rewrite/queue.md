@@ -23,15 +23,19 @@ core when sensible (author 2026-11-27).
 ## Queue (in order)
 
 1. Merge R1 and R2 into core (after the coordinator's check); league personas from R1 into
-   R2's pool config.
+   R2's pool config. Then reset the compile check's baselines to the merged tree (author
+   2026-11-27 ~22:00: cold is about 120 s now, so the budget can come down a lot): op counts
+   per graph as measured, the cold-time budget to about 150 s (25% over the measured cold
+   compile); a new graph needs its own baseline.
 2. Hit-range tool port to the new bullet state (lean/tool, lean/sandbox). Small; budget 1 h.
 3. Docs cleanup before the reviews: stale and duplicate docs (e.g. docs/rewrite/questions.md
    beside docs/questions.md), closed one-off briefs, stale backlog rows, notes that contradict
    the code; old docs scripts that no longer run (about 2,450 ruff errors under docs/):
    delete or fix. Budget 2-3 h.
 4. Second training hot-path review (measurements, report; first priority after the cleanup):
-   - every head's rows (next-state, hit, pairwise on all visible enemies; report hidden-enemy
-     behaviour for the author);
+   - every head's rows: next-state, hit and pairwise losses on all visible enemies, hidden
+     enemies masked (author 2026-11-27 ~22:00); report what the code does today; the fix goes
+     in item 5;
    - activation checkpointing (per block) and selective recompute of cheap element-wise
      results, with a micro-batch size vs memory vs speed curve;
    - compiler-mode grid per graph (default, max-autotune, max-autotune-no-cudagraphs,
@@ -55,10 +59,14 @@ core when sensible (author 2026-11-27).
 
 ## Waiting on the author (not in the queue)
 
-BC persona spread; hidden-enemy losses (next-state, hit); bf16 residual stream; adopting the
-re-centred yardstick, persona box and clocks from R1; the compile baseline reset after the
-audits; Muon (tabled); Liger-style kernels (tabled); the BC dry run itself (proposed first).
+BC persona spread and adopting the re-centred yardstick, persona box and clocks (both need
+R1's results); Muon (tabled); Liger-style kernels (tabled); the BC dry run itself (proposed
+first).
+
+Decided 2026-11-27 ~22:00: hidden enemies masked in the per-enemy losses (visible only, to
+start); residual stream stays float32; compile baselines reset after item 1.
 
 ## Log
 
 - 2026-11-27 ~21:45 queue written; R1 and R2 running.
+- ~22:00 author: hidden enemies masked, float32 residual, baseline reset after item 1.
