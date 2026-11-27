@@ -150,7 +150,11 @@ _scan.register_autograd(_backward, setup_context=_setup)
 def linear_scan(decay: Tensor, update: Tensor, initial: Tensor) -> tuple[Tensor, Tensor]:
     """h_t = decay_t h_(t-1) + update_t over the leading axis from h_(-1) = initial, in one
     pass, float32. decay, update (T, ...) broadcasting to update's shape; initial (...).
-    Returns every h (T, ...) float32 and the last."""
+    Returns every h (T, ...) float32 and the last. One tick (the rollout's step) is the plain
+    product and sum, which a compiled graph fuses with its neighbours."""
+    if update.shape[0] == 1:
+        states = decay.float() * initial.float() + update.float()
+        return states, states[-1]
     update = update.float().contiguous()
     decay = decay.float().expand_as(update).contiguous()
     initial = initial.float().expand_as(update[0]).contiguous()
