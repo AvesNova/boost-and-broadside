@@ -249,8 +249,9 @@ class HitRange(World):
     def reset(self) -> None:
         super().reset()
         self.window = deque(maxlen=max(1, round(self.WINDOW_SECONDS / self.h)))
-        self.paths: dict = {}  # live real bullets: id -> dict(points, a, range)
-        self.finished: list = []  # this tick's ended flights: [points, hit]
+        self.paths: dict = {}  # live real bullets by ring slot: dict(points, contact, a, b, range)
+        self.finished: list = []  # this tick's ended flights: [points, contact index or None]
+        self.finished_hits: list = []
         self.spreads = deque()  # (end tick, straight miss a, turned miss b, range at fire)
         self.kill_log = deque()  # (tick, time to kill)
         # no refractive-index fields: a clean range (they are moved far off the map)
@@ -288,21 +289,13 @@ class HitRange(World):
             s.nose_rate[0, slot] = 0.0
         s.alive[0, 0] = s.alive[0, 1] = True
 
-    def _real_ids(self) -> set:
-        s = self.state
-        return {
-            (k, int(s.bullet_fired_tick[0, 0, k]))
-            for k in range(s.bullet_x.shape[2])
-            if int(s.bullet_moves_left[0, 0, k]) > 0 and bool(s.bullet_real[0, 0, k])
-        }
-
     @torch.no_grad()
     def advance_range(
         self, shooter_xy: tuple[float, float], target_heading: float, fire: bool
     ) -> None:
         self.shooter_xy, self.target_heading = shooter_xy, target_heading
         self._pin()
-        before = self._real_ids()
+        slot = int(self.state.tick[0]) % self.state.bullet_x.shape[2]  # this tick's ring slot
         self.previous = self.poses()
         fire = True  # always firing in this mode
         action = torch.zeros(1, 2, 3, dtype=torch.long)
@@ -310,11 +303,11 @@ class HitRange(World):
         self.state, out = core.tick(self.config, self.state, action, self.generator)
         self.tick += 1
         s = self.state
-        shots = len(self._real_ids() - before)
-        hits = int((out.shot_outcome[0, 0] == 1).sum())
+        fired = bool(s.fired[0, 0])  # a real shot left the gun this tick (else the slot is a ghost)
         damage = float(out.hit_damage[0, 0, 1])
-        self.window.append((damage, shots, hits))
-        self._follow_bullets(out)
+        self._follow_bullets(out, slot, fired)
+        hits = len(self.finished_hits)
+        self.window.append((damage, int(fired), hits))
         if damage > 0.0 or self.alive_ticks:
             self.alive_ticks += 1  # the kill clock starts at the first damage
         if bool(out.died[0, 1]):
@@ -326,39 +319,44 @@ class HitRange(World):
         s.shield[0, 0] = self.constant("max_shield", 0)
         self._pin()
 
-    def _follow_bullets(self, out) -> None:
-        """Follow every real bullet of the shooter: its path (tick-end points), a: the signed
-        miss distance of its straight launch line from the target's centre, b: the same for the
-        post-turn line (`_after_egg`). A flight that ends this tick (the game's shot_outcome: 1
-        hit, 0 missed) is moved to `finished` and its numbers to `spreads`."""
+    def _follow_bullets(self, out, slot: int, fired: bool) -> None:
+        """Follow every real bullet of the shooter for its whole life (a ring of BULLET_SLOTS
+        ticks; a contact makes it CONTACTED and it flies on): its path (tick-end points), `contact`
+        the index of the point where it first touched the target (None while it has not), a: the
+        signed miss distance of its straight launch line from the target's centre, b: the same
+        for the post-turn line (`_after_egg`). The game's shot_outcome (1 hit an enemy, 0 missed
+        at the end of the life) reports it once; that is when its numbers go to `spreads` (only
+        real bullets: a ghost reports too). At the end of its life the flight is moved to
+        `finished`: [points, contact index]. `finished_hits` lists this tick's real first hits."""
         s = self.state
-        self.finished = []
+        life = s.bullet_x.shape[2]
+        self.finished, self.finished_hits = [], []
         sx, sy = self.shooter_xy
-        for k in range(s.bullet_x.shape[2]):
-            if not bool(s.bullet_real[0, 0, k]):
-                continue
-            ended = int(out.shot_outcome[0, 0, k])
-            if int(s.bullet_moves_left[0, 0, k]) <= 0 and ended < 0:
-                continue
-            ident = (k, int(s.bullet_fired_tick[0, 0, k]))
-            x, y = float(s.bullet_x[0, 0, k]), float(s.bullet_y[0, 0, k])
-            path = self.paths.get(ident)
-            if path is None:
-                dx, dy = float(s.bullet_dir_x[0, 0, k]), float(s.bullet_dir_y[0, 0, k])
-                # the straight line from the muzzle: signed distance of the target (origin) from it
-                a = dx * (-y) - dy * (-x)
-                path = dict(
-                    points=[[sx, sy]],
-                    a=a,
-                    b=self._after_egg(x, y, dx, dy, a),
-                    range=math.hypot(sx, sy),
-                )
-                self.paths[ident] = path
-            path["points"].append([x, y])
-            if ended >= 0:
-                self.finished.append([path["points"], ended == 1])
+        if fired:
+            dx, dy = float(s.bullet_dir_x[0, 0, slot]), float(s.bullet_dir_y[0, 0, slot])
+            # the straight line from the muzzle: signed distance of the target (origin) from it
+            a = dx * (-sy) - dy * (-sx)
+            self.paths[slot] = dict(
+                born=self.tick - 1,
+                points=[[sx, sy]],
+                contact=None,
+                reported=False,
+                a=a,
+                b=self._after_egg(sx, sy, dx, dy, a),
+                range=math.hypot(sx, sy),
+            )
+        for k, path in list(self.paths.items()):
+            path["points"].append([float(s.bullet_x[0, 0, k]), float(s.bullet_y[0, 0, k])])
+            outcome = int(out.shot_outcome[0, 0, k])
+            if outcome == 1 and path["contact"] is None:
+                path["contact"] = len(path["points"]) - 1
+                self.finished_hits.append(k)
+            if outcome >= 0 and not path["reported"]:
+                path["reported"] = True
                 self.spreads.append((self.tick, path["a"], path["b"], path["range"]))
-                del self.paths[ident]
+            if self.tick - 1 - path["born"] >= life - 1:  # its last tick: the slot is rewritten next
+                self.finished.append([path["points"], path["contact"]])
+                del self.paths[k]
         horizon = self.tick - round(self.WINDOW_SECONDS / self.h)
         while self.spreads and self.spreads[0][0] <= horizon:
             self.spreads.popleft()

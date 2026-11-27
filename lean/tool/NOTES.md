@@ -140,6 +140,7 @@ imported, since `tuning.row_of` inside `flying` reads the design. Tests: `lean/t
   parameter of each bullet's launch line, before the egg) and after the egg (b': the miss of the post-turn line,
   from `core.egg_entry` / `egg_turn` on the bullet's launch path); the target's half-width from the shooter (half of
   `core.hit_width` on the constants' `hit_widths`, at the bullets' path off the nose) and the
-  hit radius. Bullets are drawn when their flight ends (the game's `shot_outcome`): red hit,
-  orange miss; the game's ghosts end at first contact like real bullets, so nothing continues
-  past a hit. "True size" draws the hit and core circles with a heading triangle (sandbox too).
+  hit radius. Bullets: each real shot's whole path is drawn when its life ends (the ring's
+  12 ticks; a contact makes it CONTACTED and it flies on): orange up to its contact, red from the contact on, all
+  orange for a miss. Shots count real bullets (the step's `fired`; ghosts are not shots), hits the game's
+  `shot_outcome` of those bullets (first contact with the enemy). "True size" draws the hit and core circles with a heading triangle (sandbox too).

@@ -366,7 +366,7 @@ function startSandbox() {
     else if (m.type === "hit_model") hitSliders(m);
     else if (m.type === "error") $("status").textContent = "no solution for these inputs: " + m.message;
     else if (m.type === "frame") {
-      if (m.finished) for (const [points, hit] of m.finished) finished.push({ points, hit, at: performance.now() });
+      if (m.finished) for (const [points, contact] of m.finished) finished.push({ points, contact, at: performance.now() });
       prev = cur; cur = m; curAt = performance.now(); trail.push([m.ships[0].x, m.ships[0].y]); if (trail.length > 150) trail.shift();
       // each bullet's last few tick-end positions, joined by its identity: a bend is a kink
       const next = new Map();
@@ -560,12 +560,20 @@ function frame() {
               sx(p.x) + 8, sy(p.y) + (p === me ? -12 : 14));
   }
   if (hitRange) {
-    // every bullet's whole flight, drawn when it ends (the game's shot_outcome): red hit, orange miss
+    // every real bullet's whole flight, drawn when its life ends (a contact does not stop it):
+    // orange before its contact (all of it for a miss), red from the contact on
     const nowMs = performance.now(); finished = finished.filter(f => nowMs - f.at < 2500);
     g.lineWidth = 1;
     for (const f of finished) {
-      g.strokeStyle = (f.hit ? "rgba(255,70,70," : "rgba(255,165,40,") + (1 - (nowMs - f.at) / 2500).toFixed(2) + ")";
-      g.beginPath(); f.points.forEach(([x, y], i) => (i ? g.lineTo(sx(x), sy(y)) : g.moveTo(sx(x), sy(y)))); g.stroke();
+      const fade = (1 - (nowMs - f.at) / 2500).toFixed(2), cut = f.contact === null ? f.points.length : f.contact;
+      const line = (from, to, color) => {
+        if (to - from < 1) return;
+        g.strokeStyle = color + fade + ")"; g.beginPath();
+        for (let i = from; i <= to; i++) { const [x, y] = f.points[i]; i === from ? g.moveTo(sx(x), sy(y)) : g.lineTo(sx(x), sy(y)); }
+        g.stroke();
+      };
+      line(0, Math.min(cut, f.points.length - 1), "rgba(255,165,40,");
+      if (f.contact !== null) line(f.contact, f.points.length - 1, "rgba(255,70,70,");
     }
   }
   if (hitRange) drawEgg(me, cur.egg, sx, sy);
