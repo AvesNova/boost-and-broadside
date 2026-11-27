@@ -5,9 +5,50 @@ it blocks. Answered questions move to the bottom with the answer and its date.
 
 ## Open
 
-(none)
+13. **The egg's frame (2026-11-27, branch `deflector-lookahead`).** The egg is placed with the
+   ship's heading after the tick's move, as the hit angle is. Kept meanwhile. Blocks: nothing.
+
+14. **The agent's lead error (2026-11-27).** `lead_error` 0.25 (of the target's sustained turn
+   acceleration, over the flight time) is a reasoned choice, not tuned. Measured since: 0, 0.25
+   and 1 give the same kill rate and hit chance (docs/rewrite/sections/bullet-deflector/
+   egg-experiments.md, "Repeat and the agent's lead error"); the aim gate dominates. Keep as is?
+
+15. **Hit widths under `deflector="off"` (2026-11-27).** The tick skips the egg's code, but the
+   scripted agent's hit-width column follows the "off" preset's rows (turn 0: 24 m). A slider
+   that sets a turn under "off" would make the agent's table disagree with the tick. Blocks:
+   nothing unless that slider is used.
+
+16. **Two-level league sizes (2026-11-28, branch `league-pool`, merged ce27fe64).** K = 12
+   loaded slots and R = 4 spare are the builder's choice; more spare slots track the PFSP
+   shares faster but cost RL tick time. Also: personas sharing one member's share, and early RL
+   where scripted members took 88% of the shares against random weights (core-decisions.md
+   "The two-level league").
+
+17. **From the persona study round 2 (2026-11-28, docs/rewrite/sections/lookahead-personas/
+   results-2.md).** Adopt the robust centre as the re-centred yardstick; the persona box
+   (proposal-2.json); the BC persona spread and good region; which league personas; the clocks
+   per team size. Blocks: the BC dry run's settings.
 
 ## Answered
+
+18. **Questions from the overnight branches, 2026-11-27** (`scripted-lookahead`,
+   `bullet-deflector`, `deflector-lookahead`; first kept in a branch questions.md).
+   - Scripted cold compile over the 260 s budget: **answered 2026-11-27 ~05:40**, budget
+     provisionally raised; after the hot-path fixes the cold compile is about 121 s and the
+     baselines were reset to a 150 s budget (~22:00).
+   - `store_weight`: **answered 2026-11-27 ~16:30**, `store_crowd` is the scripted default.
+     The weaker preferred-speed term was measured and rejected (`speed_weight` stays 0.3).
+   - The bullet deflector's bend angle, reach, dead-centre bullets, side push and default preset
+     (`bullet-deflector` questions 1 to 5): **moot 2026-11-27 ~05:20**, the egg deflector
+     replaced that mechanism (core-decisions.md "The egg deflector").
+   - Collision blame with the deflector: **answered 2026-11-27 ~05:40**, unchanged (the
+     aggressor is punished more).
+   - The turned bullet's velocity: **answered 2026-11-27 ~17:15**, as it is (turn in the
+     relative frame).
+   - One egg per bullet per tick: **answered 2026-11-27 ~16:30**, locked.
+   - Time-to-kill band, spread, hit damage (egg-experiments.md questions 1, 2, 4):
+     **answered 2026-11-27 ~16:30**, hit damage 8, spread 5 mrad, `store_crowd` default.
+   - Egg tick cost: **answered 2026-11-27 ~15:20**, the `egg-speed` cuts were kept.
 
 9. **Boundary ramp (2026-11-23).** The boundary ramp is the distance beyond the arena edge
    over which boundary damage rises from zero to its maximum. v2 scales it with the map

@@ -769,7 +769,7 @@ These replace the flap, profile and stick-level points above where they disagree
   count is proposed, not made. Sanity (256 scripted games each, before / after): 1v1 draws 93 /
   41, mean length 58.2 / 32.1 s, contacts per head-on pass 0.999 / 0.004; 4v4 contacts per game
   8.49 / 3.07, 4v4 deaths on a collision tick 101 of 1,395; real hits within 30 deg of the nose
-  31-85% / 0.7-3.5%. Table: lean/game/NOTES.md "Numbers".
+  31-85% / 0.7-3.5%. Table: docs/rewrite/core-worklog.md "2026-11-28: history moved from the package notes", lean/game.
 - Resolved 2026-11-26 (author): with both ships turning, the closest approach of the per-tick
   straight moves could fall in two ticks or none (fast passes scored twice 1-4 times and missed
   1-2 times per 256 4v4 games). Now scored at first touch, below.
@@ -814,7 +814,7 @@ These replace the flap, profile and stick-level points above where they disagree
   are passes cut by a death or the game's end between first touch and the closest-approach
   tick, which the old rule never scored (1v1 68 of 316 episodes, 4v4 103-120 of 853-886).
   Deaths on a collision tick 1v1 24 / 72, 4v4 101 / 115 (fields 112 / 97); mean game length
-  1-5% shorter; draws 1v1 41 / 49, 1v1 fields 13 / 30, 4v4 3-4 / 3. Table: lean/game/NOTES.md "Numbers".
+  1-5% shorter; draws 1v1 41 / 49, 1v1 fields 13 / 30, 4v4 3-4 / 3. Table: docs/rewrite/core-worklog.md "2026-11-28: history moved from the package notes", lean/game.
 
 
 ## Post-stall flight (author 2026-11-26, branch post-stall)
@@ -959,7 +959,7 @@ Bullet deflector and the runtime hit model (PROPOSAL, branch `bullet-deflector`,
 - **Found on the way** (own commit f583eb0c): the flight's 2x2 matrix exponential as batched
   matrix products was four cuBLAS calls, 43% of the step's CUDA time; written out elementwise
   the step is 1.76 -> 1.07 ms (deflector off).
-- Questions for the author: docs/rewrite/questions.md on the branch. Notes and numbers:
+- Questions for the author: docs/questions.md (question 18, answered). Notes and numbers:
   docs/rewrite/sections/bullet-deflector/progress.md.
 
 ## Author decisions 2026-11-27 (~05:40, relayed on branch deflector-lookahead)

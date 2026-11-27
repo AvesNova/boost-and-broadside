@@ -115,7 +115,7 @@ GPU tick, compiled `core.step`, 4070 laptop, performance profile, E 4096, 4v4, f
   competence test, as on core), 1 xpassed; lean/learn, lean/eval, lean/model 152 passed (before
   the last two core changes, both bitwise-equal or rounding-only). ruff clean.
 - The god-mode tables were measured before the matrix-exponential commit (float rounding only).
-- Open for the author: docs/rewrite/questions.md (bend angle rule, field reach, dead-centre
+- Open for the author: docs/questions.md (question 18) (bend angle rule, field reach, dead-centre
   frontal bullets, the side D's cost, default preset, collision blame angles).
 
 # Branch deflector-lookahead (2026-11-27 morning): the egg
