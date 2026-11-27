@@ -87,6 +87,11 @@ step(config, state, action, noise) -> tuple[State, StepOut]
     # as the new pending one (the one-tick delay, for every agent)
 tick(config, state, action, generator) -> tuple[State, StepOut]   # draw_noise, then step
 observe(config, state, team) -> Obs
+visible_rows(config, state, team) -> Tensor   # (E, N) bool, Obs.visible
+# The learner's geometry targets (lean.game.core "relative geometry"):
+geometry_record(config, state) -> Tensor      # (E, N, len(GEOMETRY_COLUMNS))
+pair_geometry(first_position, first_heading, first, second_position, second) -> dict[str, Tensor]
+field_edge_distance(centre_x, centre_y, radius, x, y) -> Tensor   # negative inside
 ```
 
 ## `lean/scripted`
@@ -109,9 +114,11 @@ ModelConfig(); Policy(config)
 Policy.initial_carry(envs, slots, device) -> Tensor        # (blocks, E, 1 + N, 4, width)
 Policy.step(obs, carry, position_offset=None, reset=None) -> (logits, value_logits, carry)
     # logits (E, N, 42), value_logits (E, N, LEVELS, BINS)
-Policy.sequence(obs, carry, reset, position_offset=None)
-    # obs fields have a leading T, reset (T, E) bool; returns logits, value_logits, next-state
-    # logits (T, E, N, 6, BINS), hit logits (T, E, N, 3) and the final carry
+Policy.sequence(obs, carry, reset, position_offset=None, pairs=None) -> Sequence
+    # obs fields have a leading T, reset (T, E) bool; a Sequence (NamedTuple): logits,
+    # value_logits, next-state logits (T, E, N, 6, BINS), hit logits (T, E, N, 3), the final
+    # carry, map-edge logits (T, E, N, 16), and for a PairQuery the pairwise head's logits
+    # (lean.model.geometry)
 next_state_target(config, state, next_state, step_out, tick_length) -> Tensor   # (E, N, 6)
 ```
 

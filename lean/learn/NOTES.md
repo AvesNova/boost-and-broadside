@@ -26,6 +26,9 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
 - `returns.py`: GAE per level, chaining across segments, advantage scaling and shares, the value
   supports' range monitoring.
 - `training.py`: `update` (both stages), `TeacherTerm`, `make_optimiser`, the losses.
+- `geometry.py`: the rows the auxiliary losses train (`observed_rows`), the geometry heads'
+  pairs (`pair_query`: K sampled per view and tick from `draw_keys`' uniform keys), targets
+  (lean.game's functions) and losses (`geometry_losses`).
 - `weights.py`: `WeightAverages` (EMA and uniform), checkpoints.
 - `pool.py`: `League` (the pool of members and tallies, level 1 `allocate`, level 2 `draw` /
   `slot_draws`, draining slots, the persona parameter table), `SnapshotSchedule`, `retained`.
@@ -66,7 +69,22 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
 - **PPO:** clip 0.2; no KL stop (`approximate_kl_epoch_<k>` logged, a warning above 0.02);
   advantages summed over levels and divided by their standard deviation, mean kept.
 - **Loss coefficients** (fixed, on scale-free terms): value 0.05, next-state 0.1, hit 0.05, entropy
-  0.003 on the joint 42-way entropy in RL.
+  0.003 on the joint 42-way entropy in RL; the geometry heads (PROVISIONAL, 2026-11-28, for the
+  author) ship pairs 0.1, ship-field pairs 0.05, map edge 0.05.
+- **Auxiliary rows** (author 2026-11-28): next-state, hit and the geometry heads train on the
+  rows the seat sees (`observed`: its living ships and the enemies visible this tick; hidden
+  enemies and dead ships masked). A next-state row also needs the ship alive and visible to
+  the seat after the step (its target is what the team sees on both ticks) and the episode
+  not ended; a hit row a label (a plain game label, an enemy's bullet too).
+- **Geometry heads** (lean/model/NOTES.md "Geometry heads"): per view and tick K = 8 valid ship
+  pairs of the 28 (4v4) and K = 8 valid ship-field pairs of the 80 (`pair_samples`,
+  `field_pair_samples`), drawn without replacement before the pair layers; the uniform keys
+  are drawn eagerly per micro-batch (`draw_keys`, the update's generator when it lives on the
+  device) and passed into the compiled loss, so its shapes are fixed. A sampled pair counts c /
+  min(K, c) (c valid pairs on its tick) and the sum is divided by the minibatch's valid pairs:
+  an unbiased estimate of the mean over every valid pair, exact when K >= c. Losses in nats per
+  column: the ship pairs' symmetric columns on the upper triangle, the train angle and gun
+  error averaged over both orders. Off for an ablation: `ModelConfig(geometry_heads=False)`.
 - **Rewards:** v2's five levels; value supports from measured returns (2026-11-25): damage
   +-5.4, kill_death +-7.5, outcome +-10, objective levels +-1 (placeholders), each 57 bins
   across the range plus 3 buffer columns of the same width beyond both ends (63 bins;
@@ -76,7 +94,10 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
   +-10.5 and +-11.6); outcome (bimodal) and the objectives linear (bins
   0.357 and 0.0357). The range monitoring counts bins in bin space (`usage_counts` takes the
   knees); its thresholds (`range_narrow_bins` 8, `range_bin_share`) are unchanged.
-- **Store:** positions and PPO numbers float32, other floats float16, actions int8.
+- **Store:** positions, the geometry record and PPO numbers float32, other floats float16,
+  actions int8. The geometry record (`lean.game.geometry_record`: world velocity, launch
+  velocity, store, map edge, bullet drag and life; 8 floats per ship and tick) adds 32 bytes
+  per ship-tick; `observed` is resident (counted on the device).
 
 ## The league
 
@@ -125,15 +146,20 @@ until the author decides; numbers in docs/rewrite/sections/league-pool/progress.
 - Loop speed (2026-11-27, before the two-level league): BC 8,255 steps/s, 127.0 s per update
   (collect plus update); the update alone 114.5 s (149.1 ms per micro-batch), peak allocated
   4.74 GiB.
+- Geometry heads (2026-11-28 ~04:56, quiet machine, `docs/rewrite/sections/heads-8c/cost.py`):
+  the compiled update per micro-batch of 64 views x 128 ticks, 4v4: off 150.2 ms, K = 4 162.1
+  (+8%), K = 8 165.4 (+10%), every pair (28 + 80) 193.1 (+29%); peak allocated 4.24 / 4.57 /
+  4.59 / 5.38 GiB; most of K = 8's cost is fixed (per-ship projections, targets, edge column).
 - League side, two levels (2026-11-27, back to back with the one-level league): the RL tick
   27.9 ms with no snapshot (EMA, 2 x 107 rows; one-level 24.1, no network), 28.6 ms with 1
   (26.4), 33.1 ms with 12 (32.5); the BC tick 25.5 ms (24.2: the per-row scripted parameters,
   1.3 ms). Share tracking and the smoke run: docs/rewrite/sections/league-pool/.
-- Compile (baseline reset 2026-11-27 ~22:00, `compile_baseline.json`): 5 graphs (act 4,535
-  traced operations, advance 3,194, minibatch_loss 861, slot_actions 720, merge_league 28),
-  cold 121 s, budget 150 s. The compile tripwire (`compile_check.py`) fails on any graph break,
-  new graph, recompile, or a function's traced operations over 10% above its baseline
-  (`docs/rewrite/scoreboard.md` "Compile time"). Run it at the end of every step:
+- Compile (baseline reset 2026-11-28 ~05:05 for the geometry heads, `compile_baseline.json`):
+  5 graphs (act 4,613 traced operations, advance 3,307, minibatch_loss 1,627 (861 before the
+  heads), slot_actions 720, merge_league 28), cold 141.6 s (120.9 before), budget 150 s. The
+  compile tripwire (`compile_check.py`) fails on any graph break, new graph, recompile, or a
+  function's traced operations over 10% above its baseline (`docs/rewrite/scoreboard.md`
+  "Compile time"). Run it at the end of every step:
 
       PYTHONPATH=. python docs/rewrite/sections/scoreboard/compile_check.py
 
@@ -149,13 +175,20 @@ term's decay and gate, averages, checkpoints, optimiser, warm-up, KL monitor, ad
 `test_train.py` (BC then RL, checkpoints, an exact resume with the league's slots and debts),
 `test_league.py` (level 2's slot draws, PFSP, level 1's loads and duplicates, drain, share
 tracking over a simulated run, personas per row, routing, state round trip, schedule and
-retention), `test_learn.py`, `test_hit_head.py`,
+retention), `test_learn.py`, `test_hit_head.py`, `test_geometry.py` (sampling unbiased and exact at K >=
+c, distinct valid pairs, the upper triangle, the trained rows are the visible ships in a fogged
+rollout, the pair loss with every pair equals a direct sum of the game's targets),
 `test_rewards.py`, `test_store.py`; slow, `test_compiled.py` (compiled collect and update, loss
 equal to eager, the league tick fullgraph, and static for the whole run: one compile at RL's
 start through loads, unloads, duplicates and a retention drop).
 
 ## Open
 
+- The geometry heads' coefficients (0.1 / 0.05 / 0.05) and K = 8 are provisional (for the
+  author): the coefficients by analogy (ship pairs like the next state, the single-column
+  field and edge targets like hit), K from the cost table in
+  docs/rewrite/sections/heads-8c-progress.md. Whether these heads help is a training question
+  (an arm with `geometry_heads=False`).
 - The league's personas are placeholders (round 1's strongest four) until the persona study
   picks them; the cheese agents (step C) would join the same way, as scripted members with
   their own parameter rows.

@@ -9,6 +9,7 @@ from torch import Tensor
 
 from lean.contract import JOINT, LEVEL_NAMES
 from lean.learn.config import LearnConfig, learning_rate
+from lean.learn.geometry import draw_keys, geometry_losses, observed_rows, pair_query
 from lean.learn.returns import (
     ValueSupport,
     advantage_shares,
@@ -41,6 +42,7 @@ LOSS_NAMES = OBSERVED + (
     "next_state",
     "next_valid",
     "hit_label",
+    "geometry",
 )
 MEASURES = (
     "loss",
@@ -49,6 +51,9 @@ MEASURES = (
     "entropy",
     "next_state",
     "hit",
+    "pair",
+    "field",
+    "edge",
     "bc",
     "bc_kl",
     "approximate_kl",
@@ -102,13 +107,14 @@ def masked_sum(values: Tensor, mask: Tensor) -> Tensor:
 
 
 def hit_loss(
-    hit_logits: Tensor, label: Tensor, own: Tensor, denominator: Tensor | None = None
+    hit_logits: Tensor, label: Tensor, rows: Tensor, denominator: Tensor | None = None
 ) -> tuple[Tensor, Tensor]:
-    """Cross-entropy (nats) of the hit head summed over the rows that are `own` and labelled
+    """Cross-entropy (nats) of the hit head summed over the rows in `rows` that are labelled
     (label >= 0), divided by `denominator` (default: their count, so a mean), and that mask.
-    hit_logits (..., HIT_CLASSES), label and own (...). Other rows contribute nothing, to
-    the loss or to the gradient; no labelled row gives 0."""
-    labelled = own & (label >= 0)
+    hit_logits (..., HIT_CLASSES), label and rows (...) (the learner passes the observed rows,
+    lean.learn.geometry.observed_rows). Other rows contribute nothing, to the loss or to the
+    gradient; no labelled row gives 0."""
+    labelled = rows & (label >= 0)
     log_probability = (
         torch.log_softmax(hit_logits.float(), -1)
         .gather(-1, label.clamp_min(0)[..., None])
@@ -141,7 +147,7 @@ def minibatch_values(
     `own`, and the support's centres (LEVELS, BINS). `support` (returns.value_support) the
     critic's support on the device, else built here."""
     with precision(carry.device, config.bf16):
-        _, value_logits, _, _, _ = policy.sequence(observation, carry, reset, position_offset)
+        value_logits = policy.sequence(observation, carry, reset, position_offset).value_logits
     value_logits = value_logits.float()
     if support is None:
         support = value_support(config, value_logits.shape[-1], value_logits.device)
@@ -164,6 +170,9 @@ def minibatch_loss(
     next_target: Tensor,
     next_valid: Tensor,
     hit_label: Tensor,
+    geometry: Tensor | None,
+    pair_keys: Tensor | None,
+    field_keys: Tensor | None,
     weights: Tensor,
     denominators: Tensor,
     support: ValueSupport | None = None,
@@ -171,16 +180,31 @@ def minibatch_loss(
     """One micro-batch's share of its minibatch's loss (see `update`) and of its measures,
     all 0-d tensors: every term is a sum over this micro-batch's valid tokens divided by
     the whole minibatch's count, `denominators` = (own tokens, next_valid tokens, labelled
-    own tokens), so the micro-batches' losses and gradients add up to the minibatch's.
+    observed tokens, observed tokens, ship pairs, ship-field pairs; RolloutStore.counts), so
+    the micro-batches' losses and gradients add up to the minibatch's.
     weights = (surrogate, entropy bonus, teacher cross-entropy) coefficients. weights and
     denominators are tensors so that a compiled graph does not take each new value as a
     constant. `support` (returns.value_support) the critic's support on the device, else
-    built here."""
+    built here. geometry (T, B, N, GEOMETRY_COLUMNS) the geometry record, pair_keys and
+    field_keys the pair draw (lean.learn.geometry.draw_keys); all unused without the
+    policy's geometry heads."""
     own = observation.own
-    own_count, next_count, labelled_count = denominators.clamp(min=1.0).unbind()
+    observed = observed_rows(observation)
+    own_count, next_count, labelled_count = denominators[:3].clamp(min=1.0).unbind()
     surrogate_weight, entropy_weight, teacher_weight = weights.unbind()
+    geometry_heads = policy.config.geometry_heads
+    query = ships = field_sample = None
+    if geometry_heads:
+        query, ships, field_sample = pair_query(
+            observed,
+            observation.field_pos.shape[-2],
+            pair_keys,
+            field_keys,
+            config.pair_samples,
+            config.field_pair_samples,
+        )
     with precision(carry.device, config.bf16):
-        outputs = policy.sequence(observation, carry, reset, position_offset)
+        outputs = policy.sequence(observation, carry, reset, position_offset, query)
     # The losses in float32.
     logits, value_logits, next_state, hit_logits = (output.float() for output in outputs[:4])
     log_policy = torch.log_softmax(logits, -1)
@@ -213,7 +237,13 @@ def minibatch_loss(
         next_count * next_cross_entropy.shape[-1]
     )
 
-    hit, _ = hit_loss(hit_logits, hit_label, own, labelled_count)
+    hit, _ = hit_loss(hit_logits, hit_label, observed, labelled_count)
+
+    pair = field = edge = torch.zeros((), device=logits.device)
+    if geometry_heads:
+        pair, field, edge = geometry_losses(
+            policy, outputs, observation, geometry, query, ships, field_sample, denominators[3:]
+        )
 
     loss = (
         surrogate_weight * surrogate
@@ -221,6 +251,9 @@ def minibatch_loss(
         - entropy_weight * entropy
         + config.next_state_coefficient * next_state_loss
         + config.hit_coefficient * hit
+        + config.pair_coefficient * pair
+        + config.field_coefficient * field
+        + config.edge_coefficient * edge
         + teacher_weight * bc
     )
     with torch.no_grad():
@@ -231,6 +264,9 @@ def minibatch_loss(
             "entropy": entropy,
             "next_state": next_state_loss,
             "hit": hit,
+            "pair": pair,
+            "field": field,
+            "edge": edge,
             "bc": bc,
             "bc_kl": masked_sum(teacher_cross - teacher_entropy, own) / own_count,
             "approximate_kl": masked_sum(ratio - 1.0 - log_ratio, own) / own_count,
@@ -432,6 +468,19 @@ def update(
                 denominators = counts.index_select(0, members).sum(0)
             views_now = batch["views"]
             observation, offset = store.observation(batch)
+            pair_keys, field_keys = None, None
+            if policy.config.geometry_heads:
+                ticks, width, slots = observation.key_mask.shape
+                pair_keys, field_keys = draw_keys(
+                    config.pair_samples,
+                    config.field_pair_samples,
+                    ticks,
+                    width,
+                    slots,
+                    observation.field_pos.shape[-2],
+                    generator,
+                    device,
+                )
             loss, measures = loss_of(
                 config,
                 policy,
@@ -447,6 +496,9 @@ def update(
                 batch["next_state"],
                 batch["next_valid"],
                 batch["hit_label"],
+                batch["geometry"],
+                pair_keys,
+                field_keys,
                 weights,
                 denominators,
                 support,
@@ -468,7 +520,7 @@ def update(
                 optimiser.zero_grad(set_to_none=True)
                 totals["gradient_norm"] += torch.where(finite, norm, 0.0)
                 totals["skipped_steps"] += (~finite).float()
-                totals["hit_labelled"] += denominators[2] / denominators[0].clamp(min=1.0)
+                totals["hit_labelled"] += denominators[2] / denominators[3].clamp(min=1.0)
                 steps += 1
     optimiser.found_inf = None
 

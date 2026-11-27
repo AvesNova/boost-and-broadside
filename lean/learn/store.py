@@ -8,11 +8,11 @@ micro-batch, so every micro-batch has one shape. The initial carries are (V + 1,
 view axis first.
 
 Where. The large records (the observation's per-tick fields, actions, old
-log-probabilities, stored values, rewards, next-state targets) and the initial carries are
-in pinned host memory on a GPU. The masks and labels the update counts and indexes on the
-device (`RESIDENT`: own, done, reset, next_valid, fallen, hit_label, deal_row), the per-view
-bootstrap values (only the last segment's are read), and the update's advantages and value targets
-stay on the device. The
+log-probabilities, stored values, rewards, next-state targets, the geometry record) and the
+initial carries are in pinned host memory on a GPU. The masks and labels the update counts
+and indexes on the device (`RESIDENT`: own, observed, done, reset, next_valid, fallen,
+hit_label, deal_row), the per-view bootstrap values (only the last segment's are read), and
+the update's advantages and value targets stay on the device. The
 observation fields constant within an episode (`EPISODE_CONSTANT`: the fields, their
 positions) and the position offset are stored once per deal in a table on the
 device (rows per segment: the environments as the segment starts, then the segment's
@@ -58,13 +58,23 @@ import torch
 from torch import Tensor
 
 from lean.contract import EPISODE_CONSTANT, SEAT_AXIS, Obs
+from lean.learn.geometry import pair_counts
 
 # Per-tick records kept on the device: one byte per token, counted and indexed there.
-RESIDENT = ("own", "done", "reset", "next_valid", "fallen", "hit_label", "deal_row")
+RESIDENT = ("own", "observed", "done", "reset", "next_valid", "fallen", "hit_label", "deal_row")
 # Floats kept in float32: positions and headings (the position code and the rotary angles
-# read them) and the PPO numbers.
+# read them), the geometry record (the geometry heads' exact targets) and the PPO numbers.
 FLOAT32 = frozenset(
-    ("pos", "heading", "field_pos", "position_offset", "log_probability", "value", "reward")
+    (
+        "pos",
+        "heading",
+        "field_pos",
+        "geometry",
+        "position_offset",
+        "log_probability",
+        "value",
+        "reward",
+    )
 )
 # Small integers stored as int8: joint actions (< 42; the observation's pending action, up to
 # 42 for none) and hit labels (-1 to 2). The teacher's distribution is float16.
@@ -288,12 +298,22 @@ class RolloutStore:
         return seconds
 
     def counts(self) -> Tensor:
-        """(V + 1, 3) float per view: own tokens, next_valid tokens, labelled own tokens."""
-        own = self.resident["own"]
-        labelled = own & (self.resident["hit_label"] >= 0)
+        """(V + 1, 6) float per view: own tokens, next_valid tokens, labelled observed tokens,
+        observed tokens, valid ship pairs and valid ship-field pairs (lean.learn.geometry)."""
+        own, observed = self.resident["own"], self.resident["observed"]
+        labelled = observed & (self.resident["hit_label"] >= 0)
+        pairs, field_pairs = pair_counts(observed, self.constants["field_pos"].shape[1])
         return torch.stack(
-            [own.sum((0, 2)), self.resident["next_valid"].sum((0, 2)), labelled.sum((0, 2))], 1
-        ).float()
+            [
+                own.sum((0, 2)).float(),
+                self.resident["next_valid"].sum((0, 2)).float(),
+                labelled.sum((0, 2)).float(),
+                observed.sum((0, 2)).float(),
+                pairs.sum(0),
+                field_pairs.sum(0),
+            ],
+            1,
+        )
 
     def batch_index(
         self, order: Tensor, size: int, minibatches: int = 1

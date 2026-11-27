@@ -10,6 +10,7 @@ from lean import contract
 from lean.contract import FIELD_FEATURES, GLOBAL_FEATURES, JOINT, LEVELS, SHIP_FEATURES
 from lean.game import GameConfig
 from lean.model import ModelConfig, Policy, decode_value, hl_gauss_targets, value_bin_centres
+from lean.model.geometry import PairQuery
 from lean.model.policy import (
     Spatial,
     field_heading,
@@ -22,7 +23,7 @@ from lean.model.policy import (
 from lean.model.position import ColourCode, FourierCode, GridCellCode, Rotary, make_position_code
 from lean.model.scan import linear_scan
 from lean.model.temporal import Temporal
-from lean.model.value import symlog
+from lean.model.value import symexp, symlog
 
 ARENA_RADIUS = GameConfig().arena_radius
 
@@ -94,7 +95,7 @@ def test_sequence_equals_repeated_steps(rotate_values):
     offset = torch.randn(envs, 2) * 1000.0
     carry = torch.randn(policy.initial_carry(envs, slots, "cpu").shape)
     with torch.no_grad():
-        logits, values, next_state, hit, final = policy.sequence(obs, carry, reset, offset)
+        logits, values, next_state, hit, final = policy.sequence(obs, carry, reset, offset)[:5]
         outputs, stepped = step_all(policy, obs, carry, reset, offset)
     for tick, (step_logits, step_values) in enumerate(outputs):
         live = obs.key_mask[tick]
@@ -123,9 +124,9 @@ def test_a_reset_forgets_state_and_convolution_buffer():
     reset[start] = True
     carry = torch.randn(policy.initial_carry(envs, slots, "cpu").shape)
     with torch.no_grad():
-        logits, _, _, _, final = policy.sequence(obs, carry, reset)
+        logits, _, _, _, final = policy.sequence(obs, carry, reset)[:5]
         later = index_obs(obs, slice(start, None))
-        fresh_logits, _, _, _, fresh_final = policy.sequence(
+        fresh_logits, _, _, _, fresh_final, *_ = policy.sequence(
             later,
             policy.initial_carry(envs, slots, "cpu"),
             torch.zeros(ticks - start, envs, dtype=torch.bool),
@@ -540,11 +541,37 @@ def training_batch(ticks=8, envs=4, slots=10, fields=5):
     return obs, reset, targets
 
 
+def every_pair(ticks, envs, slots, fields) -> PairQuery:
+    """Every ship pair (first < second) and every ship-field pair, for every view and tick."""
+    first, second = torch.triu_indices(slots, slots, 1)
+    ship = torch.arange(slots).repeat_interleave(fields)
+    field = torch.arange(fields).repeat(slots)
+    return PairQuery(*(index.expand(ticks, envs, -1) for index in (first, second, ship, field)))
+
+
+def geometry_loss(outputs, query, live):
+    """Cross-entropy of every geometry head against bin 0, on the pairs and rows that are live
+    (`where`, so a masked row takes no gradient)."""
+
+    def cross(logits, valid):
+        entropy = -torch.log_softmax(logits, -1)[..., 0]
+        return torch.where(valid, entropy, 0.0).sum() / valid.sum().clamp(min=1)
+
+    pair_live = live.gather(-1, query.first) & live.gather(-1, query.second)
+    total = cross(outputs.edge, live) + cross(outputs.fields, live.gather(-1, query.field_ship))
+    for logits in outputs.pairs:
+        valid = pair_live if logits.shape[2] == pair_live.shape[2] else pair_live.repeat(1, 1, 2)
+        total = total + cross(logits, valid)
+    return total
+
+
 def training_loss(policy, obs, reset, targets, carry=None):
     ticks, envs, slots = obs.key_mask.shape
     if carry is None:
         carry = policy.initial_carry(envs, slots, "cpu")
-    logits, values, next_state, hit, final = policy.sequence(obs, carry, reset)
+    query = every_pair(ticks, envs, slots, obs.field_pos.shape[-2])
+    outputs = policy.sequence(obs, carry, reset, pairs=query)
+    logits, values, next_state, hit, final = outputs[:5]
     live = obs.key_mask
     policy_loss = torch.nn.functional.cross_entropy(logits[live], targets.actions[live])
     value_loss = torch.nn.functional.cross_entropy(
@@ -554,7 +581,8 @@ def training_loss(policy, obs, reset, targets, carry=None):
         policy.config, next_state[live], targets.next_state[live]
     ).mean()
     hit_loss = torch.nn.functional.cross_entropy(hit[live], targets.hit[live])
-    return policy_loss + value_loss + next_loss + hit_loss, policy_loss, final
+    pair_loss = geometry_loss(outputs, query, live)
+    return policy_loss + value_loss + next_loss + hit_loss + pair_loss, policy_loss, final
 
 
 def test_backward_reaches_every_parameter_and_no_masked_row():
@@ -730,7 +758,7 @@ def test_heads_start_near_uniform_and_the_hit_head_at_the_measured_shares():
     assert torch.allclose(policy.auxiliary_heads.lasts[1].bias, torch.log(shares))
     obs = make_obs((2, 3), 6, live_fraction=2.0)
     with torch.no_grad():
-        logits, values, next_state, hit, _ = policy.sequence(
+        logits, values, next_state, hit, *_ = policy.sequence(
             obs, policy.initial_carry(3, 6, "cpu"), torch.zeros(2, 3, dtype=torch.bool)
         )
     assert torch.allclose(torch.softmax(hit, -1), shares, atol=0.01)
@@ -950,3 +978,77 @@ def test_hl_gauss_decodes_to_the_target_within_a_bin_on_every_support():
     s = symlog(values, knee)
     bin_width = symexp(s + 0.5 * s_width, knee) - symexp(s - 0.5 * s_width, knee)
     assert ((decoded - values).abs() < bin_width).all()
+
+
+def test_circular_bins_wrap_with_no_seam():
+    """Catches a seam at +-pi in the angle targets: angles just either side of pi get mirror
+    distributions with their mass on both ends of the bin list, every distribution sums to 1
+    and peaks at the angle's bin, and 2 pi apart is the same target."""
+    from lean.model.geometry import circular_centres, circular_hl_gauss_targets
+
+    for knee in (0.0, 0.02):
+        centres = circular_centres(knee, 32)
+        just_below = circular_hl_gauss_targets(torch.tensor([math.pi - 1e-4]), centres, knee)[0]
+        just_above = circular_hl_gauss_targets(torch.tensor([-math.pi + 1e-4]), centres, knee)[0]
+        assert torch.allclose(just_below, just_above.flip(0), atol=1e-4)
+        assert just_below[0] > 0.2 and just_below[-1] > 0.2  # the mass straddles the wrap
+        angles = torch.linspace(-3.0, 3.0, 61) + 0.0013  # off the bin edges (0 is one)
+        targets = circular_hl_gauss_targets(angles, centres, knee)
+        assert torch.allclose(targets.sum(-1), torch.ones(61), atol=1e-5)
+        expected = ((symlog(angles, knee) - centres[0]) / (centres[1] - centres[0])).round()
+        assert torch.equal(targets.argmax(-1), expected.long().clamp(0, 31))
+        shifted = circular_hl_gauss_targets(angles + 2.0 * math.pi, centres, knee)
+        assert torch.allclose(targets, shifted, atol=1e-5)
+
+
+def test_the_gun_error_bins_crowd_near_zero_and_the_supports_have_their_sizes():
+    """Catches a geometry support with the wrong bin count or a gun-error circle that is not
+    finest near zero (a hit needs about 8 mrad of aim at 300 m)."""
+    from lean.model.geometry import column_centres
+
+    config = ModelConfig()
+    for column in (*config.pair_columns, config.field_column, config.edge_column):
+        assert column_centres(column).shape == (column.bins,)
+        assert column.bins in (16, 32)
+    gun = next(column for column in config.pair_columns if column.name == "gun_error")
+    edges = symexp(
+        torch.cat([column_centres(gun) - 0.5 * column_centres(gun).diff()[0], torch.tensor([0.0])]),
+        gun.knee,
+    )
+    widths = symexp(column_centres(gun), gun.knee).diff().abs()
+    assert widths.min() < 0.01 and widths.max() > 0.5
+    assert edges[0] == pytest.approx(-math.pi, abs=1e-4)
+    policy = make_policy()
+    for column in config.pair_columns:
+        assert torch.equal(policy.geometry_centres(column), column_centres(column))
+
+
+def test_the_pairwise_head_reads_only_its_two_ships_and_the_order():
+    """Catches a pair logit that depends on ships outside the pair (the pairs combine after
+    the per-ship projections) or that ignores the order: changing a third ship's token leaves
+    the pair's logits unchanged; swapping the pair changes the order-dependent ones."""
+    from lean.model.geometry import PairHead, PairQuery
+
+    config = ModelConfig()
+    head = PairHead(config)
+    for last in (*head.ship_lasts, head.field_last):
+        torch.nn.init.normal_(last.weight)
+    ships = torch.randn(1, 1, 4, config.width)
+    memory = torch.randn(1, 1, 3, config.map_width)
+    pair = PairQuery(
+        torch.tensor([[[0]]]), torch.tensor([[[1]]]), torch.tensor([[[0]]]), torch.tensor([[[2]]])
+    )
+    logits, field = head(ships, memory, pair)
+    changed = ships.clone()
+    changed[:, :, 3] = torch.randn(config.width)
+    again, field_again = head(changed, memory, pair)
+    for one, two in zip(logits, again, strict=True):
+        assert torch.equal(one, two)
+    assert torch.equal(field, field_again)
+    swapped, _ = head(ships, memory, PairQuery(pair.second, pair.first, None, None))
+    for column, one, two in zip(config.pair_columns, logits, swapped, strict=True):
+        if column.both_orders:  # (first on second, second on first) swap places
+            assert torch.allclose(one[:, :, 0], two[:, :, 1]) and torch.allclose(
+                one[:, :, 1], two[:, :, 0]
+            )
+            assert not torch.allclose(one[:, :, 0], one[:, :, 1])

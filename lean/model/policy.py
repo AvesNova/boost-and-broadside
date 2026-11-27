@@ -11,12 +11,22 @@ entity axis except attention.
 
 import math
 from dataclasses import dataclass
+from typing import NamedTuple
 
 import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
 from lean import contract
+from lean.model.geometry import (
+    EDGE_COLUMN,
+    FIELD_COLUMN,
+    PAIR_COLUMNS,
+    GeometryColumn,
+    PairHead,
+    PairQuery,
+    column_centres,
+)
 from lean.model.position import Rotary, make_position_code
 from lean.model.temporal import Temporal
 from lean.model.value import COLUMNS, buffered_centres, hl_gauss_targets
@@ -86,7 +96,11 @@ class ModelConfig:
     back by the query's.
     next_state_columns: the next-state head's columns (NextStateColumn, next_state_target's
     names), each a categorical over `bins` bins; next_state_sigma: the HL-Gauss targets'
-    standard deviation in bin widths.
+    standard deviation in bin widths (the geometry columns' too).
+    geometry_heads: the relative-geometry heads (lean.model.geometry: the pairwise head over
+    ship pairs and ship-field pairs, the map-edge column on the auxiliary heads); False (an
+    ablation) builds none. pair_hidden: the pair layer's width; pair_combine: "sum" (u_i +
+    v_j) or "product" (u_i x v_j); pair_columns, field_column, edge_column: the targets.
     hit_classes: the hit head's outcomes for the bullet a ship emits on a tick, in
     lean.contract's StepOut.shot_outcome order (0 missed, 1 hit an enemy, 2 hit a team-mate);
     hit_class_frequencies: their measured shares, the hit head's initial biases (log).
@@ -126,6 +140,12 @@ class ModelConfig:
     rotate_values: bool = True
     next_state_columns: tuple[NextStateColumn, ...] = NEXT_STATE_COLUMNS
     next_state_sigma: float = 0.75
+    geometry_heads: bool = True
+    pair_hidden: int = 128
+    pair_combine: str = "sum"
+    pair_columns: tuple[GeometryColumn, ...] = PAIR_COLUMNS
+    field_column: GeometryColumn = FIELD_COLUMN
+    edge_column: GeometryColumn = EDGE_COLUMN
 
     @classmethod
     def for_arena(cls, arena_radius: float, **fields) -> ModelConfig:
@@ -486,13 +506,19 @@ class Policy(nn.Module):
             (contract.JOINT, contract.LEVELS * config.bins),
             config,
         )
-        # The learner's auxiliary heads, one group: next state (a categorical per column) and hit.
-        self.auxiliary_heads = HeadGroup(
-            config.width,
-            config.head_hidden,
-            (config.next_state_size * config.bins, config.hit_classes),
-            config,
-        )
+        # The learner's auxiliary heads, one group: next state (a categorical per column), hit
+        # and, with the geometry heads, the map edge.
+        auxiliary = (config.next_state_size * config.bins, config.hit_classes)
+        if config.geometry_heads:
+            auxiliary += (config.edge_column.bins,)
+        self.auxiliary_heads = HeadGroup(config.width, config.head_hidden, auxiliary, config)
+        self.pair_head = PairHead(config) if config.geometry_heads else None
+        # The geometry columns' supports, built once (as the next-state support).
+        if config.geometry_heads:
+            for column in (*config.pair_columns, config.field_column, config.edge_column):
+                self.register_buffer(
+                    f"geometry_centres_{column.name}", column_centres(column), persistent=False
+                )
         # The next-state support on the device, built once (a table made inside a compiled
         # graph is a host-to-device copy at every call); not in the state dict.
         self.register_buffer("next_state_centres", next_state_centres(config), persistent=False)
@@ -518,7 +544,7 @@ class Policy(nn.Module):
         Returns policy logits (E, N, 42), value logits (E, N, LEVELS, BINS) and the new
         carry. Outputs of rows with key_mask False are meaningless and their carry is zero.
         """
-        logits, value_logits, _, _, carry = self._forward(
+        logits, value_logits, _, _, carry, *_ = self._forward(
             {name: getattr(obs, name)[None] for name in OBS_FIELDS},
             carry,
             None if reset is None else reset[None],
@@ -527,17 +553,30 @@ class Policy(nn.Module):
         )
         return logits[0], value_logits[0], carry
 
-    def sequence(self, obs, carry: Tensor, reset: Tensor, position_offset: Tensor | None = None):
+    def geometry_centres(self, column: GeometryColumn) -> Tensor:
+        """The geometry column's bin-space centres on the device (lean.model.geometry)."""
+        return getattr(self, f"geometry_centres_{column.name}")
+
+    def sequence(
+        self,
+        obs,
+        carry: Tensor,
+        reset: Tensor,
+        position_offset: Tensor | None = None,
+        pairs: PairQuery | None = None,
+    ) -> Sequence:
         """T ticks for the learner; equal to T calls of step.
 
         obs: Obs whose fields carry a leading T, (T, E, ...). carry: the state before tick
         0. reset: (T, E) bool, zero the carry before that tick. position_offset: optional
         (E, 2) or (T, E, 2) metres.
-        Returns policy logits (T, E, N, 42), value logits (T, E, N, LEVELS, BINS),
-        next-state logits (T, E, N, NEXT_STATE, BINS) (a categorical per column of
+        pairs: the pairs the pairwise head evaluates (lean.model.geometry.PairQuery), or None.
+        Returns a Sequence: policy logits (T, E, N, 42), value logits (T, E, N, LEVELS,
+        BINS), next-state logits (T, E, N, NEXT_STATE, BINS) (a categorical per column of
         next_state_target, over the bins of next_state_centres), hit logits (T, E, N,
-        HIT_CLASSES) (the outcome of the bullet each ship emits on that tick) and the carry
-        after the last tick.
+        HIT_CLASSES) (the outcome of the bullet each ship emits on that tick), the carry
+        after the last tick; with the geometry heads the map-edge logits (T, E, N,
+        edge bins) and, given `pairs`, the pairwise head's logits (PairHead.forward).
         """
         if position_offset is not None and position_offset.dim() == 2:
             position_offset = position_offset[None]
@@ -547,9 +586,10 @@ class Policy(nn.Module):
             reset,
             position_offset,
             with_auxiliary=True,
+            query=pairs,
         )
 
-    def _forward(self, obs: dict, carry, reset, position_offset, with_auxiliary):
+    def _forward(self, obs: dict, carry, reset, position_offset, with_auxiliary, query=None):
         ticks, envs, slots = obs["key_mask"].shape
         pos, field_pos = obs["pos"], obs["field_pos"]
         offset = (
@@ -571,8 +611,8 @@ class Policy(nn.Module):
             [obs["globals"].unsqueeze(-2), code(offset).to(obs["globals"].dtype)], -1
         )
         field_in = torch.cat([obs["field"], code(field_pos + offset).to(obs["field"].dtype)], -1)
-        tokens, memory = self.encoder(ship_in, obs["pending"], game_in, field_in)
-        memory = memory.flatten(0, 1)
+        tokens, field_memory = self.encoder(ship_in, obs["pending"], game_in, field_in)
+        memory = field_memory.flatten(0, 1)
 
         # Rotary uses the true positions, in which the arena centre (the boundary's) is the
         # origin: only differences enter a ship-ship score. The game token sits at the centre
@@ -618,13 +658,38 @@ class Policy(nn.Module):
         ships = tokens[:, :, 1:]
         logits, value_logits = self.heads(ships)
         value_logits = value_logits.view(ticks, envs, slots, contract.LEVELS, self.config.bins)
-        next_state = hit_logits = None
+        next_state = hit_logits = edge_logits = pair_logits = field_logits = None
         if with_auxiliary:
-            next_state, hit_logits = self.auxiliary_heads(ships)
+            next_state, hit_logits, *edge = self.auxiliary_heads(ships)
             next_state = next_state.view(
                 ticks, envs, slots, self.config.next_state_size, self.config.bins
             )
-        return logits, value_logits, next_state, hit_logits, torch.stack(new_carry)
+            edge_logits = edge[0] if edge else None
+            if query is not None and self.pair_head is not None:
+                pair_logits, field_logits = self.pair_head(ships, field_memory, query)
+        return Sequence(
+            logits,
+            value_logits,
+            next_state,
+            hit_logits,
+            torch.stack(new_carry),
+            edge_logits,
+            pair_logits,
+            field_logits,
+        )
+
+
+class Sequence(NamedTuple):
+    """Policy.sequence's outputs (step keeps the policy and value logits and the carry)."""
+
+    logits: Tensor
+    value_logits: Tensor
+    next_state: Tensor | None
+    hit: Tensor | None
+    carry: Tensor
+    edge: Tensor | None = None
+    pairs: list[Tensor] | None = None
+    fields: Tensor | None = None
 
 
 def field_heading(field_pos: Tensor) -> Tensor:
