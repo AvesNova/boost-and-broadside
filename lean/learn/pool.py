@@ -40,7 +40,8 @@ update: an average is one moving player, its running games continue with the new
 the RL stage's start (`open`) it holds all K slots, each on W = C rows (no slot ever holds
 more: a draw never takes a member past C, and a retiring slot keeps the rows it had), an
 empty slot running a placeholder network (the policy's weights at `open`) on no rows; so the
-routing graph compiles once, at the stage's first tick, and the tick makes K calls of it.
+routing graph (lean.learn.rollout.league_networks: all K slots in one batched call over
+their stacked weights) compiles once, at the stage's first tick.
 
 Snapshot schedule (`SnapshotSchedule`, v2's src/bnb/runtime/snapshots.py): v2's
 LEAGUE_SNAPSHOTS, 5, 10, 15, 20, 25, 30, 40, 50, 60, 75, 90, 110, 130 and 160M environment
@@ -138,13 +139,18 @@ def retained(ordinals, recent: int, history_from: int, cap: int) -> set[int]:
 
 @dataclasses.dataclass
 class NetworkTable:
-    """One segment's network table (League.prepare): all K slots, each as (slot, parameters,
-    buffers) with `slot` a 0-d long tensor (a tensor, so that one compiled graph serves every
-    slot) and an empty slot's weights the placeholder's, and `positions` (W,) arange of the
-    rows a slot runs on (W = the network members' capacity, fixed for the run)."""
+    """One segment's network table (League.prepare): all K slots' weights stacked,
+    `parameters` and `buffers` each {name: (K, ...)} (an empty slot's the placeholder's), and
+    `positions` (W,) arange of the rows a slot runs on (W = the network members' capacity,
+    fixed for the run)."""
 
-    slots: list[tuple[Tensor, dict[str, Tensor], dict[str, Tensor]]]
+    parameters: dict[str, Tensor]
+    buffers: dict[str, Tensor]
     positions: Tensor
+
+    @property
+    def slots(self) -> int:
+        return next(iter(self.parameters.values())).shape[0]
 
 
 class League:
@@ -396,17 +402,11 @@ class League:
                 f"league slots {over} hold {[rows[index] for index in over]} rows, more than "
                 f"the table width {width} (the capacity draws never do)"
             )
-        slots = [
-            (
-                torch.tensor(index, device=self.device),
-                *split_weights(
-                    self.template,
-                    self.placeholder if weights is None else weights,
-                ),
-            )
-            for index, weights in enumerate(self.slot_weights)
-        ]
-        self.table = NetworkTable(slots, torch.arange(width, device=self.device))
+        held = [self.placeholder if weights is None else weights for weights in self.slot_weights]
+        stacked = {name: torch.stack([weights[name] for weights in held]) for name in held[0]}
+        self.table = NetworkTable(
+            *split_weights(self.template, stacked), torch.arange(width, device=self.device)
+        )
 
     # ---- checkpoints
 

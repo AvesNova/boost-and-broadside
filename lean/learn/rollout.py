@@ -1,16 +1,21 @@
 """Rollout collection: the live policy on its seats, the league on the other side."""
 
+import contextlib
 import dataclasses
 from dataclasses import dataclass
 from typing import NamedTuple
 
 import torch
 from torch import Tensor
+from torch.func import functional_call, vmap
+from torch.nn import functional
+from torch.nn.attention import SDPBackend, sdpa_kernel
 
 from lean import game, scripted
 from lean.contract import (
     EPISODE_CONSTANT,
     JOINT,
+    SEAT_AXIS,
     Obs,
     random_keywords,
     split_joint,
@@ -21,10 +26,9 @@ from lean.learn.returns import ValueSupport, value_support
 from lean.learn.rewards import Ledger, blank_ledger, clear_ledger, reward_step, tick_events
 from lean.model import draw_position_offset, next_state_target
 from lean.model.agent import (
-    Network,
     agent_step,
-    merge_routed,
-    routed_step,
+    precision,
+    sample_joint,
     seat_view,
     select_environments,
 )
@@ -271,57 +275,73 @@ def draw_members(
     return opponent.league.draw(member, slot, done, generator)
 
 
-def slot_actions(
-    network_: Network,
-    slot: Tensor,
+def league_networks(
+    template,
+    bf16: bool,
+    parameters: dict[str, Tensor],
+    buffers: dict[str, Tensor],
     positions: Tensor,
     views: tuple[Obs, Obs],
     carry: CollectCarry,
+    scripted_action: Tensor,
     generator,
-) -> tuple[Tensor, Tensor]:
-    """One network slot's moves (lean.model.agent.routed_step, the routing the evaluation
-    runner shares): the league environments it plays (carry.slot == `slot`, a 0-d long) run
-    on a W-row batch (W = positions.shape[0], League.prepare's table width, fixed for the run:
-    never fewer than the slot's environments) from their league side's view. Returns the
-    batch's actions (W, N, 3) and carry (merge_league puts them back). No host read, and one
-    compiled graph for every slot (an empty slot runs on no rows)."""
+) -> LeagueMove:
+    """The league side's move with the league's network table (League.prepare: K slots'
+    weights stacked, `parameters` and `buffers` {name: (K, ...)}, W = positions.shape[0] rows
+    each, both fixed for the run): capacity routing, mixture-of-experts style. Each league
+    environment played by a network (carry.slot >= 0) takes row k of its slot's W rows, k its
+    rank among the slot's environments (no slot holds more than W); every slot's network runs
+    once on its own rows, all K in one batched call (torch.func.vmap over the stacked weights,
+    through the weightless `template`, in the networks' precision `bf16`); each environment
+    reads its sampled action and carry back, the others the scripted agent's action and their
+    carry. Padding rows run on league environment 0's input and are never read. No host read;
+    one compiled graph for the run."""
     league_envs = carry.member.shape[0]
     envs = carry.learner_team.shape[0]
     first = envs - league_envs
+    slots, width = next(iter(parameters.values())).shape[0], positions.shape[0]
+    rows = slots * width
+    played = carry.slot >= 0
+    owner = carry.slot.clamp(min=0)
+    counts = functional.one_hot(owner, slots) * played[:, None].long()
+    rank = counts.cumsum(0).gather(1, owner[:, None]).squeeze(1) - 1
+    row = torch.where(played, owner * width + rank.clamp(min=0, max=width - 1), rows)
+    source = torch.zeros(rows + 1, dtype=torch.long, device=row.device)
+    source = source.scatter(0, row, torch.arange(league_envs, device=row.device))[:-1]
+    environment = first + source
+    view = seat_view(views, environment, 1 - carry.learner_team.index_select(0, environment))
+    view = {
+        field.name: getattr(view, field.name).unflatten(0, (slots, width))
+        for field in dataclasses.fields(view)
+    }
+    rows_carry = carry.opponent.index_select(SEAT_AXIS, source).unflatten(SEAT_AXIS, (slots, width))
+    offset = carry.position_offset[first:].index_select(0, source).unflatten(0, (slots, width))
+    reset = carry.reset[first:].index_select(0, source).unflatten(0, (slots, width))
 
-    def view_of(environment: Tensor) -> Obs:
-        return seat_view(
-            views, first + environment, 1 - carry.learner_team.index_select(0, first + environment)
+    def one_slot(slot_parameters, slot_buffers, slot_view, slot_carry, slot_offset, slot_reset):
+        return functional_call(
+            template,
+            (slot_parameters, slot_buffers),
+            (Obs(**slot_view), slot_carry, slot_offset, slot_reset),
         )
 
-    return routed_step(
-        network_,
-        carry.slot == slot,
-        positions,
-        view_of,
-        carry.opponent,
-        carry.position_offset[first:],
-        generator,
-        carry.reset[first:],
+    # Eagerly, vmap hands the fused attention kernels a mask layout they reject on the GPU;
+    # the math kernel takes any. Compiled, the attention is decomposed.
+    attention = (
+        contextlib.nullcontext() if torch.compiler.is_compiling() else sdpa_kernel(SDPBackend.MATH)
     )
-
-
-def merge_league(
-    carry: CollectCarry, scripted_action: Tensor, actions: list[Tensor], carries: list[Tensor]
-) -> LeagueMove:
-    """The league side's move from the slots' outputs (slot_actions, all K in slot order):
-    each league environment played by a network takes its slot's action and carry
-    (lean.model.agent.merge_routed), the others the scripted agent's action and their
-    carry. One pass over the league environments."""
-    league_envs = carry.member.shape[0]
-    action, new_carry = merge_routed(
-        carry.slot,
-        actions,
-        carries,
-        scripted_action[scripted_action.shape[0] - league_envs :],
-        carry.opponent,
-    )
-    return LeagueMove(action, new_carry)
+    with precision(carry.opponent.device, bf16), attention:
+        logits, _, new_carry = vmap(
+            one_slot, in_dims=(0, 0, 0, SEAT_AXIS, 0, 0), out_dims=(0, 0, SEAT_AXIS)
+        )(parameters, buffers, view, rows_carry, offset, reset)
+    read = row.clamp(max=rows - 1)
+    logits = logits.flatten(0, 1).index_select(0, read).float()
+    sampled = split_joint(sample_joint(logits, generator))
+    action = torch.where(played[:, None, None], sampled, scripted_action[first:])
+    new_carry = new_carry.flatten(SEAT_AXIS, SEAT_AXIS + 1).index_select(SEAT_AXIS, read)
+    chosen = played.view(*[1] * SEAT_AXIS, -1, *[1] * (carry.opponent.dim() - SEAT_AXIS - 1))
+    new_carry = torch.where(chosen, new_carry.to(carry.opponent.dtype), carry.opponent)
+    return LeagueMove(action, new_carry.contiguous())
 
 
 def league_rows(scripted_action: Tensor, league_envs: int) -> Tensor:
@@ -332,29 +352,6 @@ def league_rows(scripted_action: Tensor, league_envs: int) -> Tensor:
     return scripted_action[scripted_action.shape[0] - league_envs :].clone()
 
 
-def network_actions(
-    config: LearnConfig,
-    league,
-    views: tuple[Obs, Obs],
-    carry: CollectCarry,
-    scripted_action: Tensor,
-    generator,
-    step=slot_actions,
-    merge=merge_league,
-) -> LeagueMove:
-    """The league side's move: each slot of the league's network table (League.prepare)
-    runs on its own environments (`step`: slot_actions or its compiled form), one call per
-    slot: all K of them, the empty ones on no rows, so the calls are the same every tick of
-    the run; then `merge` (merge_league or its compiled form) puts the moves back."""
-    actions, carries = [], []
-    for slot, parameters, buffers in league.table.slots:
-        network_ = Network(league.template, parameters, buffers, config.bf16)
-        action, new_carry = step(network_, slot, league.table.positions, views, carry, generator)
-        actions.append(action)
-        carries.append(new_carry)
-    return merge(carry, scripted_action, actions, carries)
-
-
 def league_actions(
     config: LearnConfig,
     opponent: Opponent,
@@ -362,18 +359,28 @@ def league_actions(
     carry: CollectCarry,
     scripted_action: Tensor,
     generator,
-    step=slot_actions,
-    merge=merge_league,
+    networks=league_networks,
 ) -> LeagueMove:
     """The league side's move in every league environment: the scripted agent's actions
     (already computed as the BC target) and the unchanged opponent carry until the league is
-    open (League.open: the RL stage), then network_actions (`step` the per-slot function and
-    `merge`, or their compiled forms)."""
+    open (League.open: the RL stage), then `networks` (league_networks or its compiled form)
+    on the league's network table."""
     league = opponent.league
     league_envs = carry.member.shape[0]
     if league is None or league.table is None or league_envs == 0:
         return LeagueMove(league_rows(scripted_action, league_envs), carry.opponent)
-    return network_actions(config, league, views, carry, scripted_action, generator, step, merge)
+    table = league.table
+    return networks(
+        league.template,
+        config.bf16,
+        table.parameters,
+        table.buffers,
+        table.positions,
+        views,
+        carry,
+        scripted_action,
+        generator,
+    )
 
 
 def start(config: LearnConfig, game_config, policy, opponent: Opponent, envs: int, generator):
@@ -669,7 +676,7 @@ def collect(
 
     Self-play environments (the first E_s) have two live seats, league environments one;
     the league side plays the member `carry.member` (the scripted agent, an average or a
-    snapshot) through its slot `carry.slot` (network_actions; League.prepare builds the
+    snapshot) through its slot `carry.slot` (league_networks; League.prepare builds the
     segment's network table first, with one host read before the loop). The scripted agent's action
     is computed for every ship every tick: it is
     the BC target and the scripted member's move. Finished environments are re-dealt at
@@ -695,13 +702,13 @@ def collect(
 
         compiled_graphs = graphs(config.compile_shapes)
         act_part, advance_part = compiled_graphs.act, compiled_graphs.advance
-        networks, merge = compiled_graphs.slot_actions, compiled_graphs.merge_league
+        networks = compiled_graphs.league_networks
         generator = None
         # A fresh state can hold broadcast (stride 0) tensors where a re-dealt one holds
         # whole ones (even empty ones: fields with F = 0).
         state = whole_state(state)
     else:
-        act_part, advance_part, networks, merge = act, advance, slot_actions, merge_league
+        act_part, advance_part, networks = act, advance, league_networks
     if opponent.league is not None:
         opponent.league.prepare(carry.member.shape[0], carry.slot)
     carry = dataclasses.replace(
@@ -731,7 +738,6 @@ def collect(
             decision.scripted.action,
             generator,
             networks,
-            merge,
         )
         state, carry, tick_records = advance_part(
             config,

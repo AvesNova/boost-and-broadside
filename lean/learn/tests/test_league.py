@@ -25,7 +25,7 @@ from lean.learn.pool import (
     pfsp,
     retained,
 )
-from lean.learn.rollout import network_actions
+from lean.learn.rollout import league_actions
 from lean.learn.tests.setting import StepRecorder, add_snapshots, small
 from lean.model.agent import seat_view
 
@@ -235,7 +235,7 @@ def test_opponents_are_redrawn_only_at_reset():
 
 
 def test_routing_gives_each_environment_its_own_members_step():
-    """network_actions runs each slot's network once on its own W rows; each
+    """league_actions runs each slot's network once on its own W rows; each
     league environment must get the carry its own member's step gives (as if it ran alone),
     and scripted environments keep theirs and take the scripted action."""
     torch.manual_seed(0)
@@ -267,10 +267,10 @@ def test_routing_gives_each_environment_its_own_members_step():
     league.prepare(8, carry.slot)
     table = league.table
     assert table.positions.shape[0] == league.width == 8  # C = L in the tests' setting
-    assert len(table.slots) == league.slot_count  # every slot, the empty ones on no rows
+    assert table.slots == league.slot_count  # every slot, the empty ones on no rows
     views = (game.observe(game_config, state, 0), game.observe(game_config, state, 1))
     scripted_action = torch.full((16, state.exists.shape[1], 3), 1)
-    action, new_carry = network_actions(config, league, views, carry, scripted_action, generator)
+    action, new_carry = league_actions(config, opponent, views, carry, scripted_action, generator)
     first = 8
     view = seat_view(views, torch.arange(first, 16), 1 - carry.learner_team[first:])
     for row, member in enumerate(chosen.tolist()):
@@ -338,7 +338,7 @@ def test_a_dropped_snapshot_finishes_its_running_games_with_its_old_weights():
     league.prepare(4, carry.slot)
     views = (game.observe(game_config, state, 0), game.observe(game_config, state, 1))
     scripted_action = torch.zeros(8, state.exists.shape[1], 3, dtype=torch.long)
-    _, new_carry = network_actions(config, league, views, carry, scripted_action, generator)
+    _, new_carry = league_actions(config, opponent, views, carry, scripted_action, generator)
     view = seat_view(views, torch.arange(4, 8), 1 - carry.learner_team[4:])
     _, _, expected = old.step(view, carry.opponent, carry.position_offset[4:])
     for row in (0, 2):

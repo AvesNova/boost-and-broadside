@@ -16,8 +16,8 @@ from lean.learn.rollout import (
     advance,
     draw_next_episodes,
     league_actions,
+    league_networks,
     self_play_count,
-    slot_actions,
 )
 from lean.learn.tests.setting import add_snapshots
 
@@ -129,8 +129,9 @@ def test_compiled_loss_matches_eager():
 
 
 def test_the_league_tick_compiles_fullgraph_so_it_never_reads_the_host():
-    """The capacity routing (slot_actions, one call per slot) and the tick's second half
-    (advance: the tallies and the capacity draws at re-deal) trace as single graphs: no
+    """The capacity routing (league_networks, every slot in one batched call) and the tick's
+    second half (advance: the tallies and the capacity draws at re-deal) trace as single
+    graphs: no
     graph break, so no host read in the tick path."""
     torch._dynamo.reset()
     torch.manual_seed(0)
@@ -149,7 +150,7 @@ def test_the_league_tick_compiles_fullgraph_so_it_never_reads_the_host():
     deals = draw_next_episodes(config, game_config, policy, opponent, 8, slots, None, "cpu")
     carry = dataclasses.replace(carry, next_episodes=deals)
     graphs("dynamic")  # duck sizing off, as in a dynamic compile
-    routing = torch.compile(slot_actions, fullgraph=True, dynamic=True)
+    routing = torch.compile(league_networks, fullgraph=True, dynamic=True)
     second_half = torch.compile(advance, fullgraph=True, dynamic=True)
     for tick in range(4):  # a game ends on the third tick: re-deals draw members within capacity
         decision = act(config, game_config, policy, opponent, state, carry, None)
@@ -187,12 +188,12 @@ def test_the_league_routing_is_static_for_the_whole_run():
     league.open(policy)
     from lean.contract import compile_graph
 
-    routing = compile_graph(slot_actions, "static")  # its own: graphs() is per process
+    routing = compile_graph(league_networks, "static")  # its own: graphs() is per process
     shapes = []
 
     def league_tick(carry):
         league.prepare(4, carry.slot)
-        shapes.append((len(league.table.slots), league.table.positions.shape[0]))
+        shapes.append((league.table.slots, league.table.positions.shape[0]))
         decision = act(config, game_config, policy, opponent, state, carry, None)
         return league_actions(
             config, opponent, decision.views, carry, decision.scripted.action, None, routing
@@ -227,7 +228,7 @@ def test_the_first_league_networks_do_not_recompile_the_tick():
     state, carry = start(config, game_config, policy, opponent, 8, None)
     slots = state.exists.shape[1]
     graphs("dynamic")  # duck sizing off, as in a dynamic compile
-    routing = torch.compile(slot_actions, fullgraph=True, dynamic=True)
+    routing = torch.compile(league_networks, fullgraph=True, dynamic=True)
     second_half = torch.compile(advance, fullgraph=True, dynamic=True)
 
     def tick(state, carry, row):
@@ -257,7 +258,7 @@ def test_the_first_league_networks_do_not_recompile_the_tick():
     chosen = torch.tensor([0, EMA, FIRST_SNAPSHOT, FIRST_SNAPSHOT + 1])
     carry = dataclasses.replace(carry, member=chosen, slot=league.member_slot[chosen])
     league.prepare(4, carry.slot)
-    assert len(league.table.slots) == league.slot_count
+    assert league.table.slots == league.slot_count
     for row in (5, 6):
         state, carry = tick(state, carry, row)
     stats = torch._dynamo.utils.counters["stats"]
