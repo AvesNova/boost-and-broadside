@@ -59,7 +59,7 @@ async def cancelled(_request, _error):
 
 @app.get("/")
 def index():
-    return FileResponse(PAGE)
+    return FileResponse(PAGE, headers={"Cache-Control": "no-store"})
 
 
 SAVED = Path("/home/vizia/avesnova/boost-and-broadside/data/tool-presets")
