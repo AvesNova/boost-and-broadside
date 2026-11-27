@@ -108,6 +108,17 @@ class LearnConfig:
     value_coefficient: float = 0.05
     next_state_coefficient: float = 0.1
     hit_coefficient: float = 0.05  # cross-entropy of the hit head, nats per labelled row
+    # The relative-geometry heads (lean.learn.geometry; off with ModelConfig.geometry_heads),
+    # nats per column: ship pairs (PROVISIONAL, as next_state: the same kind of shaping
+    # target), ship-field pairs and the map edge (PROVISIONAL, as hit: simpler targets, one
+    # column each).
+    pair_coefficient: float = 0.1
+    field_coefficient: float = 0.05
+    edge_coefficient: float = 0.05
+    # K: ship pairs and ship-field pairs sampled per view and tick (lean.learn.geometry; at or
+    # above the pair count every pair trains). 4v4: 28 ship pairs, 80 ship-field pairs.
+    pair_samples: int = 8
+    field_pair_samples: int = 8
     # A warning when an epoch's mean approximate KL to the collecting policy exceeds this
     # (a monitor: no early stop, docs/rewrite/literature-recipe-1.md section 3).
     kl_warning: float = 0.02

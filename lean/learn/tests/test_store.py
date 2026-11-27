@@ -113,8 +113,9 @@ def test_streamed_segments_equal_the_unstreamed_rollouts():
 @pytest.mark.parametrize("targets_every_epoch", [False, True])
 def test_micro_batches_give_the_one_pass_gradient(targets_every_epoch):
     """One minibatch run as micro-batches of 2 views (the last padded with the empty spare
-    view) and as one pass of every view: the same gradient within float32 rounding. Plain
-    SGD at rate 1 with no clipping, so the step is minus the gradient."""
+    view) and as one pass of every view: the same gradient within float32 rounding (every
+    geometry pair taken, so no draw). Plain SGD at rate 1 with no clipping, so the step is
+    minus the gradient."""
     config, game_config, policy, opponent = setting()
     store = RolloutStore(1)
     rollouts(config, game_config, policy, opponent, 1, 16, store)
@@ -128,6 +129,9 @@ def test_micro_batches_give_the_one_pass_gradient(targets_every_epoch):
             warmup_steps=1,
             gradient_clip=1e9,
             targets_every_epoch=targets_every_epoch,
+            # Every pair (no draw): the draws of different micro-batch sizes differ.
+            pair_samples=10**6,
+            field_pair_samples=10**6,
         )
         twin = copy.deepcopy(policy)
         before = [parameter.detach().clone() for parameter in twin.parameters()]

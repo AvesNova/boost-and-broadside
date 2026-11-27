@@ -10,6 +10,7 @@ from lean import contract
 from lean.contract import FIELD_FEATURES, GLOBAL_FEATURES, JOINT, LEVELS, SHIP_FEATURES
 from lean.game import GameConfig
 from lean.model import ModelConfig, Policy, decode_value, hl_gauss_targets, value_bin_centres
+from lean.model.geometry import PairQuery
 from lean.model.policy import (
     Spatial,
     field_heading,
@@ -94,7 +95,7 @@ def test_sequence_equals_repeated_steps(rotate_values):
     offset = torch.randn(envs, 2) * 1000.0
     carry = torch.randn(policy.initial_carry(envs, slots, "cpu").shape)
     with torch.no_grad():
-        logits, values, next_state, hit, final = policy.sequence(obs, carry, reset, offset)
+        logits, values, next_state, hit, final = policy.sequence(obs, carry, reset, offset)[:5]
         outputs, stepped = step_all(policy, obs, carry, reset, offset)
     for tick, (step_logits, step_values) in enumerate(outputs):
         live = obs.key_mask[tick]
@@ -123,9 +124,9 @@ def test_a_reset_forgets_state_and_convolution_buffer():
     reset[start] = True
     carry = torch.randn(policy.initial_carry(envs, slots, "cpu").shape)
     with torch.no_grad():
-        logits, _, _, _, final = policy.sequence(obs, carry, reset)
+        logits, _, _, _, final = policy.sequence(obs, carry, reset)[:5]
         later = index_obs(obs, slice(start, None))
-        fresh_logits, _, _, _, fresh_final = policy.sequence(
+        fresh_logits, _, _, _, fresh_final, *_ = policy.sequence(
             later,
             policy.initial_carry(envs, slots, "cpu"),
             torch.zeros(ticks - start, envs, dtype=torch.bool),
@@ -540,11 +541,37 @@ def training_batch(ticks=8, envs=4, slots=10, fields=5):
     return obs, reset, targets
 
 
+def every_pair(ticks, envs, slots, fields) -> PairQuery:
+    """Every ship pair (first < second) and every ship-field pair, for every view and tick."""
+    first, second = torch.triu_indices(slots, slots, 1)
+    ship = torch.arange(slots).repeat_interleave(fields)
+    field = torch.arange(fields).repeat(slots)
+    return PairQuery(*(index.expand(ticks, envs, -1) for index in (first, second, ship, field)))
+
+
+def geometry_loss(outputs, query, live):
+    """Cross-entropy of every geometry head against bin 0, on the pairs and rows that are live
+    (`where`, so a masked row takes no gradient)."""
+
+    def cross(logits, valid):
+        entropy = -torch.log_softmax(logits, -1)[..., 0]
+        return torch.where(valid, entropy, 0.0).sum() / valid.sum().clamp(min=1)
+
+    pair_live = live.gather(-1, query.first) & live.gather(-1, query.second)
+    total = cross(outputs.edge, live) + cross(outputs.fields, live.gather(-1, query.field_ship))
+    for logits in outputs.pairs:
+        valid = pair_live if logits.shape[2] == pair_live.shape[2] else pair_live.repeat(1, 1, 2)
+        total = total + cross(logits, valid)
+    return total
+
+
 def training_loss(policy, obs, reset, targets, carry=None):
     ticks, envs, slots = obs.key_mask.shape
     if carry is None:
         carry = policy.initial_carry(envs, slots, "cpu")
-    logits, values, next_state, hit, final = policy.sequence(obs, carry, reset)
+    query = every_pair(ticks, envs, slots, obs.field_pos.shape[-2])
+    outputs = policy.sequence(obs, carry, reset, pairs=query)
+    logits, values, next_state, hit, final = outputs[:5]
     live = obs.key_mask
     policy_loss = torch.nn.functional.cross_entropy(logits[live], targets.actions[live])
     value_loss = torch.nn.functional.cross_entropy(
@@ -554,7 +581,8 @@ def training_loss(policy, obs, reset, targets, carry=None):
         policy.config, next_state[live], targets.next_state[live]
     ).mean()
     hit_loss = torch.nn.functional.cross_entropy(hit[live], targets.hit[live])
-    return policy_loss + value_loss + next_loss + hit_loss, policy_loss, final
+    pair_loss = geometry_loss(outputs, query, live)
+    return policy_loss + value_loss + next_loss + hit_loss + pair_loss, policy_loss, final
 
 
 def test_backward_reaches_every_parameter_and_no_masked_row():
@@ -730,7 +758,7 @@ def test_heads_start_near_uniform_and_the_hit_head_at_the_measured_shares():
     assert torch.allclose(policy.auxiliary_heads.lasts[1].bias, torch.log(shares))
     obs = make_obs((2, 3), 6, live_fraction=2.0)
     with torch.no_grad():
-        logits, values, next_state, hit, _ = policy.sequence(
+        logits, values, next_state, hit, *_ = policy.sequence(
             obs, policy.initial_carry(3, 6, "cpu"), torch.zeros(2, 3, dtype=torch.bool)
         )
     assert torch.allclose(torch.softmax(hit, -1), shares, atol=0.01)

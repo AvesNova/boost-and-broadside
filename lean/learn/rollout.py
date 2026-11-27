@@ -17,6 +17,7 @@ from lean.contract import (
     whole_state,
 )
 from lean.learn.config import LearnConfig
+from lean.learn.geometry import observed_rows
 from lean.learn.returns import ValueSupport, fallen_team_values, value_support
 from lean.learn.rewards import Ledger, blank_ledger, clear_ledger, reward_step, tick_events
 from lean.model import draw_position_offset, next_state_target
@@ -160,16 +161,21 @@ class Rollout:
     reset: (T, S) the seat's environment was re-dealt just before this tick.
     position_offset: (T, S, 2).
     next_state: (T, S, N, NEXT_STATE) lean.model.next_state_target of the game step;
-    next_valid: (T, S, N) that row is a target (own now, alive after the step, and the
-    episode did not end on the tick).
+    next_valid: (T, S, N) that row is a target (observed now, alive and visible to the seat
+    after the step, and the episode did not end on the tick).
+    observed: (T, S, N) bool, the rows the seat sees (its living ships and the visible living
+    enemies, lean.learn.geometry.observed_rows): the rows the next-state, hit and geometry
+    losses train (author 2026-11-28; hidden enemies masked).
+    geometry: (T, S, N, lean.game.GEOMETRY_COLUMNS) lean.game.geometry_record, every slot of
+    the seat's environment (the losses read the observed rows only).
     fallen: (T, S, N) bool, the seat's team's dead ships still in the match (their value in
     the returns is their living team-mates' mean, returns.fallen_team_values).
     hit_label: (T, S, N) long, the outcome of the bullet the ship emitted on that tick
     (0 missed, 1 hit an enemy, 2 hit a team-mate; -1 unlabelled: no bullet, or it had not
-    ended by the segment's end). Labels every slot of the seat's environment; the loss
-    takes the `own` rows. Streamed into a store, the bullets fired in the previous segment
-    that end in this one label that segment's rows (RolloutStore.end_segment); only the
-    update's last segment keeps an unlabelled tail.
+    ended by the segment's end). Labels every slot of the seat's environment (a plain game
+    label, the enemies' too); the loss takes the `observed` rows. Streamed into a store,
+    the bullets fired in the previous segment that end in this one label that segment's rows
+    (RolloutStore.end_segment); only the update's last segment keeps an unlabelled tail.
     bootstrap_value: (S, N, LEVELS) value after the last tick, zero outside `own` except on
     fallen ships (returns.fallen_team_values).
     value_centres: (LEVELS, BINS) the critic's support the values were decoded with.
@@ -192,6 +198,8 @@ class Rollout:
     position_offset: Tensor | None
     next_state: Tensor | None
     next_valid: Tensor | None
+    observed: Tensor | None
+    geometry: Tensor | None
     fallen: Tensor | None
     hit_label: Tensor | None
     deal_row: Tensor | None
@@ -217,6 +225,8 @@ class Rollout:
         "position_offset",
         "next_state",
         "next_valid",
+        "observed",
+        "geometry",
         "fallen",
         "deal_row",
     )
@@ -647,6 +657,14 @@ def advance(
     done = step_out.done
     seat_done = done.index_select(0, seat_environment)
     reward, ledger = reward_step(config, carry.ledger, tick_events(step_out, state), state.team)
+    observed = observed_rows(observation)
+    # Visible to the seat after the step (its next view's Obs.visible), for the next-state
+    # targets of enemies: what the team sees on both ticks.
+    visible_after = torch.where(
+        (seat_team == 0)[:, None],
+        game.visible_rows(game_config, next_state, 0).index_select(0, seat_environment),
+        game.visible_rows(game_config, next_state, 1).index_select(0, seat_environment),
+    )
     records = {
         "hit_outcome": hit_outcomes_by_age(step_out, state),
         "teacher": decision.scripted.teacher.index_select(0, seat_environment),
@@ -656,9 +674,12 @@ def advance(
         "next_state": next_state_target(
             policy.config, state, next_state, step_out, game_config.tick_length
         ).index_select(0, seat_environment),
-        "next_valid": observation.own
+        "next_valid": observed
         & next_state.alive.index_select(0, seat_environment)
+        & visible_after
         & ~seat_done[:, None],
+        "observed": observed,
+        "geometry": game.geometry_record(game_config, state).index_select(0, seat_environment),
         "fallen": fallen(state, seat_environment, seat_team),
     }
     if opponent.league is not None:

@@ -2989,6 +2989,7 @@ GEOMETRY_COLUMNS = (
     "energy",  # the store
     "edge",  # signed distance beyond the arena's edge, m (negative inside: `boundary_distance`)
     "bullet_drag",  # the ship's bullet drag, 1/m
+    "bullet_life",  # a bullet's life, s (BULLET_SLOTS ticks)
 )
 # How many fixed-point passes `pair_geometry` makes for the lead point's time of flight.
 LEAD_PASSES = 3
@@ -3066,6 +3067,7 @@ def geometry_record(config: GameConfig, state: State) -> Tensor:
         "energy": state.energy,
         "edge": boundary_distance(config, state.x, state.y),
         "bullet_drag": drag if isinstance(drag, Tensor) else torch.full_like(state.x, drag),
+        "bullet_life": torch.full_like(state.x, BULLET_SLOTS * config.tick_length),
     }
     return torch.stack([columns[name].expand_as(state.x) for name in GEOMETRY_COLUMNS], -1)
 
@@ -3083,8 +3085,9 @@ def pair_geometry(first_position, first_heading, first, second_position, second)
     (radians in (-pi, pi], counter-clockwise positive). gun_error: from the launch direction
     of a shot by first now (`launch_velocity` over the map, no spread) to the lead point,
     second's position after the bullet's time of flight to it at second's world velocity
-    (`bullet_flight_time` at first's launch speed and drag, LEAD_PASSES fixed-point passes
-    from the range), radians in (-pi, pi]. Both depend on the order. The aspect angle and the
+    (`bullet_flight_time` at first's launch speed and drag, capped at the bullet's life: no
+    lead beyond what a bullet can reach; LEAD_PASSES fixed-point passes from the range),
+    radians in (-pi, pi]. Both depend on the order. The aspect angle and the
     heading crossing angle follow from the train angles in both orders."""
     column = {name: index for index, name in enumerate(GEOMETRY_COLUMNS)}
 
@@ -3103,7 +3106,9 @@ def pair_geometry(first_position, first_heading, first, second_position, second)
     drag = read(first, "bullet_drag")
     lead_x, lead_y, reach = line_x, line_y, distance
     for _ in range(LEAD_PASSES):
-        flight = bullet_flight_time(drag, launch_speed, reach)
+        flight = torch.minimum(
+            bullet_flight_time(drag, launch_speed, reach), read(first, "bullet_life")
+        )
         lead_x = line_x + read(second, "velocity_x") * flight
         lead_y = line_y + read(second, "velocity_y") * flight
         reach = torch.sqrt(lead_x * lead_x + lead_y * lead_y)
