@@ -509,17 +509,20 @@ def top_command(arguments):
     rng = np.random.default_rng(1)
     theta = peak.copy()
     samples = []
-    step = 0.03
+    step = 0.1
     accepted = 0
     for t in range(arguments.steps):
-        proposal = theta + step * rng.standard_normal(theta.shape)
+        # One coordinate at a time (at a support corner a joint step nearly always leaves it).
+        proposal = theta.copy()
+        coordinate = rng.integers(space.dimension)
+        proposal[coordinate] += step * rng.standard_normal()
         if (
-            space.outside(proposal)[0] <= 0
+            space.outside(proposal)[0] <= 1e-3  # the peak sits a hair outside (a penalty optimum)
             and space.g(proposal)[0][0] >= top_value - arguments.band
         ):
             theta = proposal
             accepted += 1
-        if t % 20 == 0:
+        if t % 25 == 0:
             samples.append(theta.copy())
     samples = np.array(samples[len(samples) // 5 :])
     centre = samples.mean(0)
