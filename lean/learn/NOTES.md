@@ -146,15 +146,20 @@ until the author decides; numbers in docs/rewrite/sections/league-pool/progress.
 - Loop speed (2026-11-27, before the two-level league): BC 8,255 steps/s, 127.0 s per update
   (collect plus update); the update alone 114.5 s (149.1 ms per micro-batch), peak allocated
   4.74 GiB.
+- Geometry heads (2026-11-28 ~04:56, quiet machine, `docs/rewrite/sections/heads-8c/cost.py`):
+  the compiled update per micro-batch of 64 views x 128 ticks, 4v4: off 150.2 ms, K = 4 162.1
+  (+8%), K = 8 165.4 (+10%), every pair (28 + 80) 193.1 (+29%); peak allocated 4.24 / 4.57 /
+  4.59 / 5.38 GiB; most of K = 8's cost is fixed (per-ship projections, targets, edge column).
 - League side, two levels (2026-11-27, back to back with the one-level league): the RL tick
   27.9 ms with no snapshot (EMA, 2 x 107 rows; one-level 24.1, no network), 28.6 ms with 1
   (26.4), 33.1 ms with 12 (32.5); the BC tick 25.5 ms (24.2: the per-row scripted parameters,
   1.3 ms). Share tracking and the smoke run: docs/rewrite/sections/league-pool/.
-- Compile (baseline reset 2026-11-27 ~22:00, `compile_baseline.json`): 5 graphs (act 4,535
-  traced operations, advance 3,194, minibatch_loss 861, slot_actions 720, merge_league 28),
-  cold 121 s, budget 150 s. The compile tripwire (`compile_check.py`) fails on any graph break,
-  new graph, recompile, or a function's traced operations over 10% above its baseline
-  (`docs/rewrite/scoreboard.md` "Compile time"). Run it at the end of every step:
+- Compile (baseline reset 2026-11-28 ~05:05 for the geometry heads, `compile_baseline.json`):
+  5 graphs (act 4,613 traced operations, advance 3,307, minibatch_loss 1,627 (861 before the
+  heads), slot_actions 720, merge_league 28), cold 141.6 s (120.9 before), budget 150 s. The
+  compile tripwire (`compile_check.py`) fails on any graph break, new graph, recompile, or a
+  function's traced operations over 10% above its baseline (`docs/rewrite/scoreboard.md`
+  "Compile time"). Run it at the end of every step:
 
       PYTHONPATH=. python docs/rewrite/sections/scoreboard/compile_check.py
 
