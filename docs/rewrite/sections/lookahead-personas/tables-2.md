@@ -184,3 +184,150 @@
 | dive | 0.291 | 0.052 / 0.295 / 0.513 | 0.109 | +0.31 |
 | hits_per_minute | 24.610 | 21.450 / 24.512 / 27.897 | 1.392 | +0.54 |
 
+
+## Redirected study: skill couplings around the old yardstick (step 2 data, interact.py)
+
+## 1v1: skill surface (points 106)
+
+Additive (linear + square): R^2 0.90, leave-one-out 0.68; with 6 interactions: R^2 0.97, leave-one-out 0.90; model Elo sd over the box 78.
+
+| interaction (Elo per box^2) | coefficient |
+|---|---|
+| angles_weight x aggression | -194 +- 27 |
+| speed_weight x stickiness | +171 +- 26 |
+| power_temperature x seek_weight | -184 +- 31 |
+| field_weight x stickiness | +125 +- 26 |
+| horizon x temperature | +111 +- 28 |
+| stickiness x seek_weight | -92 +- 37 |
+
+| row | S1 | ST | ST - S1 |
+|---|---|---|---|
+| angles_weight | 0.315 | 0.347 | +0.033 |
+| aggression | 0.155 | 0.194 | +0.039 |
+| temperature | 0.190 | 0.169 | -0.021 |
+| stickiness | 0.029 | 0.082 | +0.053 |
+| reply_temperature | 0.073 | 0.065 | -0.008 |
+| seek_weight | 0.001 | 0.049 | +0.048 |
+| speed_weight | 0.014 | 0.045 | +0.032 |
+| power_temperature | 0.007 | 0.040 | +0.032 |
+| energy_weight | 0.033 | 0.033 | +0.001 |
+| collision_weight | 0.021 | 0.029 | +0.008 |
+| disengaged_energy_weight | 0.033 | 0.023 | -0.010 |
+| horizon | 0.017 | 0.022 | +0.005 |
+| field_weight | 0.009 | 0.022 | +0.013 |
+| preferred_speed | 0.019 | 0.017 | -0.002 |
+| store_weight | 0.009 | 0.008 | -0.002 |
+| power_stickiness | 0.007 | 0.005 | -0.002 |
+| threat_weight | 0.005 | 0.002 | -0.003 |
+| fire_tolerance | 0.001 | 0.001 | +0.000 |
+| caution | -0.000 | 0.001 | +0.001 |
+| boundary_weight | 0.001 | 0.001 | -0.000 |
+| power_horizon | 0.001 | 0.000 | -0.000 |
+
+| row a | row b | equal Elo: du_b per du_a (linear, at the centre) |
+|---|---|---|
+| angles_weight | temperature | +1.41 |
+| aggression | temperature | +0.99 |
+| angles_weight | reply_temperature | +2.15 |
+| angles_weight | energy_weight | +3.02 |
+| aggression | reply_temperature | +1.52 |
+| angles_weight | collision_weight | +3.26 |
+| angles_weight | disengaged_energy_weight | +3.68 |
+| energy_weight | aggression | +0.47 |
+
+## 4v4: skill surface (points 106)
+
+Additive (linear + square): R^2 0.94, leave-one-out 0.81; with 6 interactions: R^2 0.97, leave-one-out 0.91; model Elo sd over the box 61.
+
+| interaction (Elo per box^2) | coefficient |
+|---|---|
+| angles_weight x aggression | -119 +- 21 |
+| collision_weight x preferred_speed | -82 +- 24 |
+| speed_weight x reply_temperature | +89 +- 20 |
+| angles_weight x temperature | +67 +- 20 |
+| caution x temperature | +69 +- 25 |
+| field_weight x power_stickiness | -55 +- 23 |
+
+| row | S1 | ST | ST - S1 |
+|---|---|---|---|
+| speed_weight | 0.218 | 0.272 | +0.054 |
+| fire_tolerance | 0.137 | 0.136 | -0.001 |
+| energy_weight | 0.113 | 0.115 | +0.001 |
+| aggression | 0.094 | 0.095 | +0.001 |
+| horizon | 0.067 | 0.078 | +0.012 |
+| angles_weight | 0.044 | 0.067 | +0.022 |
+| collision_weight | 0.026 | 0.059 | +0.033 |
+| temperature | 0.065 | 0.059 | -0.006 |
+| store_weight | 0.039 | 0.033 | -0.005 |
+| preferred_speed | 0.016 | 0.033 | +0.017 |
+| power_stickiness | 0.035 | 0.028 | -0.007 |
+| threat_weight | 0.033 | 0.024 | -0.010 |
+| field_weight | 0.026 | 0.020 | -0.006 |
+| caution | 0.010 | 0.017 | +0.007 |
+| reply_temperature | 0.008 | 0.016 | +0.007 |
+| power_temperature | 0.006 | 0.007 | +0.002 |
+| disengaged_energy_weight | -0.001 | 0.006 | +0.007 |
+| power_horizon | 0.011 | 0.006 | -0.005 |
+| boundary_weight | 0.002 | 0.003 | +0.001 |
+| stickiness | 0.002 | 0.001 | -0.001 |
+| seek_weight | -0.001 | 0.001 | +0.001 |
+
+| row a | row b | equal Elo: du_b per du_a (linear, at the centre) |
+|---|---|---|
+| speed_weight | horizon | +1.81 |
+| aggression | speed_weight | +0.48 |
+| speed_weight | collision_weight | +2.36 |
+| horizon | fire_tolerance | +0.76 |
+| energy_weight | horizon | +1.20 |
+| speed_weight | store_weight | +2.77 |
+| speed_weight | temperature | +2.81 |
+| aggression | fire_tolerance | +0.67 |
+
+## 16v16: skill surface (points 106)
+
+Additive (linear + square): R^2 0.97, leave-one-out 0.89; with 6 interactions: R^2 0.99, leave-one-out 0.95; model Elo sd over the box 160.
+
+| interaction (Elo per box^2) | coefficient |
+|---|---|
+| preferred_speed x stickiness | -174 +- 38 |
+| collision_weight x boundary_weight | -130 +- 37 |
+| aggression x boundary_weight | +107 +- 32 |
+| aggression x caution | -104 +- 38 |
+| speed_weight x collision_weight | -93 +- 34 |
+| collision_weight x power_temperature | +66 +- 30 |
+
+| row | S1 | ST | ST - S1 |
+|---|---|---|---|
+| horizon | 0.171 | 0.178 | +0.006 |
+| angles_weight | 0.174 | 0.177 | +0.004 |
+| fire_tolerance | 0.128 | 0.127 | -0.001 |
+| energy_weight | 0.123 | 0.124 | +0.001 |
+| aggression | 0.121 | 0.122 | +0.001 |
+| speed_weight | 0.093 | 0.107 | +0.013 |
+| store_weight | 0.040 | 0.039 | -0.002 |
+| preferred_speed | 0.023 | 0.031 | +0.008 |
+| collision_weight | 0.012 | 0.028 | +0.016 |
+| temperature | 0.032 | 0.027 | -0.005 |
+| threat_weight | 0.023 | 0.021 | -0.002 |
+| reply_temperature | 0.012 | 0.014 | +0.002 |
+| stickiness | 0.003 | 0.013 | +0.010 |
+| boundary_weight | -0.001 | 0.008 | +0.009 |
+| caution | 0.004 | 0.007 | +0.003 |
+| power_temperature | 0.003 | 0.003 | +0.000 |
+| power_horizon | 0.002 | 0.001 | -0.001 |
+| disengaged_energy_weight | 0.001 | 0.001 | -0.000 |
+| power_stickiness | 0.000 | 0.000 | -0.000 |
+| field_weight | 0.001 | 0.000 | -0.000 |
+| seek_weight | -0.000 | 0.000 | +0.000 |
+
+| row a | row b | equal Elo: du_b per du_a (linear, at the centre) |
+|---|---|---|
+| horizon | fire_tolerance | +1.19 |
+| energy_weight | horizon | +0.83 |
+| angles_weight | fire_tolerance | +1.17 |
+| angles_weight | energy_weight | +1.18 |
+| speed_weight | horizon | +0.76 |
+| angles_weight | speed_weight | +1.29 |
+| aggression | fire_tolerance | +0.95 |
+| energy_weight | aggression | +1.04 |
+

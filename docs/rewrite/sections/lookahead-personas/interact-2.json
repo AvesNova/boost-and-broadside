@@ -1,0 +1,437 @@
+{
+ "1v1": {
+  "pairs": [
+   {
+    "rows": [
+     "angles_weight",
+     "aggression"
+    ],
+    "coefficient": -193.70480530096722,
+    "error": 26.562854704339713
+   },
+   {
+    "rows": [
+     "speed_weight",
+     "stickiness"
+    ],
+    "coefficient": 171.29201989661033,
+    "error": 25.873470082522932
+   },
+   {
+    "rows": [
+     "power_temperature",
+     "seek_weight"
+    ],
+    "coefficient": -184.2343838395522,
+    "error": 31.15250680501105
+   },
+   {
+    "rows": [
+     "field_weight",
+     "stickiness"
+    ],
+    "coefficient": 124.57923421512416,
+    "error": 25.967504245750664
+   },
+   {
+    "rows": [
+     "horizon",
+     "temperature"
+    ],
+    "coefficient": 110.88783611048045,
+    "error": 28.031997860633044
+   },
+   {
+    "rows": [
+     "stickiness",
+     "seek_weight"
+    ],
+    "coefficient": -92.37216934874631,
+    "error": 36.73557667469267
+   }
+  ],
+  "r2": 0.9738286051985978,
+  "q2": 0.90346039288711,
+  "r2_additive": 0.8983900770522912,
+  "q2_additive": 0.6766895255665932,
+  "sobol_first": {
+   "threat_weight": 0.005055130666764824,
+   "angles_weight": 0.3145486371992528,
+   "energy_weight": 0.0325937695480994,
+   "aggression": 0.15531954612655155,
+   "speed_weight": 0.013640498202540216,
+   "collision_weight": 0.020511896794390246,
+   "boundary_weight": 0.000632227495655854,
+   "field_weight": 0.009457455143200035,
+   "horizon": 0.017220044561768403,
+   "preferred_speed": 0.018982677661260678,
+   "reply_temperature": 0.07290536088773013,
+   "caution": -0.00011736592044093034,
+   "temperature": 0.19045170031935565,
+   "stickiness": 0.02902898669379996,
+   "store_weight": 0.00944133281501944,
+   "power_horizon": 0.0005765971937918172,
+   "power_temperature": 0.007440703340048375,
+   "power_stickiness": 0.007371970768810348,
+   "disengaged_energy_weight": 0.03337961279840887,
+   "seek_weight": 0.0007914247989542171,
+   "fire_tolerance": 0.0008445128893273145
+  },
+  "sobol_total": {
+   "threat_weight": 0.0019488219413394063,
+   "angles_weight": 0.3473094800128577,
+   "energy_weight": 0.03326347832463706,
+   "aggression": 0.19415499534393346,
+   "speed_weight": 0.0452107147652126,
+   "collision_weight": 0.028686237826462114,
+   "boundary_weight": 0.0005705623385051205,
+   "field_weight": 0.022062064880172125,
+   "horizon": 0.02216295776602427,
+   "preferred_speed": 0.0166988537032896,
+   "reply_temperature": 0.06536597017888533,
+   "caution": 0.0009592055126737425,
+   "temperature": 0.16935996687796878,
+   "stickiness": 0.08222022529736633,
+   "store_weight": 0.007814131801760884,
+   "power_horizon": 0.0003845592685734596,
+   "power_temperature": 0.0397607813702475,
+   "power_stickiness": 0.005330024585104975,
+   "disengaged_energy_weight": 0.022903980105788143,
+   "seek_weight": 0.048764353342927946,
+   "fire_tolerance": 0.0012726166354381468
+  },
+  "model_sd": 78.41936102257587,
+  "trades": [
+   [
+    "angles_weight",
+    "temperature",
+    1.4052919351955082
+   ],
+   [
+    "aggression",
+    "temperature",
+    0.991967910294238
+   ],
+   [
+    "angles_weight",
+    "reply_temperature",
+    2.1548612949062944
+   ],
+   [
+    "angles_weight",
+    "energy_weight",
+    3.0168460720595496
+   ],
+   [
+    "aggression",
+    "reply_temperature",
+    1.5210741641271501
+   ],
+   [
+    "angles_weight",
+    "collision_weight",
+    3.2599066535371364
+   ],
+   [
+    "angles_weight",
+    "disengaged_energy_weight",
+    3.6793640201667985
+   ],
+   [
+    "energy_weight",
+    "aggression",
+    0.4695866902055712
+   ]
+  ]
+ },
+ "4v4": {
+  "pairs": [
+   {
+    "rows": [
+     "angles_weight",
+     "aggression"
+    ],
+    "coefficient": -118.8469716300451,
+    "error": 21.025999506559444
+   },
+   {
+    "rows": [
+     "collision_weight",
+     "preferred_speed"
+    ],
+    "coefficient": -81.51580788078243,
+    "error": 23.965318194584075
+   },
+   {
+    "rows": [
+     "speed_weight",
+     "reply_temperature"
+    ],
+    "coefficient": 88.63563762736035,
+    "error": 19.813659069576094
+   },
+   {
+    "rows": [
+     "angles_weight",
+     "temperature"
+    ],
+    "coefficient": 67.35132902806063,
+    "error": 20.023141574105388
+   },
+   {
+    "rows": [
+     "caution",
+     "temperature"
+    ],
+    "coefficient": 68.55062695629921,
+    "error": 24.505998974043806
+   },
+   {
+    "rows": [
+     "field_weight",
+     "power_stickiness"
+    ],
+    "coefficient": -54.819943790575586,
+    "error": 22.517876237386325
+   }
+  ],
+  "r2": 0.9742648494497207,
+  "q2": 0.9124205918122615,
+  "r2_additive": 0.9360862635092093,
+  "q2_additive": 0.8115386057242233,
+  "sobol_first": {
+   "threat_weight": 0.033322490639076316,
+   "angles_weight": 0.04433816127698732,
+   "energy_weight": 0.11314357868547739,
+   "aggression": 0.09407389804364781,
+   "speed_weight": 0.21801700022838794,
+   "collision_weight": 0.026010791148961595,
+   "boundary_weight": 0.001978558632048771,
+   "field_weight": 0.02649289975492898,
+   "horizon": 0.06650061416940221,
+   "preferred_speed": 0.016259086397171326,
+   "reply_temperature": 0.008426764888375843,
+   "caution": 0.010469113572655864,
+   "temperature": 0.06525781401103889,
+   "stickiness": 0.002059507274736409,
+   "store_weight": 0.038752497657989896,
+   "power_horizon": 0.01066872161848419,
+   "power_temperature": 0.00582052548759483,
+   "power_stickiness": 0.03516765077538315,
+   "disengaged_energy_weight": -0.0008312800508419836,
+   "seek_weight": -0.0007323392238925189,
+   "fire_tolerance": 0.13681702139953286
+  },
+  "sobol_total": {
+   "threat_weight": 0.02372639918162573,
+   "angles_weight": 0.06653376633043569,
+   "energy_weight": 0.1145009248897043,
+   "aggression": 0.09540426210927855,
+   "speed_weight": 0.271834587601663,
+   "collision_weight": 0.05884412933354187,
+   "boundary_weight": 0.002911992696070319,
+   "field_weight": 0.020000905125453113,
+   "horizon": 0.07843265606143383,
+   "preferred_speed": 0.033291440532839174,
+   "reply_temperature": 0.015683366155493976,
+   "caution": 0.017327838552241022,
+   "temperature": 0.05876220138038873,
+   "stickiness": 0.0010175293418939874,
+   "store_weight": 0.03340238397408536,
+   "power_horizon": 0.0061233363185493675,
+   "power_temperature": 0.007479153049842471,
+   "power_stickiness": 0.028088634790005278,
+   "disengaged_energy_weight": 0.0063919011164018675,
+   "seek_weight": 0.0006295433820668994,
+   "fire_tolerance": 0.13622305576183316
+  },
+  "model_sd": 61.204880840996125,
+  "trades": [
+   [
+    "speed_weight",
+    "horizon",
+    1.8092591174767905
+   ],
+   [
+    "aggression",
+    "speed_weight",
+    0.48461525072904543
+   ],
+   [
+    "speed_weight",
+    "collision_weight",
+    2.3621823392871
+   ],
+   [
+    "horizon",
+    "fire_tolerance",
+    0.7608995400245527
+   ],
+   [
+    "energy_weight",
+    "horizon",
+    1.1991275290905645
+   ],
+   [
+    "speed_weight",
+    "store_weight",
+    2.7734648069038186
+   ],
+   [
+    "speed_weight",
+    "temperature",
+    2.8140450254538187
+   ],
+   [
+    "aggression",
+    "fire_tolerance",
+    0.6671525780466625
+   ]
+  ]
+ },
+ "16v16": {
+  "pairs": [
+   {
+    "rows": [
+     "preferred_speed",
+     "stickiness"
+    ],
+    "coefficient": -173.97426524098597,
+    "error": 37.797570007513066
+   },
+   {
+    "rows": [
+     "collision_weight",
+     "boundary_weight"
+    ],
+    "coefficient": -130.26577910119462,
+    "error": 37.35558068494537
+   },
+   {
+    "rows": [
+     "aggression",
+     "boundary_weight"
+    ],
+    "coefficient": 107.15323065170125,
+    "error": 31.61349068429129
+   },
+   {
+    "rows": [
+     "aggression",
+     "caution"
+    ],
+    "coefficient": -104.38073780709958,
+    "error": 38.141008993259284
+   },
+   {
+    "rows": [
+     "speed_weight",
+     "collision_weight"
+    ],
+    "coefficient": -92.52615413128608,
+    "error": 34.02017430273497
+   },
+   {
+    "rows": [
+     "collision_weight",
+     "power_temperature"
+    ],
+    "coefficient": 66.3165606602127,
+    "error": 30.298379123135664
+   }
+  ],
+  "r2": 0.9859658393381543,
+  "q2": 0.9534707927747381,
+  "r2_additive": 0.96607291859971,
+  "q2_additive": 0.892175717400774,
+  "sobol_first": {
+   "threat_weight": 0.022678747873271662,
+   "angles_weight": 0.17353692091263032,
+   "energy_weight": 0.12305534372988848,
+   "aggression": 0.12114613692408539,
+   "speed_weight": 0.09337662296591018,
+   "collision_weight": 0.011761161738838587,
+   "boundary_weight": -0.0005896924581575722,
+   "field_weight": 0.000588166043229669,
+   "horizon": 0.17114749532940784,
+   "preferred_speed": 0.0230676455903019,
+   "reply_temperature": 0.012448118209795635,
+   "caution": 0.0037216816831400685,
+   "temperature": 0.031842732630543456,
+   "stickiness": 0.00291036278976121,
+   "store_weight": 0.04046082991894754,
+   "power_horizon": 0.001894594057966427,
+   "power_temperature": 0.0027373874262646785,
+   "power_stickiness": 0.0002547069866724557,
+   "disengaged_energy_weight": 0.0009602597294112098,
+   "seek_weight": -0.0001100655185186322,
+   "fire_tolerance": 0.12806155335615257
+  },
+  "sobol_total": {
+   "threat_weight": 0.020800392889054588,
+   "angles_weight": 0.17703937035478717,
+   "energy_weight": 0.12362533685867096,
+   "aggression": 0.12212258054818634,
+   "speed_weight": 0.10682858649446095,
+   "collision_weight": 0.027836527764915523,
+   "boundary_weight": 0.00802962900332527,
+   "field_weight": 0.00021876023349172351,
+   "horizon": 0.17760726583082737,
+   "preferred_speed": 0.031181333184705992,
+   "reply_temperature": 0.013961947056322022,
+   "caution": 0.006649474060304849,
+   "temperature": 0.026844199181231966,
+   "stickiness": 0.012502451688757327,
+   "store_weight": 0.038538286454812894,
+   "power_horizon": 0.001188813516127297,
+   "power_temperature": 0.003167246883401533,
+   "power_stickiness": 0.0002231520475360174,
+   "disengaged_energy_weight": 0.0006740414996081882,
+   "seek_weight": 6.487068318119573e-05,
+   "fire_tolerance": 0.12693405178474274
+  },
+  "model_sd": 159.95339919599016,
+  "trades": [
+   [
+    "horizon",
+    "fire_tolerance",
+    1.1888598580844452
+   ],
+   [
+    "energy_weight",
+    "horizon",
+    0.8342992794699794
+   ],
+   [
+    "angles_weight",
+    "fire_tolerance",
+    1.1721729285073081
+   ],
+   [
+    "angles_weight",
+    "energy_weight",
+    1.1817868555861573
+   ],
+   [
+    "speed_weight",
+    "horizon",
+    0.7637851677429839
+   ],
+   [
+    "angles_weight",
+    "speed_weight",
+    1.290891684917353
+   ],
+   [
+    "aggression",
+    "fire_tolerance",
+    0.9493668641055134
+   ],
+   [
+    "energy_weight",
+    "aggression",
+    1.0447646326114008
+   ]
+  ]
+ }
+}
