@@ -22,7 +22,6 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from lean.model.norm import Norm
 from lean.model.scan import linear_scan
 
 TAPS = 4  # the convolution reads the current input and the 3 before it
@@ -45,8 +44,7 @@ class Temporal(nn.Module):
         super().__init__()
         width, hidden = config.width, config.mlp_ratio * config.width
         self.exponent = config.recurrence_exponent
-        low = config.low_precision_norm_outputs
-        self.input_norm = Norm(width, config.norm_epsilon, low)
+        self.input_norm = nn.RMSNorm(width, eps=config.norm_epsilon)
         self.recurrent_input = nn.Linear(width, width, bias=False)
         self.gate_branch = nn.Linear(width, width, bias=False)
         self.convolution_weight = nn.Parameter(
@@ -56,7 +54,7 @@ class Temporal(nn.Module):
         self.gates = nn.Linear(width, 2 * width)  # recurrence gate rows, then input gate rows
         self.decay = nn.Parameter(torch.empty(width))
         self.output = nn.Linear(width, width, bias=False)
-        self.mlp_norm = Norm(width, config.norm_epsilon, low)
+        self.mlp_norm = nn.RMSNorm(width, eps=config.norm_epsilon)
         self.mlp_input = nn.Linear(width, 2 * hidden, bias=False)  # gate rows, then up rows
         self.mlp_output = nn.Linear(hidden, width, bias=False)
 
