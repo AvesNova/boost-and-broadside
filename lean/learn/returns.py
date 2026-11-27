@@ -55,9 +55,8 @@ def generalised_advantages(
     tick; done: (T, E) bool, the episode ended on that tick (a time-limit end is a true
     termination: nothing is bootstrapped across it); discounts: (LEVELS,) per tick;
     gae_lambda: (LEVELS,) or one number.
-    `value` and `bootstrap` must already be zero on rows outside the valued mask, so a
-    ship's death bootstraps from zero while later rewards of its episode (the outcome)
-    still reach its earlier ticks through the lambda-return.
+    `value` and `bootstrap` are the critic's values on the valued rows (`own`), its living
+    team-mates' mean value on a fallen ship's rows (fallen_team_values) and zero elsewhere.
 
     Returns (advantage, value target), both (T, E, N, LEVELS).
 
@@ -71,6 +70,22 @@ def generalised_advantages(
     reversed_advantage, _ = linear_scan(decay.flip(0), delta.flip(0), torch.zeros_like(bootstrap))
     advantage = reversed_advantage.flip(0)
     return advantage, advantage + value
+
+
+def fallen_team_values(value: Tensor, own: Tensor, fallen: Tensor) -> Tensor:
+    """A fallen ship's value for the returns (author 2026-11-28, option C): its living
+    team-mates' mean value at the same tick and level.
+
+    value (..., N, LEVELS), zero outside `own`; own (..., N) bool, the view's living ships;
+    fallen (..., N) bool, the view's team's dead ships still in the match (no respawn: it is
+    masked out of observation and acting). A fallen row takes the mean over the own rows of
+    the same view and tick (zero when none lives: the team is out and the episode has
+    ended). A perfect critic on every team-mate predicts the same match outcome, so the
+    outcome reaches a ship's ticks before its death at the discount (gamma^k), not at
+    (gamma lambda)^k as through zero values. Its death penalty is paid as before."""
+    weight = own.to(value.dtype)[..., None]
+    mean = (value * weight).sum(-2, keepdim=True) / weight.sum(-2, keepdim=True).clamp(min=1.0)
+    return torch.where(fallen[..., None], mean, value)
 
 
 def join_segments(records: Tensor, segments: int) -> Tensor:

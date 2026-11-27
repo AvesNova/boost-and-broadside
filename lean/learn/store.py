@@ -10,7 +10,7 @@ view axis first.
 Where. The large records (the observation's per-tick fields, actions, old
 log-probabilities, stored values, rewards, next-state targets) and the initial carries are
 in pinned host memory on a GPU. The masks and labels the update counts and indexes on the
-device (`RESIDENT`: own, done, reset, next_valid, hit_label, deal_row), the per-view
+device (`RESIDENT`: own, done, reset, next_valid, fallen, hit_label, deal_row), the per-view
 bootstrap values (only the last segment's are read), and the update's advantages and value targets
 stay on the device. The
 observation fields constant within an episode (`EPISODE_CONSTANT`: the fields, their
@@ -60,7 +60,7 @@ from torch import Tensor
 from lean.contract import EPISODE_CONSTANT, SEAT_AXIS, Obs
 
 # Per-tick records kept on the device: one byte per token, counted and indexed there.
-RESIDENT = ("own", "done", "reset", "next_valid", "hit_label", "deal_row")
+RESIDENT = ("own", "done", "reset", "next_valid", "fallen", "hit_label", "deal_row")
 # Floats kept in float32: positions and headings (the position code and the rotary angles
 # read them) and the PPO numbers.
 FLOAT32 = frozenset(
