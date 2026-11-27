@@ -97,7 +97,9 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
 
 ## Numbers (laptop RTX 4070, performance profile, 2,048 x 4 x 128, compiled, bf16, core game)
 
-- Loop speed (collect plus update): 6,670 steps/s in RL before the first snapshot (step L2,
+- Loop speed 2026-11-27 (train-audit): BC 8,255 steps/s, 127.0 s per update (collect plus
+  update); the update alone 114.5 s (149.1 ms per micro-batch), peak allocated 4.74 GiB.
+- Loop speed (collect plus update), earlier: 6,670 steps/s in RL before the first snapshot (step L2,
   2026-11-23); BC 6,668. Peak allocated 5.7 GiB. Steady speed with league networks playing is
   not measured under the per-slot routing (the one short run included its compile: 4,852).
 - League side (2026-11-27, fixed table, 18 slots x 86 rows): the RL tick at E 2,048 is 38.6 ms

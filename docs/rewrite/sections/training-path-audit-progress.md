@@ -127,9 +127,12 @@ test_linear_scan_equals_the_loop_and_the_doubling_scan (forward and every input'
 against a float64 loop and the doubling scan, T 1, 2, 3, 5, 128, resets inside the sequence
 and at its first tick), test_the_scan_kernels_equal_the_loop (the same on the GPU), and
 test_the_scan_compiles_static_and_dynamic (fullgraph, eager-equal states and gradients).
-Options: the audit's associative_scan Function measured 144.4 ms on a 168.0 ms base
-(-14.1%) against -13.6% here (different bases; see "associative_scan" below); a chunked
-scan was not tried (more passes over the tensor than one sequential pass).
+Options, measured back to back on the final tree (trained weights, job 6): the audit's
+associative_scan Function (torch's prototype higher-order op forward, the reversed scan
+backward) 145.86 ms against the Triton operator's 146.81 (0.65% faster; its gradients differ
+from the Triton scan's by 3.8e-3 relative norm, smallest cosine 0.99995). Kept the Triton
+operator: within 1% of it without a prototype op ("may miscompile") in the training path.
+A chunked scan was not tried (more passes over the tensor than one sequential pass).
 
 ### 5. Norm outputs: step A dropped, step B measured only
 
@@ -148,11 +151,34 @@ keeps the residual float32.
 
 ## Final
 
-(job 4, filled below)
+The final tree (1903d8d7's code, the same as the branch head's lean/), job 4, back to back
+with tick-audit 996fdc10 (bench_update: the RL update over one update's 4 segments, 4 epochs,
+128 Adam steps, 1 warm and 2 timed; load 2.3-2.5 at the starts):
+
+| | per update | per Adam step | per micro-batch (768) |
+|---|---|---|---|
+| tick-audit 996fdc10 | 129.70 / 129.71 s | 1013.3 ms | 168.9 ms |
+| train-audit | **114.49 / 114.49 s** | 894.4 ms | 149.1 ms |
+
+(-11.7%; tick-audit reported 129.8 s.) The BC loop (`python -m lean.train --stage bc
+--bc-updates 3`, collect and update, E 2,048 x 4 x 128): 7,550 steps/s (update 0, compiles),
+then **8,255 and 8,254 steps/s** = 127.0 s per update (collect plus update), peak allocated
+4.74 GiB. (The 2026-11-23 loop was 6,668 steps/s in BC.)
 
 ## Tests and compile check
 
-(filled below)
+Quick tier (`-m "not slow"`, lean/learn, model, eval, game) and the slow learn tests
+(test_compiled.py, CPU): 275 passed, 2 skipped (GPU-only) and 6 passed, 1 skipped; ruff clean on lean/. The scan's GPU test
+(Triton kernels) passed under the lock (job 4). Compile check (job 7, cold cache, baseline not
+updated): 5 graphs, 0 graph breaks, no recompile, cold 121.0 s (tick-audit 135.4 s, budget
+260 s); backend act 34.8 s, advance 18.1 s, minibatch_loss 10.8 s, slot_actions 8.1 s,
+merge_league 0.5 s. Traced operations: act 4,439 (tick-audit 4,414), advance 3,211 (3,218),
+minibatch_loss 861 (1,029: the doubling rounds are gone), slot_actions 720 (736), merge_league
+25. It reports FAIL on act and advance against the old baseline (as on tick-audit: the
+baseline predates the look-ahead and the egg) and on merge_league as a new compiled function
+(deliberate: the routing's one merge). The compile check's miniature placed members by hand
+past the new fixed capacity; it now sets league_capacity_factor 15 (C = L), the graphs being
+the same at any C.
 
 ## Open points
 

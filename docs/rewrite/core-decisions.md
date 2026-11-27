@@ -1087,3 +1087,6 @@ Bullet deflector and the runtime hit model (PROPOSAL, branch `bullet-deflector`,
   them anyway, identical gradients); measured only, the bf16 residual stream: -5.3% of the
   step, gradient differences 6x the scan's (the residual stays float32, decided 2026-11-23).
 - Numbers and method: docs/rewrite/sections/training-path-audit-progress.md.
+- **Whole branch** (laptop 4070, performance profile): the update at E 2,048 129.7 -> 114.5 s
+  (168.9 -> 149.1 ms per micro-batch); the BC loop 8,255 steps/s (127.0 s per update); the
+  cold compile 135.4 -> 121.0 s.
