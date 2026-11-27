@@ -399,7 +399,7 @@ class HitRange(World):
     def spread_readout(self) -> dict:
         """2 sigma (SIGMAS) of the signed miss distance at the target over the window, in metres
         and in milliradians (each miss over its own range at the shot): `straight` the line before
-        any egg turn, `turned` the miss distance b' of the post-turn line (`_after_egg`). `width` the target's
+        any egg turn, `turned` the miss b' of the post-turn line (`_after_egg`). `width` the target's
         apparent half-width from the shooter: half the game's hit width (core.hit_width over the
         constants' hit_widths row, the agent's own) at the cosine of the bullets' path (due
         east) off the target's nose; `radius` the hit radius with no egg."""
