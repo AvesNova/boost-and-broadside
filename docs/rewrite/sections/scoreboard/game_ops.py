@@ -45,8 +45,12 @@ def game(config, label):
     state = core.reset(config, E, sizes, generator, torch.device("cpu"))
     n = state.x.shape[1]
     action = torch.stack(
-        [torch.randint(0, 7, (E, n), generator=generator), torch.randint(0, 3, (E, n), generator=generator),
-         torch.randint(0, 2, (E, n), generator=generator)], -1,
+        [
+            torch.randint(0, 7, (E, n), generator=generator),
+            torch.randint(0, 3, (E, n), generator=generator),
+            torch.randint(0, 2, (E, n), generator=generator),
+        ],
+        -1,
     )
     noise = core.draw_noise(config, E, n, generator, torch.device("cpu"))
     for _ in range(30):  # some bullets in flight
@@ -56,8 +60,10 @@ def game(config, label):
     with torch.no_grad():
         measure(f"step, {label}", lambda: core.step(config, state, action, noise))
         measure(f"observe (one team), {label}", lambda: core.observe(config, state, 0))
-        measure(f"deal + take_deal (a re-deal), {label}",
-                lambda: core.take_deal(state, done, core.deal(config, E, n, sizes, generator, "cpu")))
+        measure(
+            f"deal + take_deal (a re-deal), {label}",
+            lambda: core.take_deal(state, done, core.deal(config, E, n, sizes, generator, "cpu")),
+        )
     return state
 
 
@@ -67,9 +73,16 @@ if __name__ == "__main__":
     game(core.GameConfig(field_count=0), "no fields")
     state = game(core.GameConfig(), "the game (10 drawn fields, fog)")
     scripted = ScriptedConfig()
-    persona = personas(scripted, E, state.x.shape[1], torch.Generator().manual_seed(1), torch.device("cpu"), 0.0)
+    persona = personas(
+        scripted, E, state.x.shape[1], torch.Generator().manual_seed(1), torch.device("cpu"), 0.0
+    )
     uniforms = draw_uniforms(E, state.x.shape[1], torch.Generator().manual_seed(2), "cpu")
     memory = fresh_memory(E, state.x.shape[1], torch.Generator().manual_seed(3), "cpu")
     with torch.no_grad():
-        measure("scripted act (one team)", lambda: act(scripted, state, 0, persona, uniforms, memory))
-        measure("scripted act (both teams, one call)", lambda: act(scripted, state, None, persona, uniforms, memory))
+        measure(
+            "scripted act (one team)", lambda: act(scripted, state, 0, persona, uniforms, memory)
+        )
+        measure(
+            "scripted act (both teams, one call)",
+            lambda: act(scripted, state, None, persona, uniforms, memory),
+        )

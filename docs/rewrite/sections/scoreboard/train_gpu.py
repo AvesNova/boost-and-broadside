@@ -49,27 +49,44 @@ from lean.learn import (  # noqa: E402
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     defaults = LearnConfig()
     parser.add_argument("--compile", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--envs", type=int, default=defaults.environments)
     parser.add_argument("--segments", type=int, default=defaults.segments_per_update)
     parser.add_argument("--updates", type=int, default=3)
     parser.add_argument("--minibatches", type=int, default=defaults.minibatches)
-    parser.add_argument("--micro", type=int, default=defaults.micro_batch_views, help="LearnConfig.micro_batch_views")
-    parser.add_argument("--stream", action=argparse.BooleanOptionalAction, default=defaults.stream_rollout)
+    parser.add_argument(
+        "--micro",
+        type=int,
+        default=defaults.micro_batch_views,
+        help="LearnConfig.micro_batch_views",
+    )
+    parser.add_argument(
+        "--stream", action=argparse.BooleanOptionalAction, default=defaults.stream_rollout
+    )
     parser.add_argument("--snapshots", type=int, default=8)
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--targets-every-epoch", action="store_true", help="LearnConfig.targets_every_epoch = True")
-    parser.add_argument("--bf16", action=argparse.BooleanOptionalAction, default=True, help="LearnConfig.bf16")
+    parser.add_argument(
+        "--targets-every-epoch", action="store_true", help="LearnConfig.targets_every_epoch = True"
+    )
+    parser.add_argument(
+        "--bf16", action=argparse.BooleanOptionalAction, default=True, help="LearnConfig.bf16"
+    )
     parser.add_argument("--out", default=None, help="append rows to this JSON-lines file")
     parser.add_argument("--label", default="")
     arguments = parser.parse_args()
 
     device = torch.device("cuda")
     config = dataclasses.replace(
-        defaults, minibatches=arguments.minibatches, micro_batch_views=arguments.micro, stream_rollout=arguments.stream,
-        segments_per_update=arguments.segments, bf16=arguments.bf16,
+        defaults,
+        minibatches=arguments.minibatches,
+        micro_batch_views=arguments.micro,
+        stream_rollout=arguments.stream,
+        segments_per_update=arguments.segments,
+        bf16=arguments.bf16,
         targets_every_epoch=arguments.targets_every_epoch,
     )
     envs, ticks, segments = arguments.envs, config.segment_ticks, config.segments_per_update
@@ -91,10 +108,20 @@ def main() -> None:
     store.timing = True
     compiled = arguments.compile
     setting = {
-        "label": arguments.label, "compile": compiled, "bf16": config.bf16, "envs": envs, "segments": segments, "ticks": ticks,
-        "minibatches": config.minibatches, "micro_batch_views": config.micro_batch_views,
-        "stream": config.stream_rollout, "targets_every_epoch": config.targets_every_epoch, "epochs": config.epochs,
-        "snapshots": league.snapshots, "torch": torch.__version__, "gpu": torch.cuda.get_device_name(),
+        "label": arguments.label,
+        "compile": compiled,
+        "bf16": config.bf16,
+        "envs": envs,
+        "segments": segments,
+        "ticks": ticks,
+        "minibatches": config.minibatches,
+        "micro_batch_views": config.micro_batch_views,
+        "stream": config.stream_rollout,
+        "targets_every_epoch": config.targets_every_epoch,
+        "epochs": config.epochs,
+        "snapshots": league.snapshots,
+        "torch": torch.__version__,
+        "gpu": torch.cuda.get_device_name(),
     }
     print(setting, flush=True)
 
@@ -112,7 +139,16 @@ def main() -> None:
         began = time.perf_counter()
         for segment in range(segments):
             rollout = collect(
-                config, game_config, policy, opponent, state, carry, ticks, generator, compiled=compiled, store=store,
+                config,
+                game_config,
+                policy,
+                opponent,
+                state,
+                carry,
+                ticks,
+                generator,
+                compiled=compiled,
+                store=store,
                 segment=segment,
             )
             state, carry = rollout.state, rollout.carry
@@ -122,8 +158,14 @@ def main() -> None:
         store.host_wait = store.host_gather = 0.0
         store.stalls()
         update(
-            config, policy, optimiser, store, teacher_weight=config.teacher_coefficient, step_index=index * steps_per_update,
-            generator=generator, compiled=compiled,
+            config,
+            policy,
+            optimiser,
+            store,
+            teacher_weight=config.teacher_coefficient,
+            step_index=index * steps_per_update,
+            generator=generator,
+            compiled=compiled,
         )
         torch.cuda.synchronize()
         ended = time.perf_counter()
@@ -131,8 +173,13 @@ def main() -> None:
         if first_update_end is None:
             first_update_end = ended
         row = {
-            "update": index, "collect_s": collected - began, "update_s": ended - collected, "loop_s": ended - began,
-            "host_wait_s": store.host_wait, "host_gather_s": store.host_gather, "compute_stall_s": stall,
+            "update": index,
+            "collect_s": collected - began,
+            "update_s": ended - collected,
+            "loop_s": ended - began,
+            "host_wait_s": store.host_wait,
+            "host_gather_s": store.host_gather,
+            "compute_stall_s": stall,
         }
         rows.append(row)
         persist(row)
@@ -144,13 +191,19 @@ def main() -> None:
             flush=True,
         )
     steady = rows[1:] or rows
-    mean = {name: statistics.mean(row[name] for row in steady) for name in rows[0] if name != "update"}
+    mean = {
+        name: statistics.mean(row[name] for row in steady) for name in rows[0] if name != "update"
+    }
     sizes = store.nbytes()
     summary = {
         "summary": True,
-        "first_collect_s": rows[0]["collect_s"], "first_update_s": rows[0]["update_s"],
-        "collect_per_s": steps / mean["collect_s"], "update_per_s": steps / mean["update_s"], "loop_per_s": steps / mean["loop_s"],
-        "steady_host_wait_s": mean["host_wait_s"], "steady_host_gather_s": mean["host_gather_s"],
+        "first_collect_s": rows[0]["collect_s"],
+        "first_update_s": rows[0]["update_s"],
+        "collect_per_s": steps / mean["collect_s"],
+        "update_per_s": steps / mean["update_s"],
+        "loop_per_s": steps / mean["loop_s"],
+        "steady_host_wait_s": mean["host_wait_s"],
+        "steady_host_gather_s": mean["host_gather_s"],
         "steady_compute_stall_s": mean["compute_stall_s"],
         "peak_allocated_gib": torch.cuda.max_memory_allocated() / 2**30,
         "peak_reserved_gib": torch.cuda.max_memory_reserved() / 2**30,

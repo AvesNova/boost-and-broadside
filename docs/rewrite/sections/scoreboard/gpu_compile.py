@@ -55,9 +55,12 @@ def game_runner(per_team):
     state = core.reset(config, E, sizes, generator, DEVICE)
     n = state.x.shape[1]
     action = torch.stack(
-        [torch.randint(0, 7, (E, n), device=DEVICE, generator=generator),
-         torch.randint(0, 3, (E, n), device=DEVICE, generator=generator),
-         torch.randint(0, 2, (E, n), device=DEVICE, generator=generator)], -1,
+        [
+            torch.randint(0, 7, (E, n), device=DEVICE, generator=generator),
+            torch.randint(0, 3, (E, n), device=DEVICE, generator=generator),
+            torch.randint(0, 2, (E, n), device=DEVICE, generator=generator),
+        ],
+        -1,
     )
     noise = core.draw_noise(config, E, n, generator, DEVICE)
     step = STEP_GAME
@@ -70,7 +73,6 @@ def game_runner(per_team):
 
 
 def policy_runner(per_team):
-    from lean import model
 
     config = core.GameConfig()
     generator = torch.Generator(device=DEVICE).manual_seed(0)
@@ -100,4 +102,7 @@ else:
 
 for per_team in SIZES:
     first, steady = timed(runner(per_team))
-    print(f"{UNIT} {VARIANT} E={E} {per_team}v{per_team}: first call {first:.2f} s, steady {steady:.2f} ms", flush=True)
+    print(
+        f"{UNIT} {VARIANT} E={E} {per_team}v{per_team}: first call {first:.2f} s, steady {steady:.2f} ms",
+        flush=True,
+    )

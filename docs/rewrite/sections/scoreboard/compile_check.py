@@ -51,7 +51,10 @@ GRAPHS = []  # per compiled graph: function, operations, aot operations, backend
 
 
 def operations(graph_module) -> int:
-    return sum(node.op in ("call_function", "call_method", "call_module") for node in graph_module.graph.nodes)
+    return sum(
+        node.op in ("call_function", "call_method", "call_module")
+        for node in graph_module.graph.nodes
+    )
 
 
 def counting_backend(name: str):
@@ -61,7 +64,9 @@ def counting_backend(name: str):
         record = {"function": name, "operations": operations(graph_module), "aot": []}
 
         def inner(graph, inputs, **keywords):
-            record["aot"].append(("backward" if keywords.get("is_backward") else "forward", operations(graph)))
+            record["aot"].append(
+                ("backward" if keywords.get("is_backward") else "forward", operations(graph))
+            )
             return compile_fx_inner(graph, inputs, **keywords)
 
         began = time.perf_counter()
@@ -89,15 +94,30 @@ def instrument() -> None:
 def run(game_settings: dict) -> float:
     """The miniature run (module docstring); returns seconds from process start to its end."""
     from lean import game, model, scripted
-    from lean.learn import League, LearnConfig, Opponent, RolloutStore, WeightAverages, collect, make_optimiser, start
+    from lean.learn import (
+        League,
+        LearnConfig,
+        Opponent,
+        RolloutStore,
+        WeightAverages,
+        collect,
+        make_optimiser,
+        start,
+    )
     from lean.learn import update as learn_update
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.manual_seed(0)
     # league_capacity_factor 12 (= league_slots): every slot's capacity is the whole league (C = L),
     # so the members placed by hand below fit the table (the graphs are the same at any C).
-    config = dataclasses.replace(LearnConfig(), segments_per_update=1, segment_ticks=16, minibatches=2, epochs=1,
-                                 league_capacity_factor=12.0)
+    config = dataclasses.replace(
+        LearnConfig(),
+        segments_per_update=1,
+        segment_ticks=16,
+        minibatches=2,
+        epochs=1,
+        league_capacity_factor=12.0,
+    )
     game_config = game.GameConfig(training_spawn=True, **game_settings)
     policy = model.Policy(model.ModelConfig.for_arena(game_config.arena_radius)).to(device)
     league = League(config, device)
@@ -109,8 +129,19 @@ def run(game_settings: dict) -> float:
     averages = WeightAverages(policy, config)
 
     def segment(state, carry):
-        rollout = collect(config, game_config, policy, opponent, state, carry, config.segment_ticks, generator,
-                          compiled=True, store=store, segment=0)
+        rollout = collect(
+            config,
+            game_config,
+            policy,
+            opponent,
+            state,
+            carry,
+            config.segment_ticks,
+            generator,
+            compiled=True,
+            store=store,
+            segment=0,
+        )
         return rollout.state, rollout.carry
 
     state, carry = segment(state, carry)  # BC: the league has no network yet
@@ -122,10 +153,14 @@ def run(game_settings: dict) -> float:
         league.after_update(policy, averages, step - 1, step, carry.member, carry.slot)
     # Every loaded slot plays some league games (the yardstick, personas, averages, snapshots).
     loaded = [slot for slot, state in enumerate(league.slot_state) if state == "loaded"]
-    slot = torch.tensor(loaded, device=device)[torch.arange(carry.member.shape[0], device=device) % len(loaded)]
+    slot = torch.tensor(loaded, device=device)[
+        torch.arange(carry.member.shape[0], device=device) % len(loaded)
+    ]
     carry = dataclasses.replace(carry, member=league.slot_member[slot], slot=slot)
     state, carry = segment(state, carry)  # RL: the routing graph plays the networks
-    learn_update(config, policy, optimiser, store, teacher_weight=0.5, generator=generator, compiled=True)
+    learn_update(
+        config, policy, optimiser, store, teacher_weight=0.5, generator=generator, compiled=True
+    )
     if device.type == "cuda":
         torch.cuda.synchronize()
     return time.perf_counter() - PROCESS_START
@@ -133,8 +168,10 @@ def run(game_settings: dict) -> float:
 
 def power_profile() -> str:
     try:
-        return subprocess.run(["powerprofilesctl", "get"], capture_output=True, text=True, timeout=10).stdout.strip()
-    except (OSError, subprocess.SubprocessError):
+        return subprocess.run(
+            ["powerprofilesctl", "get"], capture_output=True, text=True, timeout=10
+        ).stdout.strip()
+    except OSError, subprocess.SubprocessError:
         return "unknown"
 
 
@@ -143,7 +180,9 @@ def measure(game_settings: dict | None = None) -> dict:
     cold_s = run(game_settings or {})
     functions = {}
     for record in GRAPHS:
-        entry = functions.setdefault(record["function"], {"graphs": 0, "operations": 0, "aot": [], "backend_s": 0.0})
+        entry = functions.setdefault(
+            record["function"], {"graphs": 0, "operations": 0, "aot": [], "backend_s": 0.0}
+        )
         entry["graphs"] += 1
         entry["operations"] = max(entry["operations"], record["operations"])
         entry["aot"] = [list(item) for item in record["aot"]]
@@ -161,50 +200,77 @@ def measure(game_settings: dict | None = None) -> dict:
     }
 
 
-def compare(now: dict, baseline: dict, operations_tolerance: float, time_tolerance: float) -> tuple[list, list]:
+def compare(
+    now: dict, baseline: dict, operations_tolerance: float, time_tolerance: float
+) -> tuple[list, list]:
     failures, warnings = [], []
     if now["graph_breaks"]:
         failures.append(f"{now['graph_breaks']} graph break(s)")
     for name, entry in now["functions"].items():
         before = baseline["functions"].get(name)
         if before is None:
-            failures.append(f"{name}: a new compiled function ({entry['graphs']} graph(s), {entry['operations']} operations)")
+            failures.append(
+                f"{name}: a new compiled function ({entry['graphs']} graph(s), {entry['operations']} operations)"
+            )
             continue
         if entry["graphs"] > before["graphs"]:
-            failures.append(f"{name}: {entry['graphs']} graphs, baseline {before['graphs']} (a recompile)")
+            failures.append(
+                f"{name}: {entry['graphs']} graphs, baseline {before['graphs']} (a recompile)"
+            )
         growth = entry["operations"] / before["operations"] - 1.0
         if growth > operations_tolerance:
-            failures.append(f"{name}: {entry['operations']} traced operations, baseline {before['operations']} (+{growth:.0%})")
+            failures.append(
+                f"{name}: {entry['operations']} traced operations, baseline {before['operations']} (+{growth:.0%})"
+            )
     if (now["gpu"], now["power_profile"]) == (baseline["gpu"], baseline["power_profile"]):
         growth = now["cold_s"] / baseline["cold_s"] - 1.0
         if now["cold_s"] > baseline["budget_s"]:
-            failures.append(f"cold compile {now['cold_s']} s, over the budget of {baseline['budget_s']} s")
+            failures.append(
+                f"cold compile {now['cold_s']} s, over the budget of {baseline['budget_s']} s"
+            )
         elif growth > time_tolerance:
-            warnings.append(f"cold compile {now['cold_s']} s, baseline {baseline['cold_s']} s (+{growth:.0%})")
+            warnings.append(
+                f"cold compile {now['cold_s']} s, baseline {baseline['cold_s']} s (+{growth:.0%})"
+            )
     else:
-        warnings.append(f"time not compared: {now['gpu']} / {now['power_profile']}, baseline "
-                        f"{baseline['gpu']} / {baseline['power_profile']}")
+        warnings.append(
+            f"time not compared: {now['gpu']} / {now['power_profile']}, baseline "
+            f"{baseline['gpu']} / {baseline['power_profile']}"
+        )
     return failures, warnings
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--baseline", type=Path, default=BASELINE)
     parser.add_argument("--update-baseline", action="store_true")
     parser.add_argument("--operations-tolerance", type=float, default=0.10)
     parser.add_argument("--time-tolerance", type=float, default=0.25)
-    parser.add_argument("--budget", type=float, default=None,
-                        help="with --update-baseline: the cold budget in seconds (default: the old baseline's)")
-    parser.add_argument("--deflector", default=None,
-                        help="the game's deflector preset (GameConfig.deflector; default: the game's)")
+    parser.add_argument(
+        "--budget",
+        type=float,
+        default=None,
+        help="with --update-baseline: the cold budget in seconds (default: the old baseline's)",
+    )
+    parser.add_argument(
+        "--deflector",
+        default=None,
+        help="the game's deflector preset (GameConfig.deflector; default: the game's)",
+    )
     arguments = parser.parse_args()
     now = measure({} if arguments.deflector is None else {"deflector": arguments.deflector})
     shutil.rmtree(os.environ["TORCHINDUCTOR_CACHE_DIR"], ignore_errors=True)
     for name, entry in now["functions"].items():
-        print(f"{name}: {entry['graphs']} graph(s), {entry['operations']} traced operations, aot {entry['aot']}, "
-              f"backend {entry['backend_s']} s")
-    print(f"total: {now['graphs']} graphs, {now['operations']} traced operations, {now['graph_breaks']} graph breaks, "
-          f"cold {now['cold_s']} s ({now['gpu']}, {now['power_profile']})")
+        print(
+            f"{name}: {entry['graphs']} graph(s), {entry['operations']} traced operations, aot {entry['aot']}, "
+            f"backend {entry['backend_s']} s"
+        )
+    print(
+        f"total: {now['graphs']} graphs, {now['operations']} traced operations, {now['graph_breaks']} graph breaks, "
+        f"cold {now['cold_s']} s ({now['gpu']}, {now['power_profile']})"
+    )
     if arguments.update_baseline:
         budget = arguments.budget
         if budget is None and arguments.baseline.exists():
@@ -213,8 +279,12 @@ def main() -> None:
         arguments.baseline.write_text(json.dumps(now, indent=1) + "\n")
         print(f"baseline written: {arguments.baseline}")
         return
-    failures, warnings = compare(now, json.loads(arguments.baseline.read_text()), arguments.operations_tolerance,
-                                 arguments.time_tolerance)
+    failures, warnings = compare(
+        now,
+        json.loads(arguments.baseline.read_text()),
+        arguments.operations_tolerance,
+        arguments.time_tolerance,
+    )
     for warning in warnings:
         print(f"WARNING {warning}")
     for failure in failures:

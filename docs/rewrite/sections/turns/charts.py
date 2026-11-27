@@ -134,8 +134,11 @@ ACCELERATION_FOOT = (
 
 
 def acceleration():
-    stores = (("store 97.5% (top edge band)", 0.975), (f"spawn store ({SPAWN_PERCENT:.0f}%)", None),
-              ("store 2.5% (bottom edge band)", 0.025))
+    stores = (
+        ("store 97.5% (top edge band)", 0.975),
+        (f"spawn store ({SPAWN_PERCENT:.0f}%)", None),
+        ("store 2.5% (bottom edge band)", 0.025),
+    )
     figure, axes = plt.subplots(3, 1, figsize=(7.5, 16), facecolor=SURFACE)
     tops = {}
     curves = {(fraction, t): straight(t, fraction, COAST) for _, fraction in stores for t in TYPES}
@@ -149,7 +152,16 @@ def acceleration():
             ax.plot(V, energy_rate, color=SERIES[t], linewidth=1.6, linestyle="--")
             top = zero_crossing(V, speed_rate)
             tops[(label, t)] = top
-            ax.plot(top, 0.0, "o", color=SERIES[t], markersize=9, markeredgecolor=SURFACE, markeredgewidth=2, zorder=5)
+            ax.plot(
+                top,
+                0.0,
+                "o",
+                color=SERIES[t],
+                markersize=9,
+                markeredgecolor=SURFACE,
+                markeredgewidth=2,
+                zorder=5,
+            )
             marks.append(f"{NAMES[t]} {top:.0f} m/s")
         ax.axhline(0.0, color=MUTED, linewidth=0.9)
         ax.text(
@@ -163,7 +175,14 @@ def acceleration():
             ha="left",
         )
         ax.plot([], [], color=MUTED, linewidth=2.0, label="solid: dv/dt")
-        ax.plot([], [], color=MUTED, linewidth=1.6, linestyle="--", label="dashed: total energy rate / v")
+        ax.plot(
+            [],
+            [],
+            color=MUTED,
+            linewidth=1.6,
+            linestyle="--",
+            label="dashed: total energy rate / v",
+        )
         ax.set_ylim(-60.0, high)
         ax.set_xlim(V[0], V[-1])
         axes_labels(ax, "speed (m/s)", "rate (m/s per s)")
@@ -195,7 +214,14 @@ def dive_climb():
     for t in TYPES:
         for power, dash, word in ((DIVE, "-", "dive"), (CLIMB, "--", "climb")):
             speed_rate, store_rate, _ = straight(t, None, power)
-            ax_speed.plot(V, speed_rate, color=SERIES[t], linestyle=dash, linewidth=2.0, label=f"{NAMES[t]} {word}")
+            ax_speed.plot(
+                V,
+                speed_rate,
+                color=SERIES[t],
+                linestyle=dash,
+                linewidth=2.0,
+                label=f"{NAMES[t]} {word}",
+            )
             ax_store.plot(
                 V,
                 store_rate / MAX_ENERGY[t] * 100.0,
@@ -216,7 +242,9 @@ def dive_climb():
     lines = []
     for t in TYPES:
         start = zero_crossing(V, straight(t, None, COAST)[0])
-        climb_floor = zero_crossing(V[::-1], -straight(t, None, CLIMB)[0][::-1])  # climb's dv/dt = 0 from below
+        climb_floor = zero_crossing(
+            V[::-1], -straight(t, None, CLIMB)[0][::-1]
+        )  # climb's dv/dt = 0 from below
         dive = simulate(t, start, SPAWN[t], STRAIGHT, DIVE, ticks)
         band = FADE_BAND * MAX_ENERGY[t]
         emptied = dive["store"] <= band
@@ -239,7 +267,10 @@ def dive_climb():
             climb_30s_speed=climb["speed"][-1],
             climb_30s_store=climb["store"][-1] / MAX_ENERGY[t],
         )
-        for run, last, dash, word in ((dive, stop, "-", "dive"), (climb, climb_stop, "--", "climb")):
+        for run, last, dash, word in (
+            (dive, stop, "-", "dive"),
+            (climb, climb_stop, "--", "climb"),
+        ):
             sl = slice(0, last + 1)
             ax_time_speed.plot(
                 run["time"][sl],
@@ -257,7 +288,10 @@ def dive_climb():
                 linewidth=2.0,
                 label=f"{NAMES[t]} {word}",
             )
-            for ax, key, scale in ((ax_time_speed, "speed", 1.0), (ax_time_store, "store", 100.0 / MAX_ENERGY[t])):
+            for ax, key, scale in (
+                (ax_time_speed, "speed", 1.0),
+                (ax_time_store, "store", 100.0 / MAX_ENERGY[t]),
+            ):
                 ax.plot(
                     run["time"][last:],
                     run[key][last:] * scale,
@@ -279,7 +313,8 @@ def dive_climb():
         climb_text = f"climb {climb['speed'][climb_stop]:.0f} m/s, store in the top band at {climb['time'][climb_stop]:.1f} s"
         lines.append(
             f"{NAMES[t]}: start {start:.0f}; dive peak {results[t]['dive_peak']:.0f}, store in the "
-            + f"bottom band at {dive['time'][stop]:.1f} s;\n    " + climb_text
+            + f"bottom band at {dive['time'][stop]:.1f} s;\n    "
+            + climb_text
         )
     ax_time_speed.text(
         0.99,
@@ -337,9 +372,30 @@ def bleed():
             runs[tag] = run
             colour = SERIES[t] if fraction is None else SURFACE
             label = NAMES[t] if fraction is None else None
-            axes[0].plot(run["time"], run["speed"], color=colour, linestyle=dash, linewidth=width, label=label)
-            axes[1].plot(run["time"][1:], run["rate"][1:], color=colour, linestyle=dash, linewidth=width, label=label)
-            axes[2].plot(run["time"], run["turned"], color=colour, linestyle=dash, linewidth=width, label=label)
+            axes[0].plot(
+                run["time"],
+                run["speed"],
+                color=colour,
+                linestyle=dash,
+                linewidth=width,
+                label=label,
+            )
+            axes[1].plot(
+                run["time"][1:],
+                run["rate"][1:],
+                color=colour,
+                linestyle=dash,
+                linewidth=width,
+                label=label,
+            )
+            axes[2].plot(
+                run["time"],
+                run["turned"],
+                color=colour,
+                linestyle=dash,
+                linewidth=width,
+                label=label,
+            )
             five = int(round(5.0 / H))
             results[(t, tag)] = dict(
                 start=start,
@@ -353,7 +409,9 @@ def bleed():
                 store_end=run["store"][-1] / MAX_ENERGY[t],
             )
         r = results[(t, "spawn store")]
-        differences.append(float(np.abs(runs["spawn store"]["speed"] - runs[OTHER_TAG]["speed"]).max()))
+        differences.append(
+            float(np.abs(runs["spawn store"]["speed"] - runs[OTHER_TAG]["speed"]).max())
+        )
         notes.append(
             (
                 f"{NAMES[t]}: {start:.0f} to {r['end_speed']:.0f} m/s",
@@ -373,8 +431,17 @@ def bleed():
             color=INK,
             bbox=dict(facecolor=SURFACE, edgecolor=GRID, boxstyle="round,pad=0.4"),
         )
-        ax.plot([], [], color=MUTED, linewidth=2.4, label=f"solid: spawn store ({SPAWN_PERCENT:.0f}%)")
-        ax.plot([], [], color=MUTED, linewidth=1.4, linestyle=(0, (3, 3)), label=f"light dashes on top: {OTHER_TAG}")
+        ax.plot(
+            [], [], color=MUTED, linewidth=2.4, label=f"solid: spawn store ({SPAWN_PERCENT:.0f}%)"
+        )
+        ax.plot(
+            [],
+            [],
+            color=MUTED,
+            linewidth=1.4,
+            linestyle=(0, (3, 3)),
+            label=f"light dashes on top: {OTHER_TAG}",
+        )
         ax.set_xlim(0, 20)
         legend(ax, ncol=2, loc="upper right" if k < 2 else "upper left")
     top = max(r["turned"] for r in results.values()) * 1.3
@@ -417,8 +484,18 @@ def circles():
             if t == 0:
                 sign = 1.0 if y[len(y) // 4] > 0 else -1.0
             y = y * sign
-            ax.plot(x, y, color=SERIES[t], linewidth=2.0, label=f"{NAMES[t]}, start {start:.0f} m/s")
-            ax.plot(x[-1], y[-1], "o", color=SERIES[t], markersize=8, markeredgecolor=SURFACE, markeredgewidth=2)
+            ax.plot(
+                x, y, color=SERIES[t], linewidth=2.0, label=f"{NAMES[t]}, start {start:.0f} m/s"
+            )
+            ax.plot(
+                x[-1],
+                y[-1],
+                "o",
+                color=SERIES[t],
+                markersize=8,
+                markeredgecolor=SURFACE,
+                markeredgewidth=2,
+            )
             width = float(np.ptp(y))
             results[(t, case)] = dict(
                 start=start,
@@ -440,12 +517,21 @@ def circles():
             )
             extent += [x.min(), x.max(), y.min(), y.max()]
         ax.plot(0, 0, "o", color=INK, markersize=5)
-        ax.annotate("start, heading +x", (0, 0), xytext=(0, 22), textcoords="offset points", color=INK_2,
-                    fontsize=8.5, ha="center")
+        ax.annotate(
+            "start, heading +x",
+            (0, 0),
+            xytext=(0, 22),
+            textcoords="offset points",
+            color=INK_2,
+            fontsize=8.5,
+            ha="center",
+        )
         low_x, high_x, high_y = min(extent[0::4]), max(extent[1::4]), max(extent[3::4])
         bar_y = -0.12 * high_y
         bar_y = min(bar_y, min(extent[2::4]) - 0.06 * high_y)  # the spirals drift below the start
-        ax.plot([low_x, low_x + reach], [bar_y, bar_y], color=INK, linewidth=3, solid_capstyle="butt")
+        ax.plot(
+            [low_x, low_x + reach], [bar_y, bar_y], color=INK, linewidth=3, solid_capstyle="butt"
+        )
         ax.annotate(
             f"gun reach {reach:.0f} m (muzzle {card.CARD['muzzle_speed'][0]:.0f} m/s x life "
             f"{card.CARD['bullet_life'][0]:.3f} s)",
@@ -462,7 +548,8 @@ def circles():
         axes_labels(ax, "x (m)", "y (m)")
         title(
             ax,
-            "(a) One 360 of heading from corner speed" if case == "corner"
+            "(a) One 360 of heading from corner speed"
+            if case == "corner"
             else f"(b) One 360 of heading from {case:.0f} m/s",
         )
         legend(ax, loc="upper right" if case == "corner" else "upper right")

@@ -28,10 +28,19 @@ class Ship:
         self.c = core.ship_constants(self.config, torch.full((1, 1), ship_type))
         z = torch.zeros(1, 1)
         self.s = SimpleNamespace(
-            x=z.clone(), y=z.clone(), heading_cos=torch.ones(1, 1), heading_sin=z.clone(),
-            speed=torch.full((1, 1), float(speed)), angle=z.clone(), angle_cos=torch.ones(1, 1),
-            angle_sin=z.clone(), nose_rate=z.clone(), energy=store_fraction * torch.ones(1, 1) * self.c["max_energy"],
-            log_index=z.clone(), gradient_x=z.clone(), gradient_y=z.clone(),
+            x=z.clone(),
+            y=z.clone(),
+            heading_cos=torch.ones(1, 1),
+            heading_sin=z.clone(),
+            speed=torch.full((1, 1), float(speed)),
+            angle=z.clone(),
+            angle_cos=torch.ones(1, 1),
+            angle_sin=z.clone(),
+            nose_rate=z.clone(),
+            energy=store_fraction * torch.ones(1, 1) * self.c["max_energy"],
+            log_index=z.clone(),
+            gradient_x=z.clone(),
+            gradient_y=z.clone(),
         )
         self.time = 0.0
 
@@ -44,7 +53,9 @@ class Ship:
         return (self.s.energy / self.c["max_energy"]).item()
 
     def track(self):
-        return math.atan2(self.s.heading_sin.item(), self.s.heading_cos.item()) - self.s.angle.item()
+        return (
+            math.atan2(self.s.heading_sin.item(), self.s.heading_cos.item()) - self.s.angle.item()
+        )
 
     def fly(self, stick, power, seconds, thrust_scale=1.0, until=None):
         """Fly; returns degrees the velocity turned. `until(ship)` stops early."""
@@ -53,8 +64,15 @@ class Ship:
         turned, previous = 0.0, self.track()
         with torch.no_grad():
             for _ in range(round(seconds / self.config.tick_length)):
-                self.s = core.flight_tick(self.c, torch.zeros(1, 5, 0), self.config.tick_length, self.s, stick_t, power_t,
-                                          thrust_scale=thrust_scale)
+                self.s = core.flight_tick(
+                    self.c,
+                    torch.zeros(1, 5, 0),
+                    self.config.tick_length,
+                    self.s,
+                    stick_t,
+                    power_t,
+                    thrust_scale=thrust_scale,
+                )
                 self.time += self.config.tick_length
                 now = self.track()
                 turned += (now - previous + math.pi) % (2 * math.pi) - math.pi
@@ -65,7 +83,10 @@ class Ship:
 
 
 def corner_speed(ship_type):
-    lift, limit = card.CARD["max_lift_coefficient"][ship_type], card.CARD["max_acceleration"][ship_type]
+    lift, limit = (
+        card.CARD["max_lift_coefficient"][ship_type],
+        card.CARD["max_acceleration"][ship_type],
+    )
     return math.sqrt(limit / lift)
 
 
@@ -84,24 +105,33 @@ def measure(ship_type=0):
         settled = ship.fly(stick, COAST, 1.0)
         rows[f"{name} stick from corner, coast: first second (deg)"] = f"{first:.0f}"
         rows[f"{name} stick, settled after 30 s: speed (m/s), rate (deg/s), store (%)"] = (
-            f"{ship.speed:.0f}, {settled:.1f}, {100 * ship.store:.1f}")
+            f"{ship.speed:.0f}, {settled:.1f}, {100 * ship.store:.1f}"
+        )
     ship = Ship(ship_type, corner, 0.5)
     first = ship.fly(FULL, DIVE, 1.0)
     rows["full stick and dive from corner: first second (deg)"] = f"{first:.0f}"
     ship = Ship(ship_type, top.speed, 0.5)
     ship.fly(STRAIGHT, CLIMB, 60.0, until=lambda s: s.store > 0.99)
     rows["climb from top speed, half store: time to 99% (s), speed then (m/s)"] = (
-        f"{ship.time:.1f}, {ship.speed:.0f}" if ship.store > 0.99 else f"not reached in 60 s ({100 * ship.store:.0f}%)")
+        f"{ship.time:.1f}, {ship.speed:.0f}"
+        if ship.store > 0.99
+        else f"not reached in 60 s ({100 * ship.store:.0f}%)"
+    )
     ship = Ship(ship_type, top.speed, 0.5)
     peak = [ship.speed]
     ship.fly(STRAIGHT, DIVE, 60.0, until=lambda s: peak.append(s.speed) or s.store < 0.01)
     rows["dive from top speed, half store: time to 1% (s), peak speed (m/s)"] = (
-        f"{ship.time:.1f}, {max(peak):.0f}" if ship.store < 0.01 else f"not reached in 60 s ({100 * ship.store:.0f}%)")
+        f"{ship.time:.1f}, {max(peak):.0f}"
+        if ship.store < 0.01
+        else f"not reached in 60 s ({100 * ship.store:.0f}%)"
+    )
     for label, speed in (("top speed", top.speed), ("corner speed", corner)):
         firing, quiet = Ship(ship_type, speed, 0.5), Ship(ship_type, speed, 0.5)
         firing.fly(STRAIGHT, COAST, 1.0, thrust_scale=CONFIG.fire_thrust_fraction)
         quiet.fly(STRAIGHT, COAST, 1.0)
-        rows[f"speed lost to 1 s of firing at {label} (m/s, against not firing)"] = f"{quiet.speed - firing.speed:.1f}"
+        rows[f"speed lost to 1 s of firing at {label} (m/s, against not firing)"] = (
+            f"{quiet.speed - firing.speed:.1f}"
+        )
     return rows
 
 

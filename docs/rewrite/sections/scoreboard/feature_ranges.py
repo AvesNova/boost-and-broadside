@@ -27,7 +27,8 @@ def raw(config, state):
     distance = torch.sqrt(state.x * state.x + state.y * state.y)
     c = state.constants
     return {
-        "world velocity x, y (m/s)": torch.stack([state.velocity_x, state.velocity_y]) * inverse_index,
+        "world velocity x, y (m/s)": torch.stack([state.velocity_x, state.velocity_y])
+        * inverse_index,
         "world speed (m/s)": state.speed * inverse_index,
         "angle of attack (rad)": state.angle,
         "angle of attack sin": state.angle_sin,
@@ -60,22 +61,41 @@ def main() -> None:
                 living = state.alive
                 for name, value in raw(config, state).items():
                     samples.setdefault(name, []).append(value[..., living].flatten())
-            action, memory = act(scripted, state, None, persona, draw_uniforms(ENVS, slots, generator, "cpu"), memory)
-            state, out = core.step(config, state, action, core.draw_noise(config, ENVS, slots, generator, "cpu"))
+            action, memory = act(
+                scripted, state, None, persona, draw_uniforms(ENVS, slots, generator, "cpu"), memory
+            )
+            state, out = core.step(
+                config, state, action, core.draw_noise(config, ENVS, slots, generator, "cpu")
+            )
             episodes += int(out.done.sum())
             fresh = fresh_memory(ENVS, slots, generator, "cpu")
-            memory = {name: torch.where(out.done[:, None], fresh[name], memory[name]) for name in memory}
-            state = core.take_deal(state, out.done, core.deal(config, ENVS, slots, sizes, generator, "cpu"))
+            memory = {
+                name: torch.where(out.done[:, None], fresh[name], memory[name]) for name in memory
+            }
+            state = core.take_deal(
+                state, out.done, core.deal(config, ENVS, slots, sizes, generator, "cpu")
+            )
             if (tick + 1) % 500 == 0:
-                print(f"tick {tick + 1} of {TICKS}, episodes ended {episodes}", file=sys.stderr, flush=True)
-    print(f"{ENVS} environments x {TICKS} ticks, {PER_TEAM}v{PER_TEAM}, every {EVERY}th tick, {episodes} episodes ended")
+                print(
+                    f"tick {tick + 1} of {TICKS}, episodes ended {episodes}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+    print(
+        f"{ENVS} environments x {TICKS} ticks, {PER_TEAM}v{PER_TEAM}, every {EVERY}th tick, {episodes} episodes ended"
+    )
     print("| quantity | 1st percentile | 99th percentile | min | max | exact zeros |")
     print("|---|---|---|---|---|---|")
     for name, parts in samples.items():
         values = torch.cat(parts).double()
-        low, high = torch.quantile(values[torch.randperm(values.numel())[:5_000_000]], torch.tensor([0.01, 0.99], dtype=torch.float64))
+        low, high = torch.quantile(
+            values[torch.randperm(values.numel())[:5_000_000]],
+            torch.tensor([0.01, 0.99], dtype=torch.float64),
+        )
         zeros = float((values == 0).double().mean())
-        print(f"| {name} | {low:.4g} | {high:.4g} | {values.min():.4g} | {values.max():.4g} | {zeros:.3f} |")
+        print(
+            f"| {name} | {low:.4g} | {high:.4g} | {values.min():.4g} | {values.max():.4g} | {zeros:.3f} |"
+        )
 
 
 if __name__ == "__main__":
