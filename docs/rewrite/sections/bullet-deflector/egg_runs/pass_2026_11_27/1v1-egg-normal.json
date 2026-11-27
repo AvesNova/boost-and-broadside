@@ -1,0 +1,151 @@
+{
+ "cell": "1v1-egg-normal",
+ "size": 1,
+ "envs": 512,
+ "ticks": 1800,
+ "always_fire": false,
+ "wall_s": 40.9,
+ "kills": 724.0,
+ "games_ended": 773.0,
+ "kills_per_minute": 1.4140625,
+ "time_to_kill": {
+  "n": 724,
+  "mean": 8.997974677680276,
+  "p25": 4.033333778381348,
+  "median": 7.8666672706604,
+  "p75": 12.475000619888306,
+  "p90": 18.023334312438966
+ },
+ "action_fire_share": 0.025310329861111112,
+ "shots_per_ship_tick": 0.02495768229166667,
+ "real_bullets_ended": 43082.0,
+ "hit_chance_per_bullet": 0.2603639571050555,
+ "shots_per_kill": 59.505524861878456,
+ "total_damage_shields": 969.1810807114502,
+ "total_restored_shields": 0.0,
+ "restored_share_of_damage": 0.0,
+ "kill_lives": {
+  "damage_per_kill_shields": 1.1390705555446898,
+  "restored_per_kill_shields": 0.0,
+  "overkill_per_kill_shields": 0.13907055438552773,
+  "start_shield_per_kill_shields": 1.0,
+  "restored_share": 0.0,
+  "overkill_share": 0.12209125563694855,
+  "counted_share": 0.8779087433454129
+ },
+ "passes": 4116,
+ "stray": {
+  "hits": 7.0,
+  "damage": 56.880948066711426,
+  "kills": 0.0
+ },
+ "pass_hits": {
+  "n": 4116,
+  "mean": 2.7235179786200194,
+  "p25": 0.0,
+  "median": 1.0,
+  "p75": 4.0,
+  "p90": 9.0
+ },
+ "pass_damage_shields": {
+  "n": 4116,
+  "mean": 0.23532854053834823,
+  "p25": 0.0,
+  "median": 0.09210553646087646,
+  "p75": 0.3750606518611312,
+  "p90": 0.7692514419555665
+ },
+ "pass_shots": {
+  "n": 4116,
+  "mean": 11.164965986394558,
+  "p25": 1.0,
+  "median": 6.0,
+  "p75": 14.0,
+  "p90": 31.0
+ },
+ "share_no_hit": 0.4322157434402332,
+ "share_no_damage": 0.43100097181729835,
+ "share_kill": 0.17589893100097181,
+ "share_partial": 0.39310009718172984,
+ "share_damage_ge_1_shield": 0.048104956268221574,
+ "pass_damage_given_kill": {
+  "n": 724,
+  "mean": 0.6729687872728788,
+  "p25": 0.38322279263287784,
+  "median": 0.6742488437891007,
+  "p75": 0.9923118714988232,
+  "p90": 1.1356335033476352
+ },
+ "directed_hits": {
+  "n": 8232,
+  "mean": 1.3617589893100097,
+  "p25": 0.0,
+  "median": 0.0,
+  "p75": 1.0,
+  "p90": 5.0
+ },
+ "directed_damage_shields": {
+  "n": 8232,
+  "mean": 0.11766427026917411,
+  "p25": 0.0,
+  "median": 0.0,
+  "p75": 0.09315463066101075,
+  "p90": 0.48035147190094024
+ },
+ "directed_share_no_hit": 0.7100340136054422,
+ "directed_share_kill": 0.08794946550048591,
+ "directed_share_partial": 0.20942662779397472,
+ "directed_share_damage_ge_1_shield": 0.023445092322643343,
+ "directed_damage_given_kill": {
+  "n": 724,
+  "mean": 0.6662484840141178,
+  "p25": 0.3792576421052217,
+  "median": 0.6728755366802215,
+  "p75": 0.988483820259571,
+  "p90": 1.1252145116329193
+ },
+ "directed_damage_given_hit": {
+  "n": 2387,
+  "mean": 0.40298652150130093,
+  "p25": 0.10710172176361084,
+  "median": 0.3004810905456543,
+  "p75": 0.6056440019607543,
+  "p90": 0.9288876862898471
+ },
+ "engagements": 1617,
+ "engagement_damage_shields": {
+  "n": 1617,
+  "mean": 0.5990181031885228,
+  "p25": 0.0,
+  "median": 0.6005610466003418,
+  "p75": 1.1334988427162171,
+  "p90": 1.1791839874982835
+ },
+ "engagement_passes": {
+  "n": 1617,
+  "mean": 2.5454545454545454,
+  "p25": 1.0,
+  "median": 2.0,
+  "p75": 4.0,
+  "p90": 5.0
+ },
+ "engagement_share_kill": 0.44774273345701915,
+ "engagement_damage_given_kill": {
+  "n": 724,
+  "mean": 1.1509069560331864,
+  "p25": 1.1072418168958393,
+  "median": 1.1400230169296264,
+  "p75": 1.1744892531633377,
+  "p90": 1.222918766975403
+ },
+ "passes_to_kill": {
+  "n": 724,
+  "mean": 3.6422651933701657,
+  "p25": 3.0,
+  "median": 4.0,
+  "p75": 4.0,
+  "p90": 5.0
+ },
+ "kills_in_one_pass_share": 0.029005524861878452,
+ "kills_on_first_pass_share": 0.029005524861878452
+}

@@ -1,0 +1,36 @@
+{
+ "cell": "4v4-egg-normal",
+ "size": 4,
+ "envs": 256,
+ "ticks": 1800,
+ "always_fire": false,
+ "wall_s": 48.8,
+ "kills": 1658.0,
+ "games_ended": 267.0,
+ "kills_per_minute": 6.4765625,
+ "time_to_kill": {
+  "n": 1658,
+  "mean": 9.878709813654064,
+  "p25": 2.408333420753479,
+  "median": 7.266666889190674,
+  "p75": 14.52500057220459,
+  "p90": 23.910001373291013
+ },
+ "action_fire_share": 0.036950659572917426,
+ "shots_per_ship_tick": 0.03668514011454975,
+ "real_bullets_ended": 105578.0,
+ "hit_chance_per_bullet": 0.23572145712174886,
+ "shots_per_kill": 63.67792521109771,
+ "total_damage_shields": 2434.0539589262007,
+ "total_restored_shields": 0.6156847393512725,
+ "restored_share_of_damage": 0.0002529462163701934,
+ "kill_lives": {
+  "damage_per_kill_shields": 1.1564487393773795,
+  "restored_per_kill_shields": 0.0002219536487098482,
+  "overkill_per_kill_shields": 0.1562267849212389,
+  "start_shield_per_kill_shields": 1.0,
+  "restored_share": 0.0001919269234789826,
+  "overkill_share": 0.135091837278797,
+  "counted_share": 0.8647162350995254
+ }
+}
