@@ -19,9 +19,18 @@ TEAM = torch.tensor([[0, 0, 1, 1]])
 
 
 def events(
-    raw=None, boundary=None, lost=None, restored=None, died=(), done=False, result=-1, present=None
+    raw=None,
+    boundary=None,
+    lost=None,
+    restored=None,
+    died=(),
+    done=False,
+    result=-1,
+    present=None,
+    fallen=(),
 ):
-    """One tick's events of the 2v2 environment; raw as {(attacker, target): damage}."""
+    """One tick's events of the 2v2 environment; raw as {(attacker, target): damage};
+    `fallen` the slots dead before the tick."""
     matrix = torch.zeros(1, 4, 4)
     for (attacker, target), amount in (raw or {}).items():
         matrix[0, attacker, target] = amount
@@ -35,6 +44,9 @@ def events(
     dead = torch.zeros(1, 4, dtype=torch.bool)
     dead[0, list(died)] = True
     win_loss = torch.tensor([[float(result == 0), float(result == 1)]])
+    present = torch.ones(1, 4, dtype=torch.bool) if present is None else present
+    living = present.clone()
+    living[0, list(fallen)] = False
     return TickEvents(
         raw=matrix,
         boundary=per_ship(boundary),
@@ -43,7 +55,8 @@ def events(
         died=dead,
         done=torch.tensor([done]),
         win_loss=win_loss,
-        present=torch.ones(1, 4, dtype=torch.bool) if present is None else present,
+        present=present,
+        living=living,
     )
 
 
@@ -51,7 +64,8 @@ def test_damage_and_kill_death_are_zero_sum_with_the_ledger_and_unequal_teams():
     """Guards v2's pairing: every amount one team earns is charged to the other (damage
     dealt and taken, recharge and charge-back, friendly fire and its refund, boundary
     losses, kills, ally kills, boundary deaths), over ticks that carry the ledger, with a
-    benched slot (3v2 in five slots, the fifth out of the match)."""
+    benched slot (3v2 in five slots, the fifth out of the match) and dead ships (team payments
+    go to the living)."""
     generator = torch.Generator().manual_seed(0)
     envs, slots = 64, 6
     team = torch.tensor([0, 0, 0, 1, 1, 1]).expand(envs, slots)
@@ -72,6 +86,7 @@ def test_damage_and_kill_death_are_zero_sum_with_the_ledger_and_unequal_teams():
         restored = torch.rand(envs, slots, generator=generator) * (total == 0) * present
         died = (torch.rand(envs, slots, generator=generator) < 0.05) & present
         done = torch.rand(envs, generator=generator) < 0.05
+        living = present & (torch.rand(envs, slots, generator=generator) < 0.7)
         tick = TickEvents(
             raw * 50,
             boundary * 50,
@@ -81,6 +96,7 @@ def test_damage_and_kill_death_are_zero_sum_with_the_ledger_and_unequal_teams():
             done,
             torch.zeros(envs, 2),
             present,
+            living,
         )
         reward, ledger = reward_step(CONFIG, ledger, tick, team)
         for level in (DAMAGE, KILL_DEATH):
@@ -137,6 +153,20 @@ def test_a_boundary_death_pays_the_other_team():
     ledger = blank_ledger(1, 4)
     death, _ = reward_step(CONFIG, ledger, events(boundary={2: 5.0}, died=(2,)), TEAM)
     assert torch.allclose(death[0, :, KILL_DEATH], torch.tensor([0.5, 0.5, -1.0, 0.0]) * KILL)
+
+
+def test_team_payments_go_to_the_living_only():
+    """A boundary death and friendly fire pay the other team's living ships only
+    (correctness-review-2026-11-28 finding 6): ship 3 died earlier, so ship 2 takes all."""
+    ledger = blank_ledger(1, 4)
+    death, _ = reward_step(CONFIG, ledger, events(boundary={0: 5.0}, died=(0,), fallen=(3,)), TEAM)
+    assert torch.allclose(death[0, :, KILL_DEATH], torch.tensor([-1.0, 0.0, 1.0, 0.0]) * KILL)
+    fire, _ = reward_step(
+        CONFIG, ledger, events(raw={(0, 1): 10.0}, lost={1: 10.0}, fallen=(3,)), TEAM
+    )
+    assert torch.allclose(
+        fire[0, :, DAMAGE], torch.tensor([-10.0, -10.0, 20.0, 0.0]) * DAMAGE_POINT
+    )
 
 
 def test_recharge_refunds_the_target_and_charges_back_the_attacker():

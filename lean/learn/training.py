@@ -13,6 +13,7 @@ from lean.learn.returns import (
     ValueSupport,
     advantage_shares,
     advantage_sums,
+    fallen_team_values,
     generalised_advantages,
     join_segments,
     normalise_advantages,
@@ -31,8 +32,8 @@ from lean.model.value import decode_value, hl_gauss_targets
 # What each pass reads from the store besides the carry and the observation's per-tick fields
 # (the stored-target pass reads no observation).
 OBSERVED = ("deal_row", "reset")
-TARGET_NAMES = OBSERVED + ("reward", "done")
-STORED_TARGET_NAMES = ("own", "reward", "done", "value")
+TARGET_NAMES = OBSERVED + ("reward", "done", "fallen")
+STORED_TARGET_NAMES = ("own", "reward", "done", "value", "fallen")
 LOSS_NAMES = OBSERVED + (
     "action",
     "log_probability",
@@ -269,6 +270,7 @@ def target_pass(
             )
         else:
             value, centres = batch["value"], store.centres
+        value = fallen_team_values(value, batch["own"], batch["fallen"])
         segments = store.segments
         last = views[views.numel() - views.numel() // segments :]  # each seat's last segment
         advantages, targets = generalised_advantages(

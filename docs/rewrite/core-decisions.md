@@ -1134,3 +1134,26 @@ Bullet deflector and the runtime hit model (PROPOSAL, branch `bullet-deflector`,
   times, smoke run). Open for the author: K and R (more spare slots track faster but run more
   draining network slots), whether the 4 personas should share one member's PFSP share (early in
   RL they and the yardstick hold most slots because the learner loses to them).
+
+## Author decisions 2026-11-28 (~04:15-04:30): dead ships take their living team-mates' value (option C), team payments to the living, separate seeds (decided; branch `fixes-8a`, queue item 8a, from correctness-review-2026-11-28.md)
+
+- **Dead ships (option C)**: after a ship dies (elimination: no respawn; masked out of
+  observation and acting), its value in the returns, on its post-death ticks and in the update's
+  bootstrap, is the mean value of its living team-mates at that tick, level by level
+  (`lean.learn.returns.fallen_team_values`; the store's resident `fallen` record, the seat's
+  team's dead ships still in the match). The outcome reaches its earlier ticks at gamma^k, not
+  (gamma lambda)^k. Perfect-critic check (+10 on the last of 512 ticks, outcome gamma 0.9997,
+  lambda 0.97): dying 30 / 100 / 300 ticks before the end, the target at its last living tick
+  is 9.910 / 9.704 / 9.139 (was 3.974 / 0.462 / 0.001); the survivor's is unchanged. The death
+  penalty (kill_death) stays; when the whole team is dead the episode has ended and the outcome
+  arrives directly. Chained segments fill every row, so the chain and the bootstrap agree.
+- **Team-shared payments** (boundary deaths, the 2x friendly-fire compensation, unattributed
+  boundary healing) split over the receiving team's ships alive at the tick's start; a team with
+  none living (not reached in play) falls back to its present ships, so the levels stay zero-sum.
+- **Seeds**: the explicit generator takes `--seed` + 1,000,003, torch's default generators
+  `--seed` (finding 8: compiled, the first segment's deals replayed `start()`'s draws).
+- **Hit-class prior** re-measured on today's game: 0.9865 / 0.0110 / 0.0025 (was 0.9374 /
+  0.0547 / 0.0080); the damage knee by its own rule at 8-point hits, 0.0109 (was 0.0286; effect
+  negligible, review); the shield range comment corrected (the -90 range stands).
+- **Not a fix**: the EMA and uniform slots taking new weights mid-game is fine (the live policy
+  changes mid-game too, and the averages move more slowly).

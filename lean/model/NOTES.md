@@ -89,8 +89,13 @@ Bin widths in target units: innermost (the narrowest) and outermost (the widest,
 | energy (store) | change | +-976 | 21.8 | 3.08, 205 | +-1,481 |
 | shield (points) | change minus the recharge given | -90 to 0 | 1 | 0.082, 9.34 | -115 to 0.27 |
 
-The hit head's shares, from 42.5M bullets that ended (ghosts included): 93.74% missed, 5.47%
-an enemy, 0.80% a team-mate (`hit_class_frequencies`).
+The hit head's shares (`hit_class_frequencies`), re-measured 2026-11-28 on the current game (hit
+damage 8, the egg deflector), the scripted yardstick against itself, 4v4, training game, 48
+environments x 4,200 ticks on the CPU (finished games re-dealt), 1.6M bullets that ended (ghosts
+included): 98.65% missed, 1.10% an enemy, 0.25% a team-mate (was 93.74 / 5.47 / 0.80 from
+2026-11-25, before the egg cut the hit width). The correctness review's shorter sample (32 x 600
+ticks, mostly the approach, which has no hits) gave 0.70% / 0.15%. The enemy
+class is rare: watch whether the hit head learns beyond the prior.
 
 ## Tests
 

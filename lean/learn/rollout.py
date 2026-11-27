@@ -17,7 +17,7 @@ from lean.contract import (
     whole_state,
 )
 from lean.learn.config import LearnConfig
-from lean.learn.returns import ValueSupport, value_support
+from lean.learn.returns import ValueSupport, fallen_team_values, value_support
 from lean.learn.rewards import Ledger, blank_ledger, clear_ledger, reward_step, tick_events
 from lean.model import draw_position_offset, next_state_target
 from lean.model.agent import (
@@ -162,13 +162,16 @@ class Rollout:
     next_state: (T, S, N, NEXT_STATE) lean.model.next_state_target of the game step;
     next_valid: (T, S, N) that row is a target (own now, alive after the step, and the
     episode did not end on the tick).
+    fallen: (T, S, N) bool, the seat's team's dead ships still in the match (their value in
+    the returns is their living team-mates' mean, returns.fallen_team_values).
     hit_label: (T, S, N) long, the outcome of the bullet the ship emitted on that tick
     (0 missed, 1 hit an enemy, 2 hit a team-mate; -1 unlabelled: no bullet, or it had not
     ended by the segment's end). Labels every slot of the seat's environment; the loss
     takes the `own` rows. Streamed into a store, the bullets fired in the previous segment
     that end in this one label that segment's rows (RolloutStore.end_segment); only the
     update's last segment keeps an unlabelled tail.
-    bootstrap_value: (S, N, LEVELS) value after the last tick, zero outside `own`.
+    bootstrap_value: (S, N, LEVELS) value after the last tick, zero outside `own` except on
+    fallen ships (returns.fallen_team_values).
     value_centres: (LEVELS, BINS) the critic's support the values were decoded with.
     seat_environment, seat_team: (S,) the environment of each seat and its team at the
     last tick. self_play: (S,) bool, the seat's environment is a self-play one.
@@ -189,6 +192,7 @@ class Rollout:
     position_offset: Tensor | None
     next_state: Tensor | None
     next_valid: Tensor | None
+    fallen: Tensor | None
     hit_label: Tensor | None
     deal_row: Tensor | None
     deal_table: dict
@@ -213,6 +217,7 @@ class Rollout:
         "position_offset",
         "next_state",
         "next_valid",
+        "fallen",
         "deal_row",
     )
 
@@ -247,6 +252,13 @@ def scripted_actions(scripted_config: ScriptedConfig, state, persona, generator)
 def self_play_count(config: LearnConfig, envs: int) -> int:
     """E_s, the number of self-play environments (the first E_s indices)."""
     return round(config.self_play_share * envs)
+
+
+def fallen(state, seat_environment: Tensor, seat_team: Tensor) -> Tensor:
+    """(S, N) bool: each seat's team's dead ships still in the match (Rollout.fallen)."""
+    team = state.team.index_select(0, seat_environment) == seat_team[:, None]
+    living = state.alive.index_select(0, seat_environment)
+    return team & state.exists.index_select(0, seat_environment) & ~living
 
 
 def seats(learner_team: Tensor, self_play: int) -> tuple[Tensor, Tensor]:
@@ -624,7 +636,7 @@ def advance(
     Returns (state, carry, this tick's records by Rollout field name, and "hit_outcome")."""
     envs, slots = state.exists.shape
     self_play = envs - carry.member.shape[0]
-    seat_environment, _ = seats(carry.learner_team, self_play)
+    seat_environment, seat_team = seats(carry.learner_team, self_play)
     observation = decision.observation
     live_action = split_joint(decision.joint)
     other_side = torch.cat([live_action[envs:], league_move.action])
@@ -647,6 +659,7 @@ def advance(
         "next_valid": observation.own
         & next_state.alive.index_select(0, seat_environment)
         & ~seat_done[:, None],
+        "fallen": fallen(state, seat_environment, seat_team),
     }
     if opponent.league is not None:
         result = step_out.result[self_play:]
@@ -791,7 +804,10 @@ def collect(
     # The value after the last tick from the tick's first half (one graph fewer to compile;
     # its samples and the scripted actions are discarded).
     final = act_part(config, game_config, policy, opponent, state, carry, generator, support)
-    bootstrap_value, centres = final.value, final.value_centres
+    bootstrap_value = fallen_team_values(
+        final.value, final.observation.own, fallen(state, seat_environment, seat_team)
+    )
+    centres = final.value_centres
     # After a reset the final observation belongs to a new episode; GAE never reads the
     # bootstrap there because `done` on the last tick cuts it.
     # A seat is the same environment's same slots in every segment (`seats`), so the

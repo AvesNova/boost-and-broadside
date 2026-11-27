@@ -5,6 +5,7 @@ from lean.contract import LEVEL_NAMES, LEVELS
 from lean.learn.config import LearnConfig, learning_rate
 from lean.learn.pool import League
 from lean.learn.returns import (
+    fallen_team_values,
     generalised_advantages,
     normalise_advantages,
     value_centres,
@@ -36,6 +37,7 @@ __all__ = [
     "WeightAverages",
     "collect",
     "draw_team_sizes",
+    "fallen_team_values",
     "generalised_advantages",
     "learning_rate",
     "load_checkpoint",

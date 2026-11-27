@@ -343,7 +343,7 @@ def test_chained_targets_equal_one_gae_pass_over_the_concatenated_ticks(fresh_va
     segment only, within float32 rounding; with an episode end inside a segment and one on
     a segment's last tick (which must cut the chain there). Both the stored values and the
     critic's recomputed ones (targets_every_epoch)."""
-    from lean.learn import generalised_advantages, normalise_advantages
+    from lean.learn import fallen_team_values, generalised_advantages, normalise_advantages
     from lean.learn.training import minibatch_values, target_pass
 
     segments, ticks = 4, 12
@@ -362,6 +362,11 @@ def test_chained_targets_equal_one_gae_pass_over_the_concatenated_ticks(fresh_va
     store.resident["done"].copy_(done)
     store.bootstrap.copy_(torch.randn(store.bootstrap.shape, generator=generator))
     store.bootstrap[views] = 0
+    # Fallen ships (valued at their team-mates' mean) on some of the rows a view does not own.
+    unowned = ~store.resident["own"]
+    fallen = unowned & (torch.rand(unowned.shape, generator=generator) < 0.3)
+    fallen[:, views] = False
+    store.resident["fallen"].copy_(fallen)
 
     if fresh_values:
         index, _ = store.batch_index(torch.arange(views), views)
@@ -373,6 +378,7 @@ def test_chained_targets_equal_one_gae_pass_over_the_concatenated_ticks(fresh_va
         value = torch.cat([value, torch.zeros_like(value[:, :1])], 1)
     else:
         value = store.data["value"]
+    value = fallen_team_values(value, store.resident["own"], store.resident["fallen"])
     discounts, lambdas = torch.tensor(config.discounts), torch.tensor(config.gae_lambdas)
     advantage, target = generalised_advantages(
         seat_major(store.data["reward"], segments, seats),

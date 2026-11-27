@@ -163,10 +163,10 @@ class LearnConfig:
     value_low: tuple[float, ...] = (-5.4, -7.5, -1.0, -1.0, -10.0)
     value_high: tuple[float, ...] = (5.4, 7.5, 1.0, 1.0, 10.0)
     # Symlog knees by the event rule (author 2026-11-25): one reward event's size x e^-3 (the
-    # event three discount horizons ahead). A hit: 21 points / damage_unit x 2.74 = 0.575
-    # damage units, so 0.0286; a kill or a death: 2.83 units, so 0.141. The objective
-    # placeholders and the outcome (bimodal at its bounds) stay linear.
-    value_knee: tuple[float, ...] = (0.0286, 0.141, 0.0, 0.0, 0.0)
+    # event three discount horizons ahead). A hit: 8 points (hit damage since 2026-11-27) /
+    # damage_unit x 2.74 = 0.219 damage units, so 0.0109; a kill or a death: 2.83 units, so
+    # 0.141. The objective placeholders and the outcome (bimodal at its bounds) stay linear.
+    value_knee: tuple[float, ...] = (0.0109, 0.141, 0.0, 0.0, 0.0)
     value_sigma_ratio: float = 0.75  # Gaussian width of a target, in bin widths
     # Range monitoring (per level, per epoch's targets): a warning when more than this share
     # of the valued targets lies beyond the outermost centres (clamped), and when the

@@ -28,8 +28,10 @@ counters, the games in progress (game state and carry) and the random generators
 settings and plan; `--updates` may extend RL. A resumed run gives the same updates as one
 that never stopped (on the CPU eagerly, to rounding; tests/test_train.py).
 
-`--seed` fixes the initial weights, the scenario draws and the data order (compiled, the
-rollout's draws come from torch's default generator, seeded by `--seed` too). `--compile`
+`--seed` fixes the initial weights, the scenario draws and the data order. The explicit
+generator (scenario draws, sampling, data order) is seeded `--seed` + GENERATOR_SEED_OFFSET and
+torch's default generators (initial weights; compiled, the rollout's draws) `--seed`, so the
+two never replay each other's draws (correctness-review-2026-11-28 finding 8). `--compile`
 (the default) compiles the rollout tick and the update's loss. An update collects
 LearnConfig.segments_per_update segments of segment_ticks ticks over `--envs` environments
 into one RolloutStore (streamed to pinned host memory on a GPU), then learns from them.
@@ -81,6 +83,9 @@ SHOWN = (
     "learning_rate",
 )
 CHECKPOINTS = "checkpoints"
+# The explicit generator's seed less the default generators' (a large prime: no nearby
+# --seed of another run replays this run's other stream).
+GENERATOR_SEED_OFFSET = 1_000_003
 
 
 @dataclasses.dataclass
@@ -424,7 +429,7 @@ def main() -> None:
         torch.set_num_threads(arguments.threads)
     # Training deals use the training spawn; evaluation (lean.eval) plays the standard one.
     game_config = game.GameConfig(training_spawn=True)
-    generator = torch.Generator(device=device).manual_seed(arguments.seed)
+    generator = torch.Generator(device=device).manual_seed(arguments.seed + GENERATOR_SEED_OFFSET)
 
     resumed = None
     if arguments.resume is not None:
