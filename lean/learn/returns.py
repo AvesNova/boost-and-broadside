@@ -1,6 +1,8 @@
 """Returns: categorical value helpers, GAE per reward level, advantage normalisation and the
 supports' range monitoring."""
 
+from typing import NamedTuple
+
 import torch
 from torch import Tensor
 
@@ -22,6 +24,21 @@ def value_centres(config: LearnConfig, bins: int, device=None) -> Tensor:
     return buffered_centres(
         torch.tensor(config.value_low), torch.tensor(config.value_high), value_knees(config), bins
     ).to(device)
+
+
+class ValueSupport(NamedTuple):
+    """The critic's support on the device: `centres` (LEVELS, BINS) (value_centres) and
+    `knees` (LEVELS,) (value_knees). Built once outside the compiled graphs and passed in:
+    a table made with torch.tensor inside a graph is a pageable host-to-device copy (a host
+    wait) at every call."""
+
+    centres: Tensor
+    knees: Tensor
+
+
+def value_support(config: LearnConfig, bins: int, device=None) -> ValueSupport:
+    """The critic's support (ValueSupport), built on the host and copied to `device` once."""
+    return ValueSupport(value_centres(config, bins, device), value_knees(config, device))
 
 
 def generalised_advantages(

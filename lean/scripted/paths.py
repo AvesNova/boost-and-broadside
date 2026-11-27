@@ -28,7 +28,7 @@ from types import SimpleNamespace
 import torch
 from torch import Tensor
 
-from lean.contract import POWERS, STICKS
+from lean.contract import POWERS, STICKS, device_constant
 from lean.game import card
 from lean.game.core import current_path_rate, maximum, medium, steady_lookup
 
@@ -102,10 +102,10 @@ def level_shapes(constants) -> tuple[Tensor, Tensor, Tensor]:
     (STICKS,) float its side (+1 left, the game's stick table sign: positive is a left turn).
     The levels' flight itself is the game's steady-flight table (`core.steady_lookup`)."""
     device = constants["stick_table"].device
-    columns = torch.tensor(FIRST_OF_LEVEL, device=device)
+    columns = device_constant(FIRST_OF_LEVEL, device)
     stiffness = constants["nose_stiffness_table"].index_select(1, columns).movedim(1, -1)
-    side = torch.sign(torch.tensor(card.STICK_LEVELS, device=device))
-    return stiffness, torch.tensor(LEVEL_OF_STICK, device=device), side
+    side = torch.sign(device_constant(card.STICK_LEVELS, device))
+    return stiffness, device_constant(LEVEL_OF_STICK, device), side
 
 
 def nose_response(offset, rate, sigma, stiffness, time):
@@ -193,7 +193,7 @@ def predict(constants, fields: Tensor, ships, power: Tensor) -> Paths:
     def per_stick(value: Tensor) -> Tensor:  # (E, N, LEVELS) -> (E, N, STICKS)
         return value.index_select(-1, level)
 
-    first_of_level = torch.tensor(FIRST_OF_LEVEL, device=speed0.device)
+    first_of_level = device_constant(FIRST_OF_LEVEL, speed0.device)
     shape = speed0.shape + (STICKS,)
     omega = (constants["nose_frequency"] * speed0).clamp_min(card.NOSE_FREQUENCY_FLOOR)
     omega = omega * inverse_index0
@@ -306,7 +306,7 @@ def power_outlook(constants, fields: Tensor, ships, stick: Tensor) -> tuple[Tens
     from the game's steady-flight rates (its table) at the segment's start (the medium's 1 / n
     held at its value now)."""
     p = candidate_constants(constants)  # columns (E, N, 1, 1)
-    level = torch.tensor(LEVEL_OF_STICK, device=stick.device)
+    level = device_constant(LEVEL_OF_STICK, stick.device)
     stick_level = level[stick][..., None, None]  # (E, N, 1, 1)
     ship_type = ships.type[..., None, None]
     powers = torch.arange(POWERS, device=stick.device)

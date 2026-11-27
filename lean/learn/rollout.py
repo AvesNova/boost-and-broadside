@@ -17,7 +17,7 @@ from lean.contract import (
     whole_state,
 )
 from lean.learn.config import LearnConfig
-from lean.learn.returns import value_centres, value_knees
+from lean.learn.returns import ValueSupport, value_support
 from lean.learn.rewards import Ledger, blank_ledger, clear_ledger, reward_step, tick_events
 from lean.model import draw_position_offset, next_state_target
 from lean.model.agent import (
@@ -525,10 +525,12 @@ def act(
     state,
     carry: CollectCarry,
     generator,
+    support: ValueSupport | None = None,
 ) -> Decision:
     """The first half of a tick (Decision): both teams' views, the live policy on every seat
     (lean.model.agent.agent_step, the agent tick the league and evaluation share; its sampled
-    joint action, log-probability and value) and the scripted agent's move for every ship."""
+    joint action, log-probability and value) and the scripted agent's move for every ship.
+    `support` (returns.value_support) the critic's support on the device, else built here."""
     envs = state.exists.shape[0]
     self_play = envs - carry.member.shape[0]
     seat_environment, seat_team = seats(carry.learner_team, self_play)
@@ -546,9 +548,9 @@ def act(
     )
     log_probability = torch.log_softmax(step.logits, -1).gather(-1, step.joint[..., None])
     value_logits = step.value_logits.float()
-    centres = value_centres(config, value_logits.shape[-1], value_logits.device)
-    knee = value_knees(config, value_logits.device)
-    value = decode_value(value_logits, centres, knee) * observation.own[..., None]
+    if support is None:
+        support = value_support(config, value_logits.shape[-1], value_logits.device)
+    value = decode_value(value_logits, support.centres, support.knees) * observation.own[..., None]
     move = scripted_actions(opponent.scripted_config, state, carry.persona, generator)
     return Decision(
         views=views,
@@ -557,7 +559,7 @@ def act(
         joint=step.joint,
         log_probability=log_probability.squeeze(-1),
         value=value,
-        value_centres=centres,
+        value_centres=support.centres,
         policy_carry=step.carry,
         scripted=move,
     )
@@ -695,6 +697,7 @@ def collect(
         deal_row=torch.arange(envs, device=device),
     )
     table = deal_table(game_config, state, carry)
+    support = value_support(config, policy.config.bins, device)
     initial_carry = carry.policy
     if store is not None:
         store.begin_segment(segment, ticks, initial_carry, table)
@@ -703,7 +706,7 @@ def collect(
     seat_environment, _ = seats(carry.learner_team, self_play)
 
     for index in range(ticks):
-        decision = act_part(config, game_config, policy, opponent, state, carry, generator)
+        decision = act_part(config, game_config, policy, opponent, state, carry, generator, support)
         deal_row = carry.deal_row.index_select(0, seat_environment)
         league_move = league_actions(
             config, opponent, decision.views, carry, decision.scripted.action, generator, networks
@@ -738,7 +741,7 @@ def collect(
     seat_environment, seat_team = seats(carry.learner_team, self_play)
     # The value after the last tick from the tick's first half (one graph fewer to compile;
     # its samples and the scripted actions are discarded).
-    final = act_part(config, game_config, policy, opponent, state, carry, generator)
+    final = act_part(config, game_config, policy, opponent, state, carry, generator, support)
     bootstrap_value, centres = final.value, final.value_centres
     # After a reset the final observation belongs to a new episode; GAE never reads the
     # bootstrap there because `done` on the last tick cuts it.

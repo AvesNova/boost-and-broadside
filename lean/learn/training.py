@@ -10,6 +10,7 @@ from torch import Tensor
 from lean.contract import JOINT, LEVEL_NAMES
 from lean.learn.config import LearnConfig, learning_rate
 from lean.learn.returns import (
+    ValueSupport,
     advantage_shares,
     advantage_sums,
     generalised_advantages,
@@ -19,8 +20,7 @@ from lean.learn.returns import (
     usage_counts,
     usage_flags,
     usage_metrics,
-    value_centres,
-    value_knees,
+    value_support,
 )
 from lean.learn.rollout import Rollout
 from lean.learn.store import RolloutStore
@@ -128,16 +128,24 @@ def teacher_cross_entropy(log_policy: Tensor, teacher: Tensor) -> tuple[Tensor, 
 
 
 def minibatch_values(
-    config: LearnConfig, policy, observation, carry: Tensor, reset: Tensor, position_offset: Tensor
+    config: LearnConfig,
+    policy,
+    observation,
+    carry: Tensor,
+    reset: Tensor,
+    position_offset: Tensor,
+    support: ValueSupport | None = None,
 ) -> tuple[Tensor, Tensor]:
     """The critic's decoded values (T, B, N, LEVELS) of one batch of views, zero outside
-    `own`, and the support's centres (LEVELS, BINS)."""
+    `own`, and the support's centres (LEVELS, BINS). `support` (returns.value_support) the
+    critic's support on the device, else built here."""
     with precision(carry.device, config.bf16):
         _, value_logits, _, _, _ = policy.sequence(observation, carry, reset, position_offset)
     value_logits = value_logits.float()
-    centres = value_centres(config, value_logits.shape[-1], value_logits.device)
-    knee = value_knees(config, value_logits.device)
-    return decode_value(value_logits, centres, knee) * observation.own[..., None], centres
+    if support is None:
+        support = value_support(config, value_logits.shape[-1], value_logits.device)
+    value = decode_value(value_logits, support.centres, support.knees)
+    return value * observation.own[..., None], support.centres
 
 
 def minibatch_loss(
@@ -157,6 +165,7 @@ def minibatch_loss(
     hit_label: Tensor,
     weights: Tensor,
     denominators: Tensor,
+    support: ValueSupport | None = None,
 ) -> tuple[Tensor, dict[str, Tensor]]:
     """One micro-batch's share of its minibatch's loss (see `update`) and of its measures,
     all 0-d tensors: every term is a sum over this micro-batch's valid tokens divided by
@@ -164,7 +173,8 @@ def minibatch_loss(
     own tokens), so the micro-batches' losses and gradients add up to the minibatch's.
     weights = (surrogate, entropy bonus, teacher cross-entropy) coefficients. weights and
     denominators are tensors so that a compiled graph does not take each new value as a
-    constant."""
+    constant. `support` (returns.value_support) the critic's support on the device, else
+    built here."""
     own = observation.own
     own_count, next_count, labelled_count = denominators.clamp(min=1.0).unbind()
     surrogate_weight, entropy_weight, teacher_weight = weights.unbind()
@@ -182,9 +192,10 @@ def minibatch_loss(
     teacher_cross, teacher_entropy = teacher_cross_entropy(log_policy, teacher)
     bc = masked_sum(teacher_cross, own) / own_count
 
-    centres = value_centres(config, value_logits.shape[-1], value_logits.device)
+    if support is None:
+        support = value_support(config, value_logits.shape[-1], value_logits.device)
     target_distribution = hl_gauss_targets(
-        target, centres, value_knees(config, value_logits.device), config.value_sigma_ratio
+        target, support.centres, support.knees, config.value_sigma_ratio
     )
     cross_entropy = -(target_distribution * torch.log_softmax(value_logits, -1)).sum(-1)
     value_loss = masked_sum(cross_entropy, own) / (own_count * cross_entropy.shape[-1])
@@ -194,7 +205,9 @@ def minibatch_loss(
             f"next-state head gives {tuple(next_state.shape)}, the recorded target is "
             f"{tuple(next_target.shape)}"
         )
-    next_cross_entropy = next_state_cross_entropy(policy.config, next_state, next_target)
+    next_cross_entropy = next_state_cross_entropy(
+        policy.config, next_state, next_target, policy.next_state_centres, policy.next_state_knees
+    )
     next_state_loss = masked_sum(next_cross_entropy, next_valid) / (
         next_count * next_cross_entropy.shape[-1]
     )
@@ -242,6 +255,7 @@ def target_pass(
     advantages' tallies before scaling (returns.advantage_sums, for each level's share)."""
     levels = len(config.discounts)
     advantage, target = store.targets(levels)
+    support = value_support(config, policy.config.bins, store.device)
     discounts = to_device(torch.tensor(config.discounts), store.device)
     lambdas = to_device(torch.tensor(config.gae_lambdas), store.device)
     names = store.observation_names + TARGET_NAMES if values is not None else STORED_TARGET_NAMES
@@ -251,7 +265,7 @@ def target_pass(
         if values is not None:
             observation, offset = store.observation(batch)
             value, centres = values(
-                config, policy, observation, batch["carry"], batch["reset"], offset
+                config, policy, observation, batch["carry"], batch["reset"], offset, support
             )
         else:
             value, centres = batch["value"], store.centres
@@ -273,7 +287,7 @@ def target_pass(
         advantage.index_copy_(1, views, advantages.sum(-1))
         target.index_copy_(1, views, targets)
         tally, part = (
-            usage_counts(targets, batch["own"], centres, value_knees(config, store.device)),
+            usage_counts(targets, batch["own"], centres, support.knees),
             advantage_sums(advantages, batch["own"]),
         )
         pays = (batch["reward"] != 0).flatten(0, -2).any(0)
@@ -360,6 +374,7 @@ def update(
         weights = (1.0, config.entropy_coefficient, teacher_weight)
     device = store.device
     weights = to_device(torch.tensor(weights), device)
+    support = value_support(config, policy.config.bins, device)
     views = store.views
     size = min(config.micro_batch_views, views)
 
@@ -432,6 +447,7 @@ def update(
                 batch["hit_label"],
                 weights,
                 denominators,
+                support,
             )
             loss.backward()
             for name, measure in measures.items():

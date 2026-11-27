@@ -7,6 +7,7 @@ Layout: batch first, features last. Units: metres, radians, seconds, ticks where
 from __future__ import annotations
 
 import dataclasses
+import math
 import os
 from dataclasses import dataclass
 
@@ -77,6 +78,23 @@ def map_fields(record, function):
         ):
             changes[field.name] = {name: function(item) for name, item in value.items()}
     return dataclasses.replace(record, **changes)
+
+
+def device_constant(values, device, dtype=None) -> Tensor:
+    """A small table of Python numbers `values` (a flat or nested sequence) made on `device`
+    without a host copy: inside a compiled graph torch.tensor(..., device=cuda) is a pageable
+    host-to-device copy at every call (the host waits for the stream), while a fill per entry
+    is a constant inside a kernel. The same values as torch.tensor(values, dtype=dtype): the
+    dtype defaults to float32 when any entry is a float, else long."""
+    shape, flat = [], list(values)
+    while flat and isinstance(flat[0], (list, tuple)):
+        shape.append(len(flat))
+        flat = [item for row in flat for item in row]
+    shape.append(len(flat) // max(1, math.prod(shape)))
+    if dtype is None:
+        dtype = torch.float32 if any(isinstance(item, float) for item in flat) else torch.long
+    entries = [torch.full((), item, dtype=dtype, device=device) for item in flat]
+    return torch.stack(entries).view(shape)
 
 
 def whole(tensor: Tensor) -> Tensor:

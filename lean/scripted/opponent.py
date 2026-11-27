@@ -36,7 +36,7 @@ from types import SimpleNamespace
 import torch
 from torch import Tensor
 
-from lean.contract import FIRES, JOINT, POWERS, random_keywords
+from lean.contract import FIRES, JOINT, POWERS, device_constant, random_keywords
 from lean.game import card
 from lean.game.core import (
     SHOOTER_HIT_CONSTANTS,
@@ -143,8 +143,8 @@ def time_weights(horizon: Tensor | float, device, points=None) -> Tensor:
     """(P,) or (E, N, P): each point's weight, its interval discounted by e^(-t / horizon);
     the look-ahead's points unless `points` are given."""
     points = paths_module.LOOK_AHEAD if points is None else points
-    times = torch.tensor(points, device=device)
-    return torch.tensor(intervals(points), device=device) * torch.exp(-times / _lay(horizon, 1))
+    times = device_constant(points, device)
+    return device_constant(intervals(points), device) * torch.exp(-times / _lay(horizon, 1))
 
 
 def own_components(c, paths: Paths, margin) -> Paths:
@@ -775,7 +775,7 @@ def _pair_kernel(c, fields_, own_paths, seen_paths, enemy_slot, now_x, now_y, ho
 
     constants = torch.stack([per_ship(c[name]) for name in kernels.CONSTANTS], -1)
     constants = torch.cat([constants, _widths_at(c, None).to(constants.dtype)], -1)
-    times = torch.tensor(paths_module.LOOK_AHEAD, device=now_x.device)
+    times = device_constant(paths_module.LOOK_AHEAD, now_x.device)
     discounts = torch.exp(-times / read("horizon", 1))
     parameters = torch.cat(
         [
