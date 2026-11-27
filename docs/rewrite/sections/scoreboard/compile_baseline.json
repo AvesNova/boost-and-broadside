@@ -1,61 +1,72 @@
 {
- "cold_s": 231.7,
- "graphs": 4,
+ "cold_s": 120.9,
+ "graphs": 5,
  "graph_breaks": 0,
- "operations": 6503,
+ "operations": 9338,
  "functions": {
   "act": {
    "graphs": 1,
-   "operations": 1821,
+   "operations": 4535,
    "aot": [
     [
      "forward",
-     2511
+     5263
     ]
    ],
-   "backend_s": 35.9
+   "backend_s": 35.2
   },
   "advance": {
    "graphs": 1,
-   "operations": 2856,
+   "operations": 3194,
    "aot": [
     [
      "forward",
-     3348
+     3423
     ]
    ],
-   "backend_s": 33.4
+   "backend_s": 17.6
   },
   "minibatch_loss": {
    "graphs": 1,
-   "operations": 1080,
+   "operations": 861,
    "aot": [
     [
      "forward",
-     1512
+     1266
     ],
     [
      "backward",
-     1948
+     1758
     ]
    ],
-   "backend_s": 41.9
+   "backend_s": 10.8
   },
   "slot_actions": {
    "graphs": 1,
-   "operations": 746,
+   "operations": 720,
    "aot": [
     [
      "forward",
-     1173
+     1114
     ]
    ],
-   "backend_s": 16.7
+   "backend_s": 8.4
+  },
+  "merge_league": {
+   "graphs": 1,
+   "operations": 28,
+   "aot": [
+    [
+     "forward",
+     44
+    ]
+   ],
+   "backend_s": 0.5
   }
  },
  "gpu": "NVIDIA GeForce RTX 4070 Laptop GPU",
  "power_profile": "performance",
  "torch": "2.15.0+cu132",
- "budget_s": 260,
- "note": "Recorded on the laptop (quiet, load below 4) on branch post-stall 2026-11-26 after the post-stall flight; reset by the author's agreement so each change is judged on its own (before: advance 2,220, total 5,721, cold 221.3 s; core 6614289d: advance 2,300, total 5,947, cold 226.9 s)."
+ "budget_s": 150.0,
+ "note": "Reset by the author's decision (2026-11-27 ~22:00) after the night's merge (merge-1128: core + league-pool + personas-2 + hit-range-2), recorded on the laptop (quiet, performance profile). Op counts as measured on this tree, merge_league included; budget 150 s, about 25% over the measured cold compile (121.3 s and 120.9 s in two runs). Before: act 1,821, advance 2,856, minibatch_loss 1,080, slot_actions 746, total 6,503, cold 231.7 s, budget 260 s."
 }
