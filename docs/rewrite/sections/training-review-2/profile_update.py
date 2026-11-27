@@ -2,7 +2,7 @@
 ticks, 4v4, 10 fields, bf16, geometry heads K = 8), one epoch of one minibatch of three
 micro-batches (as heads-8c/cost.py), after one compiling and two steady updates.
 
-    PYTHONPATH=. python docs/rewrite/sections/training-review-2/profile_update.py [ENVS] [off]
+    PYTHONPATH=. python docs/rewrite/sections/training-review-2/profile_update.py [ENVS] [off] [--b VIEWS]
 
 Prints one JSON line (and appends it to DATA/profile_update.jsonl): steady update ms, kernel
 families, GPU busy share, host runtime calls, memcpy kinds.
@@ -37,7 +37,9 @@ def main() -> None:
     generator = torch.Generator(device=device).manual_seed(0)
     import dataclasses
 
-    config = dataclasses.replace(LearnConfig(), epochs=1, minibatches=1)
+    views = int(sys.argv[sys.argv.index("--b") + 1]) if "--b" in sys.argv else 64
+    record["micro_batch_views"] = views
+    config = dataclasses.replace(LearnConfig(), epochs=1, minibatches=1, micro_batch_views=views)
     game_config = game.GameConfig(training_spawn=True)
     model_config = model.ModelConfig.for_arena(game_config.arena_radius, geometry_heads=heads)
     policy = model.Policy(model_config).to(device)
@@ -68,7 +70,7 @@ def main() -> None:
         host = time.perf_counter() - began
         torch.cuda.synchronize()
     record["profiled_update_host_s_before_sync"] = round(host, 4)
-    path = os.path.join(common.DATA, f"trace_update{'' if heads else '_off'}.json")
+    path = os.path.join(common.DATA, f"trace_update{'' if heads else '_off'}{'' if views == 64 else f'_b{views}'}.json")
     prof.export_chrome_trace(path)
     record.update(common.read_trace(path))
     record["peak_allocated_gib"] = round(torch.cuda.max_memory_allocated() / 2**30, 3)

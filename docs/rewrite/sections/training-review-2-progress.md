@@ -38,3 +38,9 @@ power profile and load recorded per job in the raw output.
   B 64 198.7 ms (+20%), peak 4.61 -> 2.98 GiB. Added B 16 / 48 and budget 0.5 at B 32.
   Remaining: checkpoint 128/256, budget 64/128/256/32, fold check + time, reduce-overhead with
   one micro-batch per minibatch, math attention, max-autotune (ETA 07:15, worst 07:45).
+- 06:15-06:30: geometry fold prototype: equal losses (pair 3.4658353 vs 3.4658356), largest
+  gradient difference 3.8e-6 (largest gradient 0.024); timed 165.1 ms per micro-batch (baseline
+  165.6-165.9): -0.3%, cold compile 45.7 s (49.6): not worth it for speed. Micro-batch curve
+  (ms per 64 views): B 8 140.9, 16 147.8, 24 154.1, 32 158.8, 48 163.0, 64 165.0; B 16 profile:
+  GPU busy 95.0%, ~1,000 kernels per micro-batch at every B, GEMMs -19% and pointwise -10-20%
+  per view against B 64 (L2 locality, the 4070's 32 MB). The biggest win found so far.
