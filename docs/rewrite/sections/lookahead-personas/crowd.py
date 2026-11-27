@@ -87,6 +87,13 @@ def run(size, ticks, envs, seed):
             "weight_quantiles": np.quantile(w, [0.1, 0.5, 0.9]).tolist(),
             "share_duel": float((values <= 1.0).mean()),
             "samples": int(values.size),
+            # Histogram on quarter-ship bins (bin centres, shares): any half's mean weight.
+            "histogram": [
+                [float(centre), float(share)]
+                for centre, share in zip(
+                    *np.unique(np.round(values * 4.0) / 4.0, return_counts=True), strict=True
+                )
+            ],
         }
     return result
 
