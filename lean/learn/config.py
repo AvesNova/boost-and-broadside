@@ -165,7 +165,8 @@ class LearnConfig:
     # "dynamic" compiles once for every size (duck sizing off), for runs whose sizes change.
     compile_shapes: str = "static"
     # The rollout's live-policy step (rollout.act) runs its seats in this many equal chunks
-    # (rollout.chunked_step; the league networks' slot tables stay whole). Speed only: the rows
+    # (rollout.chunked_step; the league networks' slot tables stay whole; one call under
+    # compile_shapes "dynamic"). Speed only: the rows
     # are independent, so the outputs equal one call's to rounding. Per GPU: on the laptop's
     # 4070 6 chunks (512 seats at 2,048 environments) made the BC tick 12% faster than 1
     # (smaller kernels stay in its 32 MB L2; docs/rewrite/sections/training-review-2.md);

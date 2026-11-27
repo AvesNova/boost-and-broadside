@@ -153,7 +153,12 @@ def test_the_league_tick_compiles_fullgraph_so_it_never_reads_the_host():
     re-deal) trace as single graphs: no graph break, so no host read in the tick path."""
     torch._dynamo.reset()
     torch.manual_seed(0)
-    config = LearnConfig(team_size_minimum=2, team_size_maximum=2, league_capacity_factor=7.5)
+    config = LearnConfig(
+        team_size_minimum=2,
+        team_size_maximum=2,
+        league_capacity_factor=7.5,
+        compile_shapes="dynamic",  # compiled with dynamic=True below
+    )
     game_config = game.GameConfig(training_spawn=True, clock_ticks=3)
     policy = model.Policy(model.ModelConfig())
     league = League(config)

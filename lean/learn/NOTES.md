@@ -18,7 +18,8 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
 - `rollout.py`: `start`, `collect`, `abandon`, `Opponent`, `CollectCarry`, `Rollout`; seats, the
   league side (`slot_actions`, capacity routing, `league_rows`), hit labels, the teacher's
   distribution. A tick is `act` (returns a `Decision`: views, the live policy's sample through
-  lean.model.agent.agent_step, value, the scripted `ScriptedMove`), `league_actions` (a
+  lean.model.agent.agent_step, value, the scripted `ScriptedMove`; the live policy's seats in
+  `policy_step_chunks` chunks, `chunked_step`, each chunk a nested compile region traced once), `league_actions` (a
   `LeagueMove`) and `advance` (takes both; the game half is lean.game.tick). `advance` returns
   each ship's bullet outcomes by age; `collect` assembles the segment's hit labels once at its
   end (`assemble_hit_labels`), nothing is written in place in the tick.
@@ -37,8 +38,8 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
   minibatch_loss. `LearnConfig.compile_shapes`: "static" (the default) compiles
   each for the run's sizes (environments, slots, fields, micro-batch, the league table: all
   fixed in a run) and any second compile raises; "dynamic" compiles once for every size (duck
-  sizing off). The critic's support (`returns.value_support`) is built once per collect and
-  update and passed into the graphs; the next-state support is a policy buffer (a table made
+  sizing off). The critic's support (`returns.value_support`) is built on the device once per
+  process (cached per ranges, bins and device) and passed into the graphs; the next-state support is a policy buffer (a table made
   with torch.tensor inside a graph is a pageable copy at every call).
 - `lean/train.py`: the stages, checkpoints, `--resume`.
 
@@ -46,7 +47,7 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
 
 - **Update:** 2,048 environments x 4 segments x 128 ticks (1,048,576 environment ticks), returns
   chained over the 512 ticks of each seat and bootstrapped only at the end, 4 epochs, 32
-  minibatches, micro-batches of 64 views with gradient accumulation, targets once per update.
+  minibatches, micro-batches of 8 views with gradient accumulation (speed only, per GPU), targets once per update.
 - **Dead ships** (author 2026-11-28, option C): a fallen ship's value in the returns (its
   post-death ticks and the update's bootstrap) is its living team-mates' mean value at that tick
   and level (`returns.fallen_team_values`, the store's `fallen` record), so the outcome reaches
@@ -143,6 +144,14 @@ until the author decides; numbers in docs/rewrite/sections/league-pool/progress.
 
 ## Numbers (laptop RTX 4070, performance profile, 2,048 x 4 x 128, compiled, bf16, core game)
 
+- Speed 5 (2026-11-28, `docs/rewrite/sections/speed-5-progress.md`; core 2b7bc58e against
+  the branch, quiet machine): micro-batches 64 -> 8 views, a whole BC update on the real
+  trainer 124.8 -> 107.4 s (16: 111.2), peak 5.1 -> 1.3 GiB, the BC loop 7,605 -> 8,711
+  steps/s; the live policy in 6 seat chunks, BC tick 25.34 -> 20.87 ms, RL tick (EMA, 2 slot
+  calls) 27.70 -> 23.22 ms, cold first segment +2 s. The real trainer, 3 updates: BC 7,605 -> 8,933 / 8,747
+  steps/s, RL (fresh weights) 7,545 -> 8,678 / 8,786, peak 5.2 -> 1.2 GiB. Both are per-GPU settings
+  (`micro_batch_views`, `policy_step_chunks`): re-measure on the 5090 (larger L2, the host's
+  ~6 ms per micro-batch binding sooner).
 - Loop speed (2026-11-27, before the two-level league): BC 8,255 steps/s, 127.0 s per update
   (collect plus update); the update alone 114.5 s (149.1 ms per micro-batch), peak allocated
   4.74 GiB.
@@ -154,9 +163,13 @@ until the author decides; numbers in docs/rewrite/sections/league-pool/progress.
   27.9 ms with no snapshot (EMA, 2 x 107 rows; one-level 24.1, no network), 28.6 ms with 1
   (26.4), 33.1 ms with 12 (32.5); the BC tick 25.5 ms (24.2: the per-row scripted parameters,
   1.3 ms). Share tracking and the smoke run: docs/rewrite/sections/league-pool/.
-- Compile (baseline reset 2026-11-28 ~05:05 for the geometry heads, `compile_baseline.json`):
-  5 graphs (act 4,613 traced operations, advance 3,307, minibatch_loss 1,627 (861 before the
-  heads), slot_actions 720, merge_league 28), cold 141.6 s (120.9 before), budget 150 s. The
+- Compile (baseline reset 2026-11-28 ~07:50 on `speed-5`, `compile_baseline.json`): 5 graphs
+  (act 5,788 traced operations, advance 3,307, minibatch_loss 1,627, slot_actions 720,
+  merge_league 28), cold 164.3 s, **over the 150 s budget** (budget kept; for the author). Core
+  before speed 5 (2b7bc58e) already failed the old baseline (05:05, act 4,613, cold 141.6 s):
+  act 6,325 operations, cold 160.3 s (measured 07:34; the scripted-delay merge reached lean/
+  after that baseline, the likely cause, not bisected); the seat chunks then cut act's
+  operations (the step traced once) and add about 3-4 s of cold compile. The
   compile tripwire (`compile_check.py`) fails on any graph break, new graph, recompile, or a
   function's traced operations over 10% above its baseline (`docs/rewrite/scoreboard.md`
   "Compile time"). Run it at the end of every step:
@@ -175,7 +188,8 @@ term's decay and gate, averages, checkpoints, optimiser, warm-up, KL monitor, ad
 `test_train.py` (BC then RL, checkpoints, an exact resume with the league's slots and debts),
 `test_league.py` (level 2's slot draws, PFSP, level 1's loads and duplicates, drain, share
 tracking over a simulated run, personas per row, routing, state round trip, schedule and
-retention), `test_learn.py`, `test_hit_head.py`, `test_geometry.py` (sampling unbiased and exact at K >=
+retention), `test_learn.py` (also the chunked live-policy step equals one call, the critic's
+support built once), `test_hit_head.py`, `test_geometry.py` (sampling unbiased and exact at K >=
 c, distinct valid pairs, the upper triangle, the trained rows are the visible ships in a fogged
 rollout, the pair loss with every pair equals a direct sum of the game's targets),
 `test_rewards.py`, `test_store.py`; slow, `test_compiled.py` (compiled collect and update, loss

@@ -53,3 +53,39 @@ a time; "core" numbers from a detached worktree at 2b7bc58e (`v2-speed5-base`).
   lean/, and act holds the scripted agent: the likely cause, not bisected). The branch at 6 chunks and 8-view micro-batches: act 5,788 operations
   (fewer than core: the step is traced once), 5 graphs, no break, no recompile, cold 163.1 s
   (+2.8 s over core). Over the budget, as core is: reported, budget not raised.
+- 07:35 the critic's support cached on the device per process (`returns.value_support`):
+  bitwise the same values; gain not measured (the review: negligible, two pageable copies per
+  update).
+- 07:46-08:21 final checks. Compile check on the branch: 5 graphs, no break, no recompile,
+  act 5,788 operations, cold 164.3 s (163.1 at 07:32): over the 150 s budget as core is;
+  baseline reset with the reason in the commit, budget kept. Smoke runs on the real trainer
+  (`trainer.py`, 2,048 environments, 3 updates each, the first compiling; no recompile, which
+  the static graphs would raise):
+
+  | | core 2b7bc58e | branch | |
+  |---|---|---|---|
+  | BC, steps/s at updates 1 / 2 | 7,605 / 7,608 | 8,933 / 8,747 | +17.5% / +15.0% |
+  | BC, update alone | 124.86 / 124.81 s | 106.65 / 108.84 s | |
+  | BC, a collect segment (steady) | 3.25 s | 2.76 s | |
+  | RL from fresh weights, steps/s at updates 1 / 2 | 7,545 / 7,546 | 8,678 / 8,786 | +15.0% / +16.4% |
+  | RL, update alone | 124.74 / 124.74 s | 108.74 / 107.08 s | |
+  | RL, a collect segment (steady) | 3.55 s | 3.06 s | |
+  | peak allocated BC / RL | 5.13 / 5.24 GiB | 1.16 / 1.23 GiB | |
+
+  The losses at RL update 2: 2.354 (core) / 2.355 (branch).
+- 08:11 the slow lean/learn tests: test_the_league_tick_compiles_fullgraph failed (the
+  league tick compiled with dynamic=True: Dynamo cannot trace the nested compile region over
+  unspecialised sizes and numbers, "Freevar has no source"). A check for symbolic sizes did
+  not catch it (the free variable is an unspecialised number). Fix: act chunks only under
+  compile_shapes "static" (a training run; eager too), one call under "dynamic", and the test
+  sets compile_shapes "dynamic" (it already built `graphs("dynamic")`). The static traced
+  graph is unchanged by the fix (the compile check above stands). Slow lean/learn tests 08:32:
+  6 passed. Quick tier (lean/learn, lean/model, lean/eval) 179 passed before the fix; ruff
+  clean.
+
+## Next
+
+- The 5090 re-measures both per-GPU settings (micro_batch_views: the review's
+  `memory_curve.py plain B` or `trainer.py`; policy_step_chunks: `profile_collect.py` with the
+  setting changed).
+- The cold compile is over the 150 s budget on core already (160.3 s): for the author.

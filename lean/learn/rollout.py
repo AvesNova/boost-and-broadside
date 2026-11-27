@@ -593,11 +593,14 @@ def chunked_step(policy, chunks: int):
     independent, so this equals one call to rounding. On the laptop's GPU smaller chunks run
     faster (LearnConfig.policy_step_chunks). Under torch.compile each chunk is one nested
     compile region (torch.compiler.nested_compile_region): the step is traced and compiled
-    once and called per chunk, so the compile does not grow with the chunks."""
+    once and called per chunk, so the compile does not grow with the chunks. Under a dynamic
+    compile the caller makes one call (act: compile_shapes "dynamic"): Dynamo (PyTorch 2.15)
+    cannot trace the region with unspecialised sizes and numbers ("Freevar has no source")."""
     if chunks <= 1:
         return policy.step
 
     def forward(view, carry: Tensor, offset: Tensor, reset: Tensor | None = None):
+        fields = tuple(getattr(view, field.name) for field in dataclasses.fields(view))
         rows = carry.shape[1]
         size = -(-rows // chunks)
         parts = []
@@ -606,7 +609,7 @@ def chunked_step(policy, chunks: int):
             parts.append(
                 _policy_chunk(
                     policy,
-                    tuple(getattr(view, field.name)[part] for field in dataclasses.fields(view)),
+                    tuple(tensor[part] for tensor in fields),
                     carry[:, part],
                     offset[part],
                     None if reset is None else reset[part],
@@ -639,7 +642,7 @@ def act(
     observation = seat_view(views, seat_environment, seat_team)
     seat_offset = carry.position_offset.index_select(0, seat_environment)
     step = agent_step(
-        chunked_step(policy, config.policy_step_chunks),
+        chunked_step(policy, config.policy_step_chunks if config.compile_shapes == "static" else 1),
         config.bf16,
         observation,
         carry.policy,
