@@ -123,7 +123,8 @@ class GameConfig:
     # stick's shape and the nose's damping are the new.
     post_stall: bool = True
     # Fog of war: an enemy is visible in the team's sight (v2's sight test: `sighted_by_enemy`)
-    # and on the tick it fires or is hit by a bullet; a hidden enemy is its last-seen row.
+    # and on the tick it fires, is hit by a bullet or collides; a hidden enemy is its last-seen
+    # row.
     # False (an ablation): full information.
     fog: bool = True
     # The tracking circle (author 2026-11-26; `sight_pairs`): an enemy visible on the tick before
@@ -2933,9 +2934,9 @@ def _snapshot(state: State) -> Tensor:
 
 def perceive(state: State, revealed: Tensor, tracking: bool = True) -> State:
     """The state with each ship's sighting by its enemy team brought up to date: a ship in the
-    enemy's sight or `revealed` (E, N) bool (it fired or was hit this tick) is recorded as it is
-    now and its ticks since seen set to 0; any other ship keeps its last-seen row and counts up
-    to the cap. Each ship has one enemy team, so one row per ship serves. tracking
+    enemy's sight or `revealed` (E, N) bool (it fired, was hit or collided this tick) is
+    recorded as it is now and its ticks since seen set to 0; any other ship keeps its last-seen
+    row and counts up to the cap. Each ship has one enemy team, so one row per ship serves. tracking
     (GameConfig.fog_tracking): a ship visible on the tick before is held by the tracking circle
     (`sight_pairs`), read from the rows before this update."""
     tracked = tracked_by_enemy(state) if tracking else None

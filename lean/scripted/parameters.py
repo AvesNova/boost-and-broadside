@@ -83,7 +83,7 @@ PARAMETERS: dict[str, Parameter] = {
     "stickiness": Parameter(0.05, "score seconds", LOG, 0.5,
                             "bonus for the stick of the last tick"),
     # The power (round 2, author 2026-11-26): chosen per ship from the own-ship terms (speed,
-    # energy) over the power look (lean.scripted.paths.POWER_LOOK, 5 s), its own softmax and
+    # energy) over the power look (lean.scripted.paths.POWER_LOOK, up to 5 s), its own softmax and
     # stickiness. Stickiness 6 x the temperature: a ship indifferent between the powers switches
     # on about 0.5% of ticks (2 e^-6 / (1 + 2 e^-6)).
     # Round 3 (author 2026-11-27): the store ran nearly empty (mean 0.06-0.16 of full; dive on

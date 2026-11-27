@@ -14,13 +14,14 @@ turns a game's sums into the stored style (per game and seat, small floats):
 - speed: mean speed, in corner speeds.
 - shots: real shots fired per ship-minute.
 - hits: damaging hits on enemies, a real bullet's or a collision's (one per shooter, target
-  and tick; a bullet inside the nose cone does no damage and is not counted).
+  and tick; a hit that does no damage, as inside the nose cone when `nose_cone` is on, is not
+  counted).
 - hit_range: mean range at hits (shooter to target at the start of the hit's tick), in gun
   ranges. None without a hit.
 - climb, dive: share of the time with climb or dive applied.
 
 The flow is own sense x target sense (the sense from the nose rate against a floor of
-sustained rates, as the rule-based scripted agent assessed it), with a hard floor
+sustained rates), with a hard floor
 (`TURNING_FLOOR`) and the nearest living enemy as the target, so that it is one definition for
 every agent (a network has no target).
 """
@@ -61,8 +62,7 @@ COAST, DIVE, CLIMB = 0, 1, 2  # power indices (lean.game.card)
 def turn_sense(
     nose_rate: Tensor, sustained_rate: Tensor | float, floor: float = TURNING_FLOOR
 ) -> Tensor:
-    """-1 turning right, +1 left, 0 straight (|nose rate| under `floor` sustained rates); the
-    sign of situation.py's tanh sense, where it passes +-tanh(1)."""
+    """-1 turning right, +1 left, 0 straight (|nose rate| under `floor` sustained rates)."""
     turning = nose_rate.abs() >= floor * sustained_rate
     return torch.where(turning, torch.sign(nose_rate), 0.0)
 

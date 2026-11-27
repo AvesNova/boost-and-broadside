@@ -114,8 +114,8 @@ COMPILE_SHAPES = ("static", "dynamic")
 
 
 def _default_compile_cache() -> None:
-    # /tmp is wiped at reboot, which loses the warm compile cache (93 s against about 230 s
-    # cold): default it to the home cache unless the caller (a test, a box) set its own.
+    # /tmp is wiped at reboot, which loses the warm compile cache (it saves most of the cold
+    # compile): default it to the home cache unless the caller (a test, a box) set its own.
     if "TORCHINDUCTOR_CACHE_DIR" not in os.environ:
         os.environ["TORCHINDUCTOR_CACHE_DIR"] = os.path.expanduser("~/.cache/bnb-inductor")
         os.environ.setdefault(
