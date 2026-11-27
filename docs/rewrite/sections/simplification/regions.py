@@ -33,11 +33,19 @@ def tensor_bytes(tree) -> int:
         if isinstance(leaf, torch.Tensor):
             total += leaf.numel() * leaf.element_size()
     return total
+
+
 _SUPPRESS = [0]
 
-METADATA = {"aten.sym_size.int", "aten.sym_stride.int", "aten.sym_numel.default",
-            "aten.sym_storage_offset.default", "aten.is_contiguous.default",
-            "aten.lift_fresh.default", "aten._local_scalar_dense.default"}
+METADATA = {
+    "aten.sym_size.int",
+    "aten.sym_stride.int",
+    "aten.sym_numel.default",
+    "aten.sym_storage_offset.default",
+    "aten.is_contiguous.default",
+    "aten.lift_fresh.default",
+    "aten._local_scalar_dense.default",
+}
 
 
 class Counter(TorchDispatchMode):
@@ -60,7 +68,12 @@ class Counter(TorchDispatchMode):
 
 
 def reset() -> None:
-    EXCLUSIVE.clear(); INCLUSIVE.clear(); OPS.clear(); CALLS.clear(); BYTES.clear(); BYTES_EX.clear()
+    EXCLUSIVE.clear()
+    INCLUSIVE.clear()
+    OPS.clear()
+    CALLS.clear()
+    BYTES.clear()
+    BYTES_EX.clear()
 
 
 def region(owner, attribute: str, label: str) -> None:
@@ -78,7 +91,9 @@ def region(owner, attribute: str, label: str) -> None:
         finally:
             STACK.pop()
 
-    if isinstance(owner.__dict__.get(attribute) if hasattr(owner, "__dict__") else None, staticmethod):
+    if isinstance(
+        owner.__dict__.get(attribute) if hasattr(owner, "__dict__") else None, staticmethod
+    ):
         wrapped = staticmethod(wrapped)
     setattr(owner, attribute, wrapped)
 
@@ -114,7 +129,9 @@ def report(title: str, order: list[str] | None = None, top: int = 0) -> None:
             continue
         c, v = EXCLUSIVE.get(label, (0, 0))
         ic, _ = INCLUSIVE.get(label, (0, 0))
-        print(f"  {label:<55} exclusive {c:>6}  inclusive {ic:>6}  ({100 * c / max(total_c, 1):4.1f}%)")
+        print(
+            f"  {label:<55} exclusive {c:>6}  inclusive {ic:>6}  ({100 * c / max(total_c, 1):4.1f}%)"
+        )
         if top:
             for name, n in OPS[label].most_common(top):
                 print(f"      {n:>5}  {name}")
@@ -165,7 +182,10 @@ def fused_autograd(label: str, plain):
             def backward(ctx, *grads):
                 _SUPPRESS[0] += 1
                 try:
-                    with torch.enable_grad(), torch.autocast(device, autocast[1], enabled=autocast[0]):
+                    with (
+                        torch.enable_grad(),
+                        torch.autocast(device, autocast[1], enabled=autocast[0]),
+                    ):
                         copies = list(args)
                         need = []
                         for i in tensor_positions:
@@ -177,8 +197,16 @@ def fused_autograd(label: str, plain):
                         out = plain(*copies, **kwargs)
                         outs = (out,) if isinstance(out, torch.Tensor) else tuple(out)
                         wrt = [t for t in need + tuples + params if t.requires_grad]
-                        pairs = [(o, g) for o, g in zip(outs, grads) if g is not None and o.requires_grad]
-                        got = torch.autograd.grad([o for o, _ in pairs], wrt, [g for _, g in pairs], allow_unused=True) if pairs and wrt else []
+                        pairs = [
+                            (o, g) for o, g in zip(outs, grads) if g is not None and o.requires_grad
+                        ]
+                        got = (
+                            torch.autograd.grad(
+                                [o for o, _ in pairs], wrt, [g for _, g in pairs], allow_unused=True
+                            )
+                            if pairs and wrt
+                            else []
+                        )
                 finally:
                     _SUPPRESS[0] -= 1
                 _count_one(label + " (backward)")
@@ -198,7 +226,9 @@ def fused_autograd(label: str, plain):
                 return tuple(result)
 
         outs = Kernel.apply(*inputs)
-        return outs[0] if len(outs) == 1 and not isinstance(plain, tuple) and _single(outs) else outs
+        return (
+            outs[0] if len(outs) == 1 and not isinstance(plain, tuple) and _single(outs) else outs
+        )
 
     return wrapped
 

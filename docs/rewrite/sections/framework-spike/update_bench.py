@@ -19,7 +19,6 @@ inductor cache (so the first call is the compile):
 """
 
 import os
-import sys
 import time
 
 PROCESS_START = time.perf_counter()
@@ -28,11 +27,10 @@ import argparse  # noqa: E402
 import shutil  # noqa: E402
 import tempfile  # noqa: E402
 
-import torch  # noqa: E402
-from torch import nn  # noqa: E402
-
 import spec  # noqa: E402
+import torch  # noqa: E402
 import torch_bench as tb  # noqa: E402
+from torch import nn  # noqa: E402
 
 IMPORT_SECONDS = time.perf_counter() - PROCESS_START
 HERE = os.path.abspath(__file__)
@@ -41,7 +39,7 @@ LOOP_SCAN = tb.RGLRU.scan
 
 def doubling_scan(self, x, h):
     """tb.RGLRU.scan computed by recursive doubling instead of a loop over time."""
-    a, b = self.gates(x)                                   # [env, time, token, width], float32
+    a, b = self.gates(x)  # [env, time, token, width], float32
     b = torch.cat([a[:, :1] * h[:, None] + b[:, :1], b[:, 1:]], 1)
     steps, d = x.shape[1], 1
     while d < steps:
@@ -86,9 +84,18 @@ def child(a, device):
     use_scan(a.scan)
     run = build(device, a.variant, a.precision == "bf16", a.micro, a.ships)
     sync = tb.make_sync(device)
-    record = {"suite": "update", "unit": "C", "scan": a.scan, "variant": a.variant, "precision": a.precision,
-              "envs": a.micro[0], "time": a.micro[1], "ships": a.ships, "import_s": IMPORT_SECONDS,
-              "cache": "cold"}
+    record = {
+        "suite": "update",
+        "unit": "C",
+        "scan": a.scan,
+        "variant": a.variant,
+        "precision": a.precision,
+        "envs": a.micro[0],
+        "time": a.micro[1],
+        "ships": a.ships,
+        "import_s": IMPORT_SECONDS,
+        "cache": "cold",
+    }
     record.update(tb.first_calls(run, sync))
     record.update(tb.steady(run, sync, a.repeats, a.budget))
     record["graphs_compiled"] = tb.compiled_graphs()
@@ -108,21 +115,31 @@ def check(device, micro, ships):
         loss.backward()
         results[name] = (loss.item(), {k: p.grad.clone() for k, p in policy.named_parameters()})
     (loss_loop, grads_loop), (loss_doubling, grads_doubling) = results["loop"], results["doubling"]
-    worst = max(((grads_doubling[k] - g).abs().max().item() / g.abs().max().clamp_min(1e-30).item(), k)
-                for k, g in grads_loop.items())
-    print(f"loss loop {loss_loop:.8g} doubling {loss_doubling:.8g} difference {abs(loss_loop - loss_doubling):.3g}")
-    print(f"largest gradient difference relative to that gradient's largest entry: {worst[0]:.3g} ({worst[1]})")
+    worst = max(
+        ((grads_doubling[k] - g).abs().max().item() / g.abs().max().clamp_min(1e-30).item(), k)
+        for k, g in grads_loop.items()
+    )
+    print(
+        f"loss loop {loss_loop:.8g} doubling {loss_doubling:.8g} difference {abs(loss_loop - loss_doubling):.3g}"
+    )
+    print(
+        f"largest gradient difference relative to that gradient's largest entry: {worst[0]:.3g} ({worst[1]})"
+    )
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--device", default="cuda", choices=["cpu", "cuda"])
     parser.add_argument("--micro", default="16x128")
     parser.add_argument("--ships", type=int, default=10)
     parser.add_argument("--precisions", default="f32,bf16")
     parser.add_argument("--variants", default="eager,compiled,compiled_step")
     parser.add_argument("--scans", default="loop,doubling")
-    parser.add_argument("--process-repeats", type=int, default=3, help="fresh processes per combination")
+    parser.add_argument(
+        "--process-repeats", type=int, default=3, help="fresh processes per combination"
+    )
     parser.add_argument("--repeats", type=int, default=7)
     parser.add_argument("--budget", type=float, default=1.0)
     parser.add_argument("--check", action="store_true")
@@ -141,27 +158,59 @@ def main():
     if a.child:
         child(a, device)
         return
-    common = ["--device", a.device, "--micro", f"{a.micro[0]}x{a.micro[1]}", "--ships", a.ships,
-              "--repeats", a.repeats, "--budget", a.budget]
+    common = [
+        "--device",
+        a.device,
+        "--micro",
+        f"{a.micro[0]}x{a.micro[1]}",
+        "--ships",
+        a.ships,
+        "--repeats",
+        a.repeats,
+        "--budget",
+        a.budget,
+    ]
     records = []
     for repeat in range(1, a.process_repeats + 1):
         for scan in a.scans.split(","):
             for precision in a.precisions.split(","):
                 for variant in a.variants.split(","):
                     cache = tempfile.mkdtemp(prefix="spike-inductor-")
-                    extra = ["--child", "--scan", scan, "--variant", variant, "--precision", precision]
+                    extra = [
+                        "--child",
+                        "--scan",
+                        scan,
+                        "--variant",
+                        variant,
+                        "--precision",
+                        precision,
+                    ]
                     print(f"[update r{repeat}] {' '.join(extra[1:])}", flush=True)
                     got = spec.run_child(HERE, common + extra, {"TORCHINDUCTOR_CACHE_DIR": cache})
                     shutil.rmtree(cache, ignore_errors=True)
                     for record in got:
                         record["process_repeat"] = repeat
-                        print("   ", {k: (round(v, 4) if isinstance(v, float) else v) for k, v in record.items()
-                                      if k not in ("load_before", "load_after", "stderr_tail")}, flush=True)
+                        print(
+                            "   ",
+                            {
+                                k: (round(v, 4) if isinstance(v, float) else v)
+                                for k, v in record.items()
+                                if k not in ("load_before", "load_after", "stderr_tail")
+                            },
+                            flush=True,
+                        )
                     records.extend(got)
-    meta = {"framework": "pytorch", "torch": torch.__version__, "device": a.device,
-            "float32_matmul_precision": "highest", "micro_batch": f"{a.micro[0]}x{a.micro[1]}",
-            "machine": spec.machine()}
-    out = a.out or os.path.join(os.path.dirname(HERE), "results", f"torch_{a.device}_update_fair.json")
+    meta = {
+        "framework": "pytorch",
+        "torch": torch.__version__,
+        "device": a.device,
+        "float32_matmul_precision": "highest",
+        "micro_batch": f"{a.micro[0]}x{a.micro[1]}",
+        "machine": spec.machine(),
+    }
+    out = a.out or os.path.join(
+        os.path.dirname(HERE), "results", f"torch_{a.device}_update_fair.json"
+    )
     spec.write_results(out, meta, records)
 
 

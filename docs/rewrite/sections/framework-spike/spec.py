@@ -4,6 +4,7 @@ Both torch_bench.py and jax_bench.py take every constant, every initial weight, 
 game state and every stored rollout from this file, so the two implement the same maths on the
 same numbers. The prose version of the workloads is in README.md ("The three workloads").
 """
+# ruff: noqa: E731  (a design-record script, kept as written)
 
 import json
 import math
@@ -16,36 +17,36 @@ import time
 import numpy as np
 
 # ---- policy (workload A) -------------------------------------------------------------------
-WIDTH = 128          # token width
-HEADS = 2            # attention heads (head width 64)
-BLOCKS = 2           # each block: 1 temporal sublayer + SPATIAL spatial sublayers
-SPATIAL = 2          # a spatial sublayer = masked self-attention + gated MLP
+WIDTH = 128  # token width
+HEADS = 2  # attention heads (head width 64)
+BLOCKS = 2  # each block: 1 temporal sublayer + SPATIAL spatial sublayers
+SPATIAL = 2  # a spatial sublayer = masked self-attention + gated MLP
 SHIP_FEATURES = 20
 GLOBAL_FEATURES = 8
-ACTIONS = 42         # 3 turn x 7 thrust x 2 fire
+ACTIONS = 42  # 3 turn x 7 thrust x 2 fire
 VALUE_BINS = 77
-RGLRU_C = 8.0        # Griffin's constant c in a_t = a^(c r_t)
-NORM_EPS = 1e-6      # RMSNorm: x / sqrt(mean(x^2) + eps) * gain
-ROPE_BANDS = 6       # per axis; rotates the first 4 * ROPE_BANDS = 24 dims of each 64-wide head
+RGLRU_C = 8.0  # Griffin's constant c in a_t = a^(c r_t)
+NORM_EPS = 1e-6  # RMSNorm: x / sqrt(mean(x^2) + eps) * gain
+ROPE_BANDS = 6  # per axis; rotates the first 4 * ROPE_BANDS = 24 dims of each 64-wide head
 ROPE_FREQS = (2.0 * math.pi / np.geomspace(200.0, 16000.0, ROPE_BANDS)).astype(np.float32)  # rad/m
 
 # ---- toy game (workload B) -----------------------------------------------------------------
-SLOTS = 8            # bullet slots per ship
-DT = 0.1             # seconds per tick
+SLOTS = 8  # bullet slots per ship
+DT = 0.1  # seconds per tick
 ARENA_RADIUS = 4000.0
 BOUNDARY_PULL = 2.0  # 1/s, pulls a ship back in proportion to how far it is outside the arena
-TURN_RATE = 1.5      # rad/s at full turn
-THRUST_ACC = 60.0    # m/s^2 at full thrust
-DRAG = 0.3           # 1/s (terminal speed 200 m/s)
+TURN_RATE = 1.5  # rad/s at full turn
+THRUST_ACC = 60.0  # m/s^2 at full thrust
+DRAG = 0.3  # 1/s (terminal speed 200 m/s)
 MIN_SPEED, MAX_SPEED = 50.0, 250.0
 START_SPEED = 150.0
 MUZZLE_SPEED = 900.0
-BULLET_LIFE = 11     # ticks
-COOLDOWN = 5         # ticks
+BULLET_LIFE = 11  # ticks
+COOLDOWN = 5  # ticks
 HIT_RADIUS = 60.0
 DAMAGE = 25.0
 MAX_HP = 100.0
-RESPAWN_DELAY = 30   # ticks
+RESPAWN_DELAY = 30  # ticks
 
 # ---- PPO (workload C) ----------------------------------------------------------------------
 CLIP = 0.2
@@ -76,9 +77,9 @@ def init_params(seed: int = 0) -> dict:
         linear(f"embed.{kind}.out", WIDTH, WIDTH)
     for b in range(BLOCKS):
         gain(f"block{b}.temporal.norm")
-        linear(f"block{b}.temporal.gate_a", WIDTH, WIDTH)   # recurrence gate r_t
-        linear(f"block{b}.temporal.gate_x", WIDTH, WIDTH)   # input gate i_t
-        a_to_c = rng.uniform(0.9, 0.999, WIDTH)             # a^c uniform in [0.9, 0.999]
+        linear(f"block{b}.temporal.gate_a", WIDTH, WIDTH)  # recurrence gate r_t
+        linear(f"block{b}.temporal.gate_x", WIDTH, WIDTH)  # input gate i_t
+        a_to_c = rng.uniform(0.9, 0.999, WIDTH)  # a^c uniform in [0.9, 0.999]
         a = a_to_c ** (1.0 / RGLRU_C)
         p[f"block{b}.temporal.lam"] = np.log(a / (1.0 - a)).astype(np.float32)
         for s in range(SPATIAL):
@@ -107,8 +108,10 @@ def init_state(envs: int, ships: int, pad_to: int | None = None, seed: int = 0) 
     x = np.where(team == 0, -1500.0, 1500.0)
     y = (slot_in_team - (half - 1) / 2.0) * 150.0
     jitter = np.zeros((envs, n, 2))
-    jitter[:, :ships] = rng.uniform(-50.0, 50.0, (envs, ships, 2))   # same draws padded or not
-    spawn = np.where(exists[None, :, None], np.stack([x, y], -1)[None] + jitter, 0.0).astype(np.float32)
+    jitter[:, :ships] = rng.uniform(-50.0, 50.0, (envs, ships, 2))  # same draws padded or not
+    spawn = np.where(exists[None, :, None], np.stack([x, y], -1)[None] + jitter, 0.0).astype(
+        np.float32
+    )
     spawn_heading = np.broadcast_to(np.where(team == 0, 0.0, math.pi), (envs, n)).astype(np.float32)
     full = lambda value, dtype: np.full((envs, n), value, dtype)
     return {
@@ -177,6 +180,7 @@ def make_rollout(envs: int, time: int, ships: int, seed: int = 2) -> dict:
 
 # ---- measurement helpers shared by both benchmark scripts ----------------------------------
 
+
 def timed_repeats(step, sync, repeats: int, iterations: int) -> dict:
     """Run `step()` `iterations` times, `repeats` times over; `sync()` is called before each
     timer stop (GPU synchronise / block_until_ready). Returns per-call milliseconds."""
@@ -189,8 +193,14 @@ def timed_repeats(step, sync, repeats: int, iterations: int) -> dict:
         sync()
         per_call.append((time.perf_counter() - start) * 1000.0 / iterations)
     q1, median, q3 = np.percentile(per_call, [25, 50, 75])
-    return {"median_ms": float(median), "q1_ms": float(q1), "q3_ms": float(q3),
-            "iqr_ms": float(q3 - q1), "repeats": repeats, "iterations": iterations}
+    return {
+        "median_ms": float(median),
+        "q1_ms": float(q1),
+        "q3_ms": float(q3),
+        "iqr_ms": float(q3 - q1),
+        "repeats": repeats,
+        "iterations": iterations,
+    }
 
 
 def pick_iterations(step, sync, budget_s: float = 1.0, cap: int = 2000) -> int:
@@ -205,18 +215,34 @@ def pick_iterations(step, sync, budget_s: float = 1.0, cap: int = 2000) -> int:
 
 def latency_stats(samples_ms) -> dict:
     samples = np.asarray(samples_ms)
-    return {"p50_ms": float(np.percentile(samples, 50)), "p99_ms": float(np.percentile(samples, 99)),
-            "max_ms": float(samples.max()), "mean_ms": float(samples.mean()), "ticks": int(samples.size)}
+    return {
+        "p50_ms": float(np.percentile(samples, 50)),
+        "p99_ms": float(np.percentile(samples, 99)),
+        "max_ms": float(samples.max()),
+        "mean_ms": float(samples.mean()),
+        "ticks": int(samples.size),
+    }
 
 
 def machine() -> dict:
-    info = {"platform": platform.platform(), "python": sys.version.split()[0], "cpu_count": os.cpu_count()}
+    info = {
+        "platform": platform.platform(),
+        "python": sys.version.split()[0],
+        "cpu_count": os.cpu_count(),
+    }
     try:
         text = subprocess.run(["lscpu"], capture_output=True, text=True, timeout=10).stdout
         for line in text.splitlines():
             key, _, value = line.partition(":")
-            if key.strip() in ("Model name", "CPU(s)", "Thread(s) per core", "Core(s) per socket",
-                               "Hypervisor vendor", "L2 cache", "L3 cache"):
+            if key.strip() in (
+                "Model name",
+                "CPU(s)",
+                "Thread(s) per core",
+                "Core(s) per socket",
+                "Hypervisor vendor",
+                "L2 cache",
+                "L3 cache",
+            ):
                 info["lscpu " + key.strip()] = value.strip()
     except (OSError, subprocess.SubprocessError):
         info["lscpu"] = "not available (not Linux?)"
@@ -227,7 +253,9 @@ def machine() -> dict:
     return info
 
 
-GPU_QUERY = "pstate,temperature.gpu,clocks.sm,power.draw,enforced.power.limit,utilization.gpu,memory.used"
+GPU_QUERY = (
+    "pstate,temperature.gpu,clocks.sm,power.draw,enforced.power.limit,utilization.gpu,memory.used"
+)
 
 
 def load_snapshot() -> dict:
@@ -235,8 +263,12 @@ def load_snapshot() -> dict:
     exists, the GPU's state (temperature, SM clock, power, utilisation, memory in use)."""
     snapshot = {"loadavg": [round(x, 2) for x in os.getloadavg()]}
     try:
-        text = subprocess.run(["nvidia-smi", f"--query-gpu={GPU_QUERY}", "--format=csv,noheader"],
-                              capture_output=True, text=True, timeout=10).stdout.strip()
+        text = subprocess.run(
+            ["nvidia-smi", f"--query-gpu={GPU_QUERY}", "--format=csv,noheader"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        ).stdout.strip()
         if text:
             snapshot["gpu"] = dict(zip(GPU_QUERY.split(","), (v.strip() for v in text.split(","))))
     except (OSError, subprocess.SubprocessError):
@@ -250,16 +282,31 @@ def run_child(script: str, argv: list, env: dict | None = None) -> list:
     full_env = dict(os.environ)
     full_env.update(env or {})
     before = load_snapshot()
-    done = subprocess.run([sys.executable, script] + [str(a) for a in argv],
-                          capture_output=True, text=True, env=full_env)
+    done = subprocess.run(
+        [sys.executable, script] + [str(a) for a in argv],
+        capture_output=True,
+        text=True,
+        env=full_env,
+    )
     after = load_snapshot()
-    records = [json.loads(line[7:]) for line in done.stdout.splitlines() if line.startswith("RECORD ")]
+    records = [
+        json.loads(line[7:]) for line in done.stdout.splitlines() if line.startswith("RECORD ")
+    ]
     for record in records:
         record["load_before"], record["load_after"] = before, after
     if done.returncode != 0:
-        records.append({"suite": "error", "argv": [str(a) for a in argv], "returncode": done.returncode,
-                        "stderr_tail": done.stderr[-3000:]})
-        print(f"  CHILD FAILED ({done.returncode}): {' '.join(map(str, argv))}\n{done.stderr[-1500:]}", flush=True)
+        records.append(
+            {
+                "suite": "error",
+                "argv": [str(a) for a in argv],
+                "returncode": done.returncode,
+                "stderr_tail": done.stderr[-3000:],
+            }
+        )
+        print(
+            f"  CHILD FAILED ({done.returncode}): {' '.join(map(str, argv))}\n{done.stderr[-1500:]}",
+            flush=True,
+        )
     return records
 
 

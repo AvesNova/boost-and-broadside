@@ -4,7 +4,6 @@ Triton kernels counted as one op each (forward and backward).
 usage: python v2_learn.py V2_CHECKOUT [ppo|bc] [length]
 """
 
-import dataclasses
 import functools
 import importlib
 import inspect
@@ -13,10 +12,9 @@ import sys
 
 sys.path.insert(0, sys.argv[1] + "/src")
 sys.path.insert(0, ".")
+import regions as R
 import torch
 import torch.nn.functional as F
-
-import regions as R
 
 objective = sys.argv[2] if len(sys.argv) > 2 else "ppo"
 length = int(sys.argv[3]) if len(sys.argv) > 3 else 16
@@ -99,9 +97,9 @@ print("learner:", type(learner).__name__, "auxiliary:", learner.auxiliary)
 # --- every function and method of the model and the learner is a region (exclusive) ---
 prefixes = ("bnb.models.yemong", "bnb.learn", "bnb.models.heads")
 skip = ("bnb.models.yemong.kernels",)
-for info in list(pkgutil.walk_packages(importlib.import_module("bnb.models").__path__, "bnb.models.")) + list(
-    pkgutil.walk_packages(importlib.import_module("bnb.learn").__path__, "bnb.learn.")
-):
+for info in list(
+    pkgutil.walk_packages(importlib.import_module("bnb.models").__path__, "bnb.models.")
+) + list(pkgutil.walk_packages(importlib.import_module("bnb.learn").__path__, "bnb.learn.")):
     try:
         importlib.import_module(info.name)
     except Exception:
@@ -183,16 +181,33 @@ def measured_update(segments, bootstrap, environment_steps=0, cadence=False, hea
         micro = learner._micro_batches(chosen, sizes if len(chosen) in sizes else ())
         derived = prepared["derived"]
         total = prepared["counts"][learner._on_device(chosen)].sum(0).clamp_min(1.0)
-        denominator = dict(zip(type(learner).__mro__[0].__dict__.get("COUNTS", ()) or __import__("bnb.learn.ppo", fromlist=["COUNTS"]).COUNTS, total.unbind()))
+        denominator = dict(
+            zip(
+                type(learner).__mro__[0].__dict__.get("COUNTS", ())
+                or __import__("bnb.learn.ppo", fromlist=["COUNTS"]).COUNTS,
+                total.unbind(),
+            )
+        )
         learner.optimizer.zero_grad(set_to_none=True)
         trajectory, shot_labels = next(iter(learner.staged(segments, micro[:1])))
         v = learner._on_device(micro[0])
-        label = phase("phase: label codes (per micro-batch)", learner.labels, trajectory, shot_labels)
+        label = phase(
+            "phase: label codes (per micro-batch)", learner.labels, trajectory, shot_labels
+        )
         part = {name: value.index_select(1, v) for name, value in derived.items()}
         from torch.utils.flop_counter import FlopCounterMode
+
         fc = FlopCounterMode(display=False)
         with fc:
-            out = phase("phase: forward and loss (per micro-batch)", learner.loss, trajectory, label, part, denominator, prepared["scale"])
+            out = phase(
+                "phase: forward and loss (per micro-batch)",
+                learner.loss,
+                trajectory,
+                label,
+                part,
+                denominator,
+                prepared["scale"],
+            )
             forward_flops = fc.get_total_flops()
             phase("phase: backward (per micro-batch)", out[0].backward)
         PHASES["flops_forward"] = forward_flops
@@ -202,10 +217,18 @@ def measured_update(segments, bootstrap, environment_steps=0, cadence=False, hea
         PHASES["views_micro"] = len(micro[0])
         if out[5] is not None:
             with torch.no_grad():
-                phase("phase: heads' sums (cadence only)", learner.head_sums, out[5], trajectory, label)
+                phase(
+                    "phase: heads' sums (cadence only)",
+                    learner.head_sums,
+                    out[5],
+                    trajectory,
+                    label,
+                )
 
         def step():
-            norm = torch.nn.utils.clip_grad_norm_(learner.model.parameters(), learner.config.max_grad_norm)
+            norm = torch.nn.utils.clip_grad_norm_(
+                learner.model.parameters(), learner.config.max_grad_norm
+            )
             learner._step(torch.isfinite(norm))
 
         phase("phase: clip and optimizer (per minibatch)", step)
@@ -221,16 +244,20 @@ except Done:
     pass
 
 vt = PHASES["view_ticks"]
-print(f"\nlearner {objective}, L {length}, micro-batch views {PHASES['views_micro']}, view-ticks {vt}")
-print(f"FLOPs per view-tick: forward {PHASES['flops_forward']/vt/1e6:.1f} M, forward+backward {PHASES['flops_total']/vt/1e6:.1f} M")
+print(
+    f"\nlearner {objective}, L {length}, micro-batch views {PHASES['views_micro']}, view-ticks {vt}"
+)
+print(
+    f"FLOPs per view-tick: forward {PHASES['flops_forward'] / vt / 1e6:.1f} M, forward+backward {PHASES['flops_total'] / vt / 1e6:.1f} M"
+)
 mods = PHASES["flops_by_module"]
 print("FLOPs per view-tick by module (top, M):")
 for k, v in sorted(mods.items(), key=lambda r: -r[1])[:25]:
-    print(f"   {v/vt/1e6:9.2f}  {k}")
+    print(f"   {v / vt / 1e6:9.2f}  {k}")
 print("\nBytes moved per view-tick, by phase (eager, unfused, KB):")
 for label in sorted(k for k in R.BYTES if k.startswith("phase:")):
-    print(f"   {R.BYTES[label]/vt/1e3:10.1f}  {label}")
+    print(f"   {R.BYTES[label] / vt / 1e3:10.1f}  {label}")
 fwd = "phase: forward and loss (per micro-batch)"
 print("\nTop functions by bytes moved (exclusive, all phases, KB per view-tick):")
 for k, v in sorted(R.BYTES_EX.items(), key=lambda r: -r[1])[:30]:
-    print(f"   {v/vt/1e3:10.1f}  {k}")
+    print(f"   {v / vt / 1e3:10.1f}  {k}")

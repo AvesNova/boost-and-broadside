@@ -3,7 +3,6 @@
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-
 from common import CONV_KERNEL, EPS, causal_conv, gelu, rglru_inputs, rglru_scan
 
 
@@ -26,7 +25,9 @@ class RGLRU(eqx.Module):
         self.c = c
 
     def __call__(self, x, h0, first):
-        log_a, b = rglru_inputs(x, _map(self.gate_a, x), _map(self.gate_x, x), self.log_lambda, self.c)
+        log_a, b = rglru_inputs(
+            x, _map(self.gate_a, x), _map(self.gate_x, x), self.log_lambda, self.c
+        )
         return rglru_scan(log_a, b, h0, first)
 
 
@@ -72,7 +73,9 @@ class GriffinTemporalBlock(eqx.Module):
         """x: (T, B, D); carry: (h (B, D), conv_buf (K-1, B, D)); first: (T, B)."""
         h0, buf = carry
         normed = _map(self.norm1, x)
-        b1, new_buf = causal_conv(_map(self.linear1, normed), buf, self.conv_kernel, self.conv_bias, first)
+        b1, new_buf = causal_conv(
+            _map(self.linear1, normed), buf, self.conv_kernel, self.conv_bias, first
+        )
         h = self.lru(b1, h0, first)
         x = x + _map(self.linear_out, h * gelu(_map(self.linear2, normed)))
         x = x + _map(self.mlp, _map(self.norm2, x))
@@ -96,7 +99,11 @@ def to_plain(b):
         "norm1": {"scale": b.norm1.weight},
         "linear1": _lin(b.linear1),
         "conv": {"kernel": b.conv_kernel, "bias": b.conv_bias},
-        "lru": {"log_lambda": b.lru.log_lambda, "gate_a": _lin(b.lru.gate_a), "gate_x": _lin(b.lru.gate_x)},
+        "lru": {
+            "log_lambda": b.lru.log_lambda,
+            "gate_a": _lin(b.lru.gate_a),
+            "gate_x": _lin(b.lru.gate_x),
+        },
         "linear2": _lin(b.linear2),
         "linear_out": _lin(b.linear_out),
         "norm2": {"scale": b.norm2.weight},
@@ -113,7 +120,9 @@ def make_from_plain(template):
         b = template
         b = eqx.tree_at(lambda b: b.norm1.weight, b, p["norm1"]["scale"])
         b = eqx.tree_at(lambda b: b.norm2.weight, b, p["norm2"]["scale"])
-        b = eqx.tree_at(lambda b: (b.conv_kernel, b.conv_bias), b, (p["conv"]["kernel"], p["conv"]["bias"]))
+        b = eqx.tree_at(
+            lambda b: (b.conv_kernel, b.conv_bias), b, (p["conv"]["kernel"], p["conv"]["bias"])
+        )
         b = eqx.tree_at(lambda b: b.lru.log_lambda, b, p["lru"]["log_lambda"])
         for path, q in [
             (lambda b: b.linear1, p["linear1"]),

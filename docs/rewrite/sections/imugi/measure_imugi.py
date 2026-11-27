@@ -21,12 +21,12 @@ import torch
 
 torch.set_num_threads(1)
 sys.path.insert(0, "docs/rewrite/sections/simplification")
+import regions as R  # noqa: E402
 from torch.utils._python_dispatch import TorchDispatchMode  # noqa: E402
 
-import regions as R  # noqa: E402
+from bnb.controllers.imugi import Imugi  # noqa: E402
 from bnb.game import api  # noqa: E402
 from bnb.game.handling.characteristics import characteristics  # noqa: E402
-from bnb.controllers.imugi import Imugi  # noqa: E402
 
 E = int(sys.argv[1]) if len(sys.argv) > 1 else 256
 WARM = int(sys.argv[2]) if len(sys.argv) > 2 else 450
@@ -36,8 +36,17 @@ preset = api.PRESETS["real_scale_elimination"]
 types = api.ship_types(ship_set=preset.ship_set)
 rules = api.rules_of(preset, types=types)
 pool = rules.pools[0]
-rules = dataclasses.replace(rules, pools=(dataclasses.replace(pool, mode=dataclasses.replace(
-    pool.mode, shrink_hold_seconds=1e9, shrink_end_lead_seconds=0.0)),))
+rules = dataclasses.replace(
+    rules,
+    pools=(
+        dataclasses.replace(
+            pool,
+            mode=dataclasses.replace(
+                pool.mode, shrink_hold_seconds=1e9, shrink_end_lead_seconds=0.0
+            ),
+        ),
+    ),
+)
 t0 = time.time()
 ch = characteristics(types, rules)
 print("characteristics", round(time.time() - t0, 1), "s")
@@ -46,7 +55,9 @@ N = 2 * S
 
 # --- warm states: Imugi against Imugi for WARM ticks, fog off, no shrink ---
 g = torch.Generator().manual_seed(3)
-state = api.reset(rules, types, api.uniforms(rules, E, generator=g), fogged=torch.zeros(E, dtype=torch.bool))
+state = api.reset(
+    rules, types, api.uniforms(rules, E, generator=g), fogged=torch.zeros(E, dtype=torch.bool)
+)
 state, obs, _ = api.perceive(rules, state)
 agent = Imugi(ch, S)
 carry = agent.init_carry(2 * E, torch.device("cpu"))
@@ -65,8 +76,19 @@ with torch.no_grad():
         key = torch.randint(0, 2**62, (2 * E,), generator=g)
         act, carry, _ = agent.step(carry, views(obs), reset, key)
         reset = torch.zeros(2 * E, dtype=torch.bool)
-        a = Action(power=act.power.reshape(E, N), stick=act.stick.reshape(E, N), shoot=act.shoot.reshape(E, N))
-        state, ev = api.step(rules, types, state, a, api.spread(rules, E, generator=g), api.uniforms(rules, E, generator=g))
+        a = Action(
+            power=act.power.reshape(E, N),
+            stick=act.stick.reshape(E, N),
+            shoot=act.shoot.reshape(E, N),
+        )
+        state, ev = api.step(
+            rules,
+            types,
+            state,
+            a,
+            api.spread(rules, E, generator=g),
+            api.uniforms(rules, E, generator=g),
+        )
         state, obs, _ = api.perceive(rules, state)
         if tick % 150 == 0:
             print("  warm tick", tick, round(time.time() - t0), "s", flush=True)
@@ -74,15 +96,22 @@ print("warm", WARM, "ticks in", round(time.time() - t0), "s")
 
 # one team's views (team 0 of every environment) and that team's carry
 obs0 = type(obs)(**{f.name: getattr(obs, f.name)[:, 0] for f in dataclasses.fields(obs)})
-carry0 = type(carry)(**{f.name: getattr(carry, f.name).view(E, 2, *getattr(carry, f.name).shape[1:])[:, 0].clone()
-                        for f in dataclasses.fields(carry)})
+carry0 = type(carry)(
+    **{
+        f.name: getattr(carry, f.name).view(E, 2, *getattr(carry, f.name).shape[1:])[:, 0].clone()
+        for f in dataclasses.fields(carry)
+    }
+)
 reset0 = torch.zeros(E, dtype=torch.bool)
 ships = obs0.ships
 alive = ships[:, :S, 0]
 from bnb.contracts.obs import SHIP  # noqa: E402
+
 own_alive = (ships[:, :S, SHIP["alive"]] > 0.5).float().mean().item()
 enemy_alive = (ships[:, S:, SHIP["alive"]] > 0.5).float().mean().item()
-print(f"state at tick {WARM}: own alive {own_alive:.2f}, enemy alive {enemy_alive:.2f}, done {float(ev.done.float().mean()):.2f}")
+print(
+    f"state at tick {WARM}: own alive {own_alive:.2f}, enemy alive {enemy_alive:.2f}, done {float(ev.done.float().mean()):.2f}"
+)
 torch.save({"obs": obs0, "carry": carry0}, os.path.join(OUT, f"imugi_state_E{E}.pt"))
 
 # --- attribution ---
@@ -171,7 +200,13 @@ def classify(stack):
             for f2, fn2, _ in reversed(stack):
                 if (f2, fn2) == ("imugi_frontline.py", "_choice"):
                     return "keyed random draws [frontline goal, recovery]"
-                if fn2 in ("choose_target", "stick_marginal", "maneuvers", "sample", "_agent_flags"):
+                if fn2 in (
+                    "choose_target",
+                    "stick_marginal",
+                    "maneuvers",
+                    "sample",
+                    "_agent_flags",
+                ):
                     return f"keyed random draws [{fn2}]"
             return "keyed random draws [?]"
     for file, function, line in stack:
@@ -247,26 +282,44 @@ for label, kw in (
 ):
     variant = Imugi(ch, S, **kw)
     median, best = wall(variant)
-    COUNT.clear(); VIEWS.clear(); SECONDS.clear(); LOGISTICS.clear()
+    COUNT.clear()
+    VIEWS.clear()
+    SECONDS.clear()
+    LOGISTICS.clear()
     with torch.no_grad(), Attribute():
         call(variant, torch.randint(0, 2**62, (E,), generator=g))
-    counted = dict(COUNT); seconds = dict(SECONDS)
+    counted = dict(COUNT)
+    seconds = dict(SECONDS)
     # op-timing pass repeated for a steadier share
     for _ in range(4):
         with torch.no_grad(), Attribute():
             call(variant, torch.randint(0, 2**62, (E,), generator=g))
     total_ops = sum(counted.values())
     total_seconds = sum(SECONDS.values())
-    print(f"\n== Imugi {label}: E = {E} views, {S} own ships: {total_ops} compute ops "
-          f"(+{sum(VIEWS.values())} views); wall median {median * 1e3:.2f} ms (min {best * 1e3:.2f})")
+    print(
+        f"\n== Imugi {label}: E = {E} views, {S} own ships: {total_ops} compute ops "
+        f"(+{sum(VIEWS.values())} views); wall median {median * 1e3:.2f} ms (min {best * 1e3:.2f})"
+    )
     rows = {}
     for row in sorted(counted, key=lambda r: -counted[r]):
         share = SECONDS[row] / total_seconds
-        rows[row] = {"ops": counted[row], "views": VIEWS[row], "share": share,
-                     "ms": share * median * 1e3, "logistics": LOGISTICS[row]}
-        print(f"  {row:<58} {counted[row]:>5} ops  {VIEWS[row]:>4} views  "
-              f"{LOGISTICS[row]:>3} logistics  time share {100 * share:5.1f}%  ~{share * median * 1e3:6.2f} ms")
-    results[label] = {"ops": total_ops, "median_ms": median * 1e3, "min_ms": best * 1e3, "rows": rows}
+        rows[row] = {
+            "ops": counted[row],
+            "views": VIEWS[row],
+            "share": share,
+            "ms": share * median * 1e3,
+            "logistics": LOGISTICS[row],
+        }
+        print(
+            f"  {row:<58} {counted[row]:>5} ops  {VIEWS[row]:>4} views  "
+            f"{LOGISTICS[row]:>3} logistics  time share {100 * share:5.1f}%  ~{share * median * 1e3:6.2f} ms"
+        )
+    results[label] = {
+        "ops": total_ops,
+        "median_ms": median * 1e3,
+        "min_ms": best * 1e3,
+        "rows": rows,
+    }
 
 # both teams in one call (per tick)
 both = Imugi(ch, S)
@@ -278,7 +331,9 @@ with torch.no_grad():
         both.step(carry, obs_both, rb, k)
     ts = []
     for k in keys[5:]:
-        t = time.perf_counter(); both.step(carry, obs_both, rb, k); ts.append(time.perf_counter() - t)
+        t = time.perf_counter()
+        both.step(carry, obs_both, rb, k)
+        ts.append(time.perf_counter() - t)
 results["both teams, one call (2E views)"] = {"median_ms": statistics.median(ts) * 1e3}
 print(f"\nboth teams in one call ({2 * E} views): median {statistics.median(ts) * 1e3:.2f} ms")
 

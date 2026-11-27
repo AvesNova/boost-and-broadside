@@ -2,7 +2,6 @@
 
 import flax.linen as nn
 import jax.numpy as jnp
-
 from common import CONV_KERNEL, EPS, causal_conv, gelu, rglru_inputs, rglru_scan
 
 

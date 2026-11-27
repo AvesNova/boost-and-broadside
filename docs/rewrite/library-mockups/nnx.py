@@ -1,14 +1,15 @@
 """Griffin temporal block in Flax NNX: modules are objects that own their params."""
 
 import jax.numpy as jnp
-from flax import nnx
-
 from common import CONV_KERNEL, EPS, causal_conv, gelu, rglru_inputs, rglru_scan
+from flax import nnx
 
 
 class CausalConv(nnx.Module):
     def __init__(self, d, *, rngs):
-        self.kernel = nnx.Param(nnx.initializers.normal(1.0 / CONV_KERNEL)(rngs.params(), (CONV_KERNEL, d)))
+        self.kernel = nnx.Param(
+            nnx.initializers.normal(1.0 / CONV_KERNEL)(rngs.params(), (CONV_KERNEL, d))
+        )
         self.bias = nnx.Param(jnp.zeros(d))
 
     def __call__(self, x, buf, first):

@@ -4,6 +4,7 @@ and the measurements described in README.md.
     python torch_bench.py --device cpu|cuda --suite all|compile|steady|sizes|loop|latency|ops
                           [--envs 1,2048] [--out results/<name>.json]
 """
+# ruff: noqa: E402  (a design-record script, kept as written)
 
 import os
 import sys
@@ -20,11 +21,10 @@ import shutil
 import tempfile
 
 import numpy as np
+import spec
 import torch
 import torch.nn.functional as F
 from torch import nn
-
-import spec
 
 IMPORT_SECONDS = time.perf_counter() - PROCESS_START
 HERE = os.path.abspath(__file__)
@@ -33,6 +33,7 @@ HERE = os.path.abspath(__file__)
 # ============================================================================================
 # A. Policy
 # ============================================================================================
+
 
 class Embed(nn.Module):
     def __init__(self, features):
@@ -61,7 +62,7 @@ class RGLRU(nn.Module):
         x = self.norm(x)
         r = torch.sigmoid(self.gate_a(x)).float()
         i = torch.sigmoid(self.gate_x(x)).float()
-        a = torch.exp(spec.RGLRU_C * r * F.logsigmoid(self.lam))   # a^(c r_t), a = sigmoid(lam)
+        a = torch.exp(spec.RGLRU_C * r * F.logsigmoid(self.lam))  # a^(c r_t), a = sigmoid(lam)
         return a, torch.sqrt(1.0 - a * a) * (i * x.float())
 
     def step(self, x, h):
@@ -69,7 +70,7 @@ class RGLRU(nn.Module):
         h = a * h + b
         return x + h, h
 
-    def scan(self, x, h):                    # x [env, time, token, width]
+    def scan(self, x, h):  # x [env, time, token, width]
         a, b = self.gates(x)
         states = []
         for t in range(x.shape[1]):
@@ -81,7 +82,7 @@ class RGLRU(nn.Module):
 def rotate(x, cos, sin):
     """Rotary position rotation of the first 4 * ROPE_BANDS dims of each head."""
     n = 2 * spec.ROPE_BANDS
-    x1, x2, rest = x[..., :n], x[..., n:2 * n], x[..., 2 * n:]
+    x1, x2, rest = x[..., :n], x[..., n : 2 * n], x[..., 2 * n :]
     return torch.cat([x1 * cos - x2 * sin, x1 * sin + x2 * cos, rest], -1)
 
 
@@ -97,10 +98,10 @@ class Spatial(nn.Module):
         self.mlp_in = nn.Linear(spec.WIDTH, 2 * spec.WIDTH)
         self.mlp_out = nn.Linear(spec.WIDTH, spec.WIDTH)
 
-    def forward(self, x, mask, cos, sin):    # x [batch, token, width]; mask [batch, token]
+    def forward(self, x, mask, cos, sin):  # x [batch, token, width]; mask [batch, token]
         batch, tokens, _ = x.shape
         qkv = self.qkv(self.attn_norm(x)).view(batch, tokens, 3, spec.HEADS, -1)
-        q, k, v = qkv.permute(2, 0, 3, 1, 4)                       # each [batch, head, token, 64]
+        q, k, v = qkv.permute(2, 0, 3, 1, 4)  # each [batch, head, token, 64]
         q, k = rotate(q, cos, sin), rotate(k, cos, sin)
         attended = F.scaled_dot_product_attention(q, k, v, attn_mask=mask[:, None, None, :])
         x = x + self.attn_out(attended.transpose(1, 2).reshape(batch, tokens, -1))
@@ -171,6 +172,7 @@ class Policy(nn.Module):
 
 def load_params(policy: Policy, params: dict) -> Policy:
     """Copy spec.init_params() into the module (a spec Linear weight is [in, out])."""
+
     def linear(module, name):
         module.weight.data.copy_(torch.from_numpy(params[name + ".w"].T))
         if module.bias is not None:
@@ -205,6 +207,7 @@ def load_params(policy: Policy, params: dict) -> Policy:
 # B. Toy game (a stand-in for the real game's operation structure, not a port)
 # ============================================================================================
 
+
 def game_step(s: dict, action):
     """One tick for every environment. action [env, slot] in 0..41 = turn + 3 * thrust + 21 * fire."""
     turn = (action % 3 - 1).float()
@@ -237,9 +240,12 @@ def game_step(s: dict, action):
     dx = flat_pos[:, :, None, 0] - pos[:, None, :, 0]
     dy = flat_pos[:, :, None, 1] - pos[:, None, :, 1]
     bullet_team = team[:, :, None].expand(-1, -1, spec.SLOTS).flatten(1, 2)
-    hit = ((bullet_life.flatten(1, 2) > 0)[:, :, None] & alive[:, None, :]
-           & (bullet_team[:, :, None] != team[:, None, :])
-           & (dx * dx + dy * dy < spec.HIT_RADIUS ** 2))
+    hit = (
+        (bullet_life.flatten(1, 2) > 0)[:, :, None]
+        & alive[:, None, :]
+        & (bullet_team[:, :, None] != team[:, None, :])
+        & (dx * dx + dy * dy < spec.HIT_RADIUS**2)
+    )
     hp = s["hp"] - spec.DAMAGE * hit.sum(1)
     bullet_life = torch.where(hit.any(2).view(envs, slots, spec.SLOTS), 0, bullet_life)
 
@@ -247,7 +253,9 @@ def game_step(s: dict, action):
     free = bullet_life == 0
     first_free = free.int().argmax(-1)
     shoot = alive & fire & (s["cooldown"] == 0) & free.any(-1)
-    new = shoot[..., None] & (torch.arange(spec.SLOTS, device=action.device) == first_free[..., None])
+    new = shoot[..., None] & (
+        torch.arange(spec.SLOTS, device=action.device) == first_free[..., None]
+    )
     bullet_pos = torch.where(new[..., None], pos[:, :, None, :], bullet_pos)
     muzzle = velocity + spec.MUZZLE_SPEED * direction
     bullet_vel = torch.where(new[..., None], muzzle[:, :, None, :], s["bullet_vel"])
@@ -260,15 +268,20 @@ def game_step(s: dict, action):
     respawn = torch.where(died, spec.RESPAWN_DELAY, (s["respawn"] - 1).clamp(min=0))
     back = s["exists"] & ~alive & (respawn == 0)
     return {
-        "exists": s["exists"], "team": team,
-        "spawn_pos": s["spawn_pos"], "spawn_heading": s["spawn_heading"],
+        "exists": s["exists"],
+        "team": team,
+        "spawn_pos": s["spawn_pos"],
+        "spawn_heading": s["spawn_heading"],
         "pos": torch.where(back[..., None], s["spawn_pos"], pos),
         "heading": torch.where(back, s["spawn_heading"], heading),
         "speed": torch.where(back, spec.START_SPEED, speed),
         "hp": torch.where(back, spec.MAX_HP, hp),
         "alive": alive | back,
-        "cooldown": cooldown, "respawn": respawn,
-        "bullet_pos": bullet_pos, "bullet_vel": bullet_vel, "bullet_life": bullet_life,
+        "cooldown": cooldown,
+        "respawn": respawn,
+        "bullet_pos": bullet_pos,
+        "bullet_vel": bullet_vel,
+        "bullet_life": bullet_life,
         "tick": s["tick"] + 1,
     }
 
@@ -296,18 +309,45 @@ def observe(s: dict):
     from_1 = (pos - centre_1) / spec.ARENA_RADIUS
     speed = s["speed"] / spec.MAX_SPEED
     cos, sin = s["heading"].cos(), s["heading"].sin()
-    ship = torch.stack([
-        scaled[..., 0], scaled[..., 1], speed * cos, speed * sin, cos, sin, speed,
-        s["hp"] / spec.MAX_HP, alive_f, s["cooldown"].float() / spec.COOLDOWN,
-        1.0 - 2.0 * team.float(), s["respawn"].float() / spec.RESPAWN_DELAY,
-        torch.sqrt((scaled * scaled).sum(-1)), bullets,
-        from_0[..., 0], from_0[..., 1], from_1[..., 0], from_1[..., 1],
-        frac_0.expand_as(alive_f), frac_1.expand_as(alive_f)], -1)
+    ship = torch.stack(
+        [
+            scaled[..., 0],
+            scaled[..., 1],
+            speed * cos,
+            speed * sin,
+            cos,
+            sin,
+            speed,
+            s["hp"] / spec.MAX_HP,
+            alive_f,
+            s["cooldown"].float() / spec.COOLDOWN,
+            1.0 - 2.0 * team.float(),
+            s["respawn"].float() / spec.RESPAWN_DELAY,
+            torch.sqrt((scaled * scaled).sum(-1)),
+            bullets,
+            from_0[..., 0],
+            from_0[..., 1],
+            from_1[..., 0],
+            from_1[..., 1],
+            frac_0.expand_as(alive_f),
+            frac_1.expand_as(alive_f),
+        ],
+        -1,
+    )
     gap = centre_0[:, 0] - centre_1[:, 0]
-    glob = torch.cat([
-        s["tick"].float()[:, None] / 1000.0, frac_0, frac_1, hp_0, hp_1,
-        torch.sqrt((gap * gap).sum(-1, keepdim=True)) / spec.ARENA_RADIUS,
-        bullets.sum(1, keepdim=True) / (count_0 + count_1), torch.ones_like(frac_0)], -1)
+    glob = torch.cat(
+        [
+            s["tick"].float()[:, None] / 1000.0,
+            frac_0,
+            frac_1,
+            hp_0,
+            hp_1,
+            torch.sqrt((gap * gap).sum(-1, keepdim=True)) / spec.ARENA_RADIUS,
+            bullets.sum(1, keepdim=True) / (count_0 + count_1),
+            torch.ones_like(frac_0),
+        ],
+        -1,
+    )
     return ship, glob, pos, alive
 
 
@@ -322,7 +362,11 @@ def choose(policy: Policy, s: dict, h):
     logits_0, value_0, h_0 = policy.step(ship, glob, pos, alive, h[0])
     logits_1, value_1, h_1 = policy.step(other_side(ship), glob, pos, alive, h[1])
     own = (s["team"] == 0)[..., None]
-    return torch.where(own, logits_0, logits_1), torch.where(own, value_0, value_1), torch.stack([h_0, h_1])
+    return (
+        torch.where(own, logits_0, logits_1),
+        torch.where(own, value_0, value_1),
+        torch.stack([h_0, h_1]),
+    )
 
 
 def rollout_tick(policy: Policy, s: dict, h):
@@ -337,17 +381,22 @@ def rollout_tick(policy: Policy, s: dict, h):
 # C. PPO update
 # ============================================================================================
 
+
 def ppo_loss(policy: Policy, b: dict):
     logits, value_logits, _ = policy.sequence(b["ship"], b["glob"], b["pos"], b["alive"], b["h0"])
     logp_all = torch.log_softmax(logits.float(), -1)
     logp = logp_all.gather(-1, b["action"][..., None]).squeeze(-1)
     ratio = torch.exp(logp - b["old_logp"])
-    surrogate = torch.minimum(ratio * b["advantage"],
-                              ratio.clamp(1.0 - spec.CLIP, 1.0 + spec.CLIP) * b["advantage"])
+    surrogate = torch.minimum(
+        ratio * b["advantage"], ratio.clamp(1.0 - spec.CLIP, 1.0 + spec.CLIP) * b["advantage"]
+    )
     weight = b["alive"].float()
     count = weight.sum().clamp(min=1.0)
     policy_loss = -(surrogate * weight).sum() / count
-    value_loss = -((b["value_target"] * torch.log_softmax(value_logits.float(), -1)).sum(-1) * weight).sum() / count
+    value_loss = (
+        -((b["value_target"] * torch.log_softmax(value_logits.float(), -1)).sum(-1) * weight).sum()
+        / count
+    )
     entropy = (-(logp_all.exp() * logp_all).sum(-1) * weight).sum() / count
     return policy_loss + spec.VALUE_COEF * value_loss - spec.ENTROPY_COEF * entropy
 
@@ -370,6 +419,7 @@ def make_optimizer(policy):
 # ============================================================================================
 # Benchmark plumbing
 # ============================================================================================
+
 
 def to_device(tree: dict, device) -> dict:
     return {k: torch.from_numpy(v).to(device) for k, v in tree.items()}
@@ -403,7 +453,13 @@ class Units:
     """The four timed units at one size, each a zero-argument callable that carries its state."""
 
     def __init__(self, device, variant, envs, ships, pad_to=None, bf16=False, micro=(16, 128)):
-        self.device, self.variant, self.envs, self.ships, self.pad_to = device, variant, envs, ships, pad_to
+        self.device, self.variant, self.envs, self.ships, self.pad_to = (
+            device,
+            variant,
+            envs,
+            ships,
+            pad_to,
+        )
         self.bf16, self.micro = bf16, micro
         self.slots = pad_to or ships
         self.policy = load_params(Policy(), spec.init_params()).to(device)
@@ -415,7 +471,9 @@ class Units:
         self.h = torch.from_numpy(spec.init_hidden(self.envs, self.slots)).to(d)
         self.inputs = to_device(spec.make_policy_inputs(self.envs, self.slots), d)
         self.h_single = self.h[0].clone()
-        self.actions = torch.from_numpy(spec.random_actions(3, 64, self.envs, self.slots)).to(d).long()
+        self.actions = (
+            torch.from_numpy(spec.random_actions(3, 64, self.envs, self.slots)).to(d).long()
+        )
         self.i = 0
 
     def build(self, unit: str):
@@ -426,7 +484,9 @@ class Units:
             @torch.no_grad()
             def run():
                 i = self.inputs
-                _, _, self.h_single = step(i["ship"], i["glob"], i["pos"], i["alive"], self.h_single)
+                _, _, self.h_single = step(
+                    i["ship"], i["glob"], i["pos"], i["alive"], self.h_single
+                )
         elif unit == "B":
             step = compile_fn(game_step, variant)
 
@@ -443,13 +503,17 @@ class Units:
                     mark_ship_dim(self.state, self.h)
                 self.state, self.h, *self.last = step(self.policy, self.state, self.h)
         elif unit == "C":
-            self.batch = to_device(spec.make_rollout(self.micro[0], self.micro[1], self.ships), self.device)
+            self.batch = to_device(
+                spec.make_rollout(self.micro[0], self.micro[1], self.ships), self.device
+            )
             self.batch["action"] = self.batch["action"].long()
             optimizer = make_optimizer(self.policy)
             loss_fn = compile_fn(ppo_loss, variant)
 
             def run():
-                self.last_loss, _ = ppo_update(loss_fn, self.policy, optimizer, self.batch, self.bf16)
+                self.last_loss, _ = ppo_update(
+                    loss_fn, self.policy, optimizer, self.batch, self.bf16
+                )
         else:
             raise ValueError(unit)
         return run
@@ -479,11 +543,21 @@ def steady(run, sync, repeats, budget_s=1.0) -> dict:
 
 # ---- children (each runs in a fresh process) -----------------------------------------------
 
+
 def child_compile(a, device):
-    units = Units(device, a.variant, a.child_envs, a.ships, bf16=a.precision == "bf16", micro=a.micro)
+    units = Units(
+        device, a.variant, a.child_envs, a.ships, bf16=a.precision == "bf16", micro=a.micro
+    )
     run = units.build(a.unit)
-    record = {"suite": "compile", "unit": a.unit, "variant": a.variant, "envs": a.child_envs,
-              "ships": a.ships, "precision": a.precision, "import_s": IMPORT_SECONDS}
+    record = {
+        "suite": "compile",
+        "unit": a.unit,
+        "variant": a.variant,
+        "envs": a.child_envs,
+        "ships": a.ships,
+        "precision": a.precision,
+        "import_s": IMPORT_SECONDS,
+    }
     if a.unit == "C":
         record.update(envs=a.micro[0], time=a.micro[1])
     record.update(first_calls(run, make_sync(device)))
@@ -494,10 +568,18 @@ def child_compile(a, device):
 def child_steady(a, device):
     sync = make_sync(device)
     for unit in a.unit.split(","):
-        units = Units(device, a.variant, a.child_envs, a.ships, bf16=a.precision == "bf16", micro=a.micro)
+        units = Units(
+            device, a.variant, a.child_envs, a.ships, bf16=a.precision == "bf16", micro=a.micro
+        )
         run = units.build(unit)
-        record = {"suite": "steady", "unit": unit, "variant": a.variant, "envs": a.child_envs,
-                  "ships": a.ships, "precision": a.precision}
+        record = {
+            "suite": "steady",
+            "unit": unit,
+            "variant": a.variant,
+            "envs": a.child_envs,
+            "ships": a.ships,
+            "precision": a.precision,
+        }
         if unit == "C":
             record.update(envs=a.micro[0], time=a.micro[1])
         record.update(first_calls(run, sync))
@@ -510,13 +592,19 @@ def child_sizes(a, device):
     """Compile the rollout tick at N = 10, then meet N = 20, 40, 100 (and N = 10 again)."""
     sync = make_sync(device)
     padded = a.method.endswith("padded")
-    variant = {"default": "compiled", "padded": "compiled", "dynamic": "dynamic",
-               "mark_dynamic": "mark_dynamic", "eager": "eager", "eager_padded": "eager"}[a.method]
+    variant = {
+        "default": "compiled",
+        "padded": "compiled",
+        "dynamic": "dynamic",
+        "mark_dynamic": "mark_dynamic",
+        "eager": "eager",
+        "eager_padded": "eager",
+    }[a.method]
     step = compile_fn(rollout_tick, variant)
     policy = None
     for ships in [10] + a.sizes + [10]:
         units = Units(device, variant, a.child_envs, ships, pad_to=a.pad_to if padded else None)
-        policy = units.policy = policy or units.policy      # one set of weights for every size
+        policy = units.policy = policy or units.policy  # one set of weights for every size
 
         @torch.no_grad()
         def run():
@@ -525,8 +613,13 @@ def child_sizes(a, device):
             units.state, units.h, _, _, _ = step(units.policy, units.state, units.h)
 
         before = compiled_graphs()
-        record = {"suite": "sizes", "method": a.method, "envs": a.child_envs, "ships": ships,
-                  "slots": units.slots}
+        record = {
+            "suite": "sizes",
+            "method": a.method,
+            "envs": a.child_envs,
+            "ships": ships,
+            "slots": units.slots,
+        }
         try:
             record.update(first_calls(run, sync))
             record.update(steady(run, sync, a.repeats, a.budget))
@@ -543,7 +636,7 @@ def child_loop(a, device):
     units = Units(device, a.variant, a.child_envs, a.ships)
     tick = units.build("tick")
 
-    def rollout():   # keeps actions and log-probs, as the JAX scan does
+    def rollout():  # keeps actions and log-probs, as the JAX scan does
         kept = []
         for _ in range(a.ticks):
             tick()
@@ -556,10 +649,19 @@ def child_loop(a, device):
     first = time.perf_counter() - start
     rollout()
     stats = spec.timed_repeats(rollout, sync, a.repeats, 1)
-    spec.emit({"suite": "loop", "variant": a.variant + " tick, Python loop", "envs": a.child_envs,
-               "ships": a.ships, "ticks": a.ticks, "first_rollout_s": first, "rollout": stats,
-               "ticks_per_s": a.ticks / (stats["median_ms"] / 1000.0),
-               "env_ticks_per_s": a.ticks * a.child_envs / (stats["median_ms"] / 1000.0)})
+    spec.emit(
+        {
+            "suite": "loop",
+            "variant": a.variant + " tick, Python loop",
+            "envs": a.child_envs,
+            "ships": a.ships,
+            "ticks": a.ticks,
+            "first_rollout_s": first,
+            "rollout": stats,
+            "ticks_per_s": a.ticks / (stats["median_ms"] / 1000.0),
+            "env_ticks_per_s": a.ticks * a.child_envs / (stats["median_ms"] / 1000.0),
+        }
+    )
 
 
 def child_latency(a, device):
@@ -577,8 +679,14 @@ def child_latency(a, device):
         tick()
         sync()
         samples.append((time.perf_counter() - start) * 1000.0)
-    record = {"suite": "latency", "variant": a.variant, "ships": a.ships, "threads": a.threads,
-              "torch_num_threads": torch.get_num_threads(), "warmup": a.warmup}
+    record = {
+        "suite": "latency",
+        "variant": a.variant,
+        "ships": a.ships,
+        "threads": a.threads,
+        "torch_num_threads": torch.get_num_threads(),
+        "warmup": a.warmup,
+    }
     try:
         record["affinity"] = sorted(os.sched_getaffinity(0))
     except AttributeError:
@@ -590,9 +698,15 @@ def child_latency(a, device):
 class OpCounter(torch.utils._python_dispatch.TorchDispatchMode):
     """Counts dispatched ops, split into compute and view ops, as in simplification/regions.py."""
 
-    METADATA = {"aten.sym_size.int", "aten.sym_stride.int", "aten.sym_numel.default",
-                "aten.sym_storage_offset.default", "aten.is_contiguous.default",
-                "aten.lift_fresh.default", "aten._local_scalar_dense.default"}
+    METADATA = {
+        "aten.sym_size.int",
+        "aten.sym_stride.int",
+        "aten.sym_numel.default",
+        "aten.sym_storage_offset.default",
+        "aten.is_contiguous.default",
+        "aten.lift_fresh.default",
+        "aten._local_scalar_dense.default",
+    }
 
     def __init__(self):
         super().__init__()
@@ -615,34 +729,71 @@ def child_ops(a, device):
         return counter
 
     parts = {
-        "rollout tick (observe + 2 forwards + sample + game step)": lambda: rollout_tick(units.policy, s, h),
+        "rollout tick (observe + 2 forwards + sample + game step)": lambda: rollout_tick(
+            units.policy, s, h
+        ),
         "observe": lambda: observe(s),
-        "one policy forward (A)": lambda: units.policy.step(inputs["ship"], inputs["glob"], inputs["pos"], inputs["alive"], h[0]),
+        "one policy forward (A)": lambda: units.policy.step(
+            inputs["ship"], inputs["glob"], inputs["pos"], inputs["alive"], h[0]
+        ),
         "game step (B)": lambda: game_step(s, units.actions[0]),
     }
     for label, fn in parts.items():
         counter = count(fn)
-        spec.emit({"suite": "ops", "what": label, "ships": a.ships,
-                   "compute_ops": sum(counter.compute.values()), "view_ops": sum(counter.view.values()),
-                   "top_compute_ops": counter.compute.most_common(12)})
+        spec.emit(
+            {
+                "suite": "ops",
+                "what": label,
+                "ships": a.ships,
+                "compute_ops": sum(counter.compute.values()),
+                "view_ops": sum(counter.view.values()),
+                "top_compute_ops": counter.compute.most_common(12),
+            }
+        )
 
 
-CHILDREN = {"compile": child_compile, "steady": child_steady, "sizes": child_sizes,
-            "loop": child_loop, "latency": child_latency, "ops": child_ops}
+CHILDREN = {
+    "compile": child_compile,
+    "steady": child_steady,
+    "sizes": child_sizes,
+    "loop": child_loop,
+    "latency": child_latency,
+    "ops": child_ops,
+}
 
 
 # ---- parent: one fresh process per measurement ---------------------------------------------
 
+
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--device", default="cpu", choices=["cpu", "cuda"])
-    parser.add_argument("--suite", default="all",
-                        choices=["all", "compile", "steady", "sizes", "loop", "latency", "ops"])
-    parser.add_argument("--envs", default=None, help="comma list for steady/loop; default 1,2048 (cuda) or 1,256 (cpu)")
+    parser.add_argument(
+        "--suite",
+        default="all",
+        choices=["all", "compile", "steady", "sizes", "loop", "latency", "ops"],
+    )
+    parser.add_argument(
+        "--envs",
+        default=None,
+        help="comma list for steady/loop; default 1,2048 (cuda) or 1,256 (cpu)",
+    )
     parser.add_argument("--ships", type=int, default=10)
     parser.add_argument("--micro", default="16x128", help="PPO micro-batch: environments x ticks")
-    parser.add_argument("--compile-envs", type=int, default=None, help="E for the compile suite (default: largest --envs)")
-    parser.add_argument("--size-envs", type=int, default=None, help="E for the size test; default 256 (cuda) or 32 (cpu)")
+    parser.add_argument(
+        "--compile-envs",
+        type=int,
+        default=None,
+        help="E for the compile suite (default: largest --envs)",
+    )
+    parser.add_argument(
+        "--size-envs",
+        type=int,
+        default=None,
+        help="E for the size test; default 256 (cuda) or 32 (cpu)",
+    )
     parser.add_argument("--sizes", default="20,40,100")
     parser.add_argument("--pad-to", type=int, default=100)
     parser.add_argument("--ticks", type=int, default=128, help="rollout length for the loop suite")
@@ -652,10 +803,18 @@ def main():
     parser.add_argument("--warmup", type=int, default=300)
     parser.add_argument("--repeats", type=int, default=7)
     parser.add_argument("--budget", type=float, default=1.0, help="seconds per timed repeat")
-    parser.add_argument("--precisions", default=None, help="for C: f32 or f32,bf16 (default f32,bf16 on cuda)")
-    parser.add_argument("--skip-compiled-c", action="store_true", help="skip torch.compile of the PPO update")
-    parser.add_argument("--matmul-precision", default="highest", choices=["highest", "high", "medium"],
-                        help="torch.set_float32_matmul_precision (PyTorch default: highest)")
+    parser.add_argument(
+        "--precisions", default=None, help="for C: f32 or f32,bf16 (default f32,bf16 on cuda)"
+    )
+    parser.add_argument(
+        "--skip-compiled-c", action="store_true", help="skip torch.compile of the PPO update"
+    )
+    parser.add_argument(
+        "--matmul-precision",
+        default="highest",
+        choices=["highest", "high", "medium"],
+        help="torch.set_float32_matmul_precision (PyTorch default: highest)",
+    )
     parser.add_argument("--out", default=None)
     # Internal: what a child process measures.
     parser.add_argument("--child", default=None, choices=list(CHILDREN))
@@ -683,9 +842,23 @@ def main():
     size_envs = a.size_envs or (256 if cuda else 32)
     precisions = (a.precisions or ("f32,bf16" if cuda else "f32")).split(",")
     micro = f"{a.micro[0]}x{a.micro[1]}"
-    common = ["--device", a.device, "--ships", a.ships, "--micro", micro, "--repeats", a.repeats,
-              "--budget", a.budget, "--matmul-precision", a.matmul_precision]
-    suites = ["compile", "steady", "sizes", "loop", "latency", "ops"] if a.suite == "all" else [a.suite]
+    common = [
+        "--device",
+        a.device,
+        "--ships",
+        a.ships,
+        "--micro",
+        micro,
+        "--repeats",
+        a.repeats,
+        "--budget",
+        a.budget,
+        "--matmul-precision",
+        a.matmul_precision,
+    ]
+    suites = (
+        ["compile", "steady", "sizes", "loop", "latency", "ops"] if a.suite == "all" else [a.suite]
+    )
     records = []
 
     def child(name, *extra, env=None, note=None):
@@ -694,25 +867,50 @@ def main():
         for record in got:
             if note:
                 record.update(note)
-            print("   ", {k: (round(v, 4) if isinstance(v, float) else v) for k, v in record.items()
-                          if k not in ("top_compute_ops", "stderr_tail")}, flush=True)
+            print(
+                "   ",
+                {
+                    k: (round(v, 4) if isinstance(v, float) else v)
+                    for k, v in record.items()
+                    if k not in ("top_compute_ops", "stderr_tail")
+                },
+                flush=True,
+            )
         records.extend(got)
 
     def c_variants():
-        return [(p, v) for p in precisions for v in ("eager", "compiled")
-                if not (v == "compiled" and a.skip_compiled_c)]
+        return [
+            (p, v)
+            for p in precisions
+            for v in ("eager", "compiled")
+            if not (v == "compiled" and a.skip_compiled_c)
+        ]
 
     if "compile" in suites:
         # Cold: an empty TORCHINDUCTOR_CACHE_DIR, fresh process. Warm: a second fresh process with
         # the same directory (inductor's on-disk FX-graph / AOTAutograd / compiled-kernel caches).
-        jobs = [(unit, "f32", variant) for unit in ("A", "B", "tick") for variant in ("eager", "compiled")]
+        jobs = [
+            (unit, "f32", variant)
+            for unit in ("A", "B", "tick")
+            for variant in ("eager", "compiled")
+        ]
         jobs += [("C", p, v) for p, v in c_variants()]
         for unit, precision, variant in jobs:
             cache = tempfile.mkdtemp(prefix="spike-inductor-")
-            for temperature in (("cold", "warm") if variant == "compiled" else ("cold",)):
-                child("compile", "--unit", unit, "--variant", variant, "--precision", precision,
-                      "--child-envs", compile_envs, env={"TORCHINDUCTOR_CACHE_DIR": cache},
-                      note={"cache": temperature})
+            for temperature in ("cold", "warm") if variant == "compiled" else ("cold",):
+                child(
+                    "compile",
+                    "--unit",
+                    unit,
+                    "--variant",
+                    variant,
+                    "--precision",
+                    precision,
+                    "--child-envs",
+                    compile_envs,
+                    env={"TORCHINDUCTOR_CACHE_DIR": cache},
+                    note={"cache": temperature},
+                )
             shutil.rmtree(cache, ignore_errors=True)
 
     if "steady" in suites:
@@ -725,8 +923,18 @@ def main():
     if "sizes" in suites:
         for method in ("default", "dynamic", "mark_dynamic", "padded", "eager", "eager_padded"):
             cache = tempfile.mkdtemp(prefix="spike-inductor-")
-            child("sizes", "--method", method, "--child-envs", size_envs, "--sizes", ",".join(map(str, a.sizes)),
-                  "--pad-to", a.pad_to, env={"TORCHINDUCTOR_CACHE_DIR": cache})
+            child(
+                "sizes",
+                "--method",
+                method,
+                "--child-envs",
+                size_envs,
+                "--sizes",
+                ",".join(map(str, a.sizes)),
+                "--pad-to",
+                a.pad_to,
+                env={"TORCHINDUCTOR_CACHE_DIR": cache},
+            )
             shutil.rmtree(cache, ignore_errors=True)
 
     if "loop" in suites:
@@ -740,26 +948,46 @@ def main():
         for ships in a.latency_ships.split(","):
             for threads in a.latency_threads.split(","):
                 for variant in ("eager", "compiled"):
-                    child("latency", "--variant", variant, "--ships", ships, "--threads", threads,
-                          "--latency-ticks", a.latency_ticks, "--warmup", a.warmup)
+                    child(
+                        "latency",
+                        "--variant",
+                        variant,
+                        "--ships",
+                        ships,
+                        "--threads",
+                        threads,
+                        "--latency-ticks",
+                        a.latency_ticks,
+                        "--warmup",
+                        a.warmup,
+                    )
 
     if "ops" in suites:
         child("ops", "--ships", a.ships)
 
     meta = {
-        "framework": "pytorch", "torch": torch.__version__, "numpy": np.__version__, "device": a.device,
+        "framework": "pytorch",
+        "torch": torch.__version__,
+        "numpy": np.__version__,
+        "device": a.device,
         "gpu": torch.cuda.get_device_name(0) if cuda else None,
         "cuda_runtime": torch.version.cuda if cuda else None,
         "torch_num_threads_default": torch.get_num_threads(),
         "compile_options": "torch.compile(fn) with defaults: backend='inductor', mode='default', "
-                           "dynamic=None, fullgraph=False; 'dynamic' = dynamic=True; "
-                           "'mark_dynamic' = defaults + torch._dynamo.mark_dynamic on the ship axis",
+        "dynamic=None, fullgraph=False; 'dynamic' = dynamic=True; "
+        "'mark_dynamic' = defaults + torch._dynamo.mark_dynamic on the ship axis",
         "float32_matmul_precision": a.matmul_precision,
         "cxx": shutil.which("g++") or shutil.which("c++") or shutil.which("cl"),
-        "argv": sys.argv[1:], "envs": envs, "compile_envs": compile_envs, "size_envs": size_envs,
-        "micro_batch": micro, "machine": spec.machine(),
+        "argv": sys.argv[1:],
+        "envs": envs,
+        "compile_envs": compile_envs,
+        "size_envs": size_envs,
+        "micro_batch": micro,
+        "machine": spec.machine(),
     }
-    out = a.out or os.path.join(os.path.dirname(HERE), "results", f"torch_{a.device}_{a.suite}.json")
+    out = a.out or os.path.join(
+        os.path.dirname(HERE), "results", f"torch_{a.device}_{a.suite}.json"
+    )
     spec.write_results(out, meta, records)
 
 

@@ -4,6 +4,7 @@ and the measurements described in README.md.
     python jax_bench.py --device cpu|cuda --suite all|compile|steady|sizes|loop|latency|ops
                         [--envs 1,2048] [--out results/<name>.json]
 """
+# ruff: noqa: E402, E731  (a design-record script, kept as written)
 
 import os
 import sys
@@ -24,8 +25,10 @@ if _argument("--threads") == "pin":
 if _argument("--threads") == "1":
     # Not an official JAX setting (see README "Thread settings"): asks XLA's CPU backend not to
     # use its Eigen thread pool.
-    os.environ["XLA_FLAGS"] = (os.environ.get("XLA_FLAGS", "") + " --xla_cpu_multi_thread_eigen=false"
-                               " intra_op_parallelism_threads=1").strip()
+    os.environ["XLA_FLAGS"] = (
+        os.environ.get("XLA_FLAGS", "") + " --xla_cpu_multi_thread_eigen=false"
+        " intra_op_parallelism_threads=1"
+    ).strip()
 
 import argparse
 import math
@@ -36,11 +39,10 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
+import spec
 from jax import lax
 
-import spec
-
-if os.environ.get("SPIKE_JAX_CACHE"):   # persistent compilation cache, for the warm compile time
+if os.environ.get("SPIKE_JAX_CACHE"):  # persistent compilation cache, for the warm compile time
     jax.config.update("jax_compilation_cache_dir", os.environ["SPIKE_JAX_CACHE"])
     jax.config.update("jax_persistent_cache_min_compile_time_secs", 0.0)
     jax.config.update("jax_persistent_cache_min_entry_size_bytes", -1)
@@ -53,6 +55,7 @@ ROPE_FREQS = jnp.asarray(spec.ROPE_FREQS)
 # ============================================================================================
 # A. Policy (params: the dict from spec.init_params, as jax arrays)
 # ============================================================================================
+
 
 def linear(p, name, x):
     y = x @ p[name + ".w"]
@@ -78,7 +81,9 @@ def rglru_gates(p, name, x):
     x = rms_norm(p[name + ".norm"], x)
     r = jax.nn.sigmoid(linear(p, name + ".gate_a", x)).astype(jnp.float32)
     i = jax.nn.sigmoid(linear(p, name + ".gate_x", x)).astype(jnp.float32)
-    a = jnp.exp(spec.RGLRU_C * r * jax.nn.log_sigmoid(p[name + ".lam"]))   # a^(c r_t), a = sigmoid(lam)
+    a = jnp.exp(
+        spec.RGLRU_C * r * jax.nn.log_sigmoid(p[name + ".lam"])
+    )  # a^(c r_t), a = sigmoid(lam)
     return a, jnp.sqrt(1.0 - a * a) * (i * x.astype(jnp.float32))
 
 
@@ -88,7 +93,7 @@ def rglru_step(p, name, x, h):
     return x + h.astype(x.dtype), h
 
 
-def rglru_scan(p, name, x, h):               # x [env, time, token, width]
+def rglru_scan(p, name, x, h):  # x [env, time, token, width]
     a, b = rglru_gates(p, name, x)
 
     def body(h, ab):
@@ -102,16 +107,16 @@ def rglru_scan(p, name, x, h):               # x [env, time, token, width]
 def rotate(x, cos, sin):
     """Rotary position rotation of the first 4 * ROPE_BANDS dims of each head."""
     n = 2 * spec.ROPE_BANDS
-    x1, x2, rest = x[..., :n], x[..., n:2 * n], x[..., 2 * n:]
+    x1, x2, rest = x[..., :n], x[..., n : 2 * n], x[..., 2 * n :]
     return jnp.concatenate([x1 * cos - x2 * sin, x1 * sin + x2 * cos, rest], -1)
 
 
-def spatial(p, name, x, mask, cos, sin):     # x [batch, token, width]; mask [batch, token]
+def spatial(p, name, x, mask, cos, sin):  # x [batch, token, width]; mask [batch, token]
     """Masked self-attention over the tokens of one environment, then a gated MLP."""
     batch, tokens, _ = x.shape
     qkv = linear(p, name + ".qkv", rms_norm(p[name + ".attn_norm"], x))
     q, k, v = jnp.transpose(qkv.reshape(batch, tokens, 3, spec.HEADS, -1), (2, 0, 3, 1, 4))
-    q, k = rotate(q, cos, sin), rotate(k, cos, sin)                # each [batch, head, token, 64]
+    q, k = rotate(q, cos, sin), rotate(k, cos, sin)  # each [batch, head, token, 64]
     scores = q @ jnp.swapaxes(k, -1, -2) / math.sqrt(q.shape[-1])
     scores = jnp.where(mask[:, None, None, :], scores, -jnp.inf)
     attended = jax.nn.softmax(scores, -1) @ v
@@ -170,6 +175,7 @@ def policy_sequence(p, ship, glob, pos, alive, h0):
 # B. Toy game (a stand-in for the real game's operation structure, not a port)
 # ============================================================================================
 
+
 def game_step(s: dict, action):
     """One tick for every environment. action [env, slot] in 0..41 = turn + 3 * thrust + 21 * fire."""
     turn = (action % 3 - 1).astype(jnp.float32)
@@ -202,9 +208,12 @@ def game_step(s: dict, action):
     dx = flat_pos[:, :, None, 0] - pos[:, None, :, 0]
     dy = flat_pos[:, :, None, 1] - pos[:, None, :, 1]
     bullet_team = jnp.repeat(team, spec.SLOTS, 1)
-    hit = ((bullet_life.reshape(envs, -1) > 0)[:, :, None] & alive[:, None, :]
-           & (bullet_team[:, :, None] != team[:, None, :])
-           & (dx * dx + dy * dy < spec.HIT_RADIUS ** 2))
+    hit = (
+        (bullet_life.reshape(envs, -1) > 0)[:, :, None]
+        & alive[:, None, :]
+        & (bullet_team[:, :, None] != team[:, None, :])
+        & (dx * dx + dy * dy < spec.HIT_RADIUS**2)
+    )
     hp = s["hp"] - spec.DAMAGE * hit.sum(1)
     bullet_life = jnp.where(hit.any(2).reshape(envs, slots, spec.SLOTS), 0, bullet_life)
 
@@ -225,15 +234,20 @@ def game_step(s: dict, action):
     respawn = jnp.where(died, spec.RESPAWN_DELAY, jnp.maximum(s["respawn"] - 1, 0))
     back = s["exists"] & ~alive & (respawn == 0)
     return {
-        "exists": s["exists"], "team": team,
-        "spawn_pos": s["spawn_pos"], "spawn_heading": s["spawn_heading"],
+        "exists": s["exists"],
+        "team": team,
+        "spawn_pos": s["spawn_pos"],
+        "spawn_heading": s["spawn_heading"],
         "pos": jnp.where(back[..., None], s["spawn_pos"], pos),
         "heading": jnp.where(back, s["spawn_heading"], heading),
         "speed": jnp.where(back, spec.START_SPEED, speed),
         "hp": jnp.where(back, spec.MAX_HP, hp),
         "alive": alive | back,
-        "cooldown": cooldown, "respawn": respawn,
-        "bullet_pos": bullet_pos, "bullet_vel": bullet_vel, "bullet_life": bullet_life,
+        "cooldown": cooldown,
+        "respawn": respawn,
+        "bullet_pos": bullet_pos,
+        "bullet_vel": bullet_vel,
+        "bullet_life": bullet_life,
         "tick": s["tick"] + 1,
     }
 
@@ -254,26 +268,57 @@ def observe(s: dict):
     frac_0, frac_1 = n_alive_0 / count_0, n_alive_1 / count_1
     hp_0 = (s["hp"] * alive_0).sum(1, keepdims=True) / (count_0 * spec.MAX_HP)
     hp_1 = (s["hp"] * alive_1).sum(1, keepdims=True) / (count_1 * spec.MAX_HP)
-    centre_0 = (pos * alive_0[..., None]).sum(1, keepdims=True) / jnp.maximum(n_alive_0, 1.0)[..., None]
-    centre_1 = (pos * alive_1[..., None]).sum(1, keepdims=True) / jnp.maximum(n_alive_1, 1.0)[..., None]
+    centre_0 = (pos * alive_0[..., None]).sum(1, keepdims=True) / jnp.maximum(n_alive_0, 1.0)[
+        ..., None
+    ]
+    centre_1 = (pos * alive_1[..., None]).sum(1, keepdims=True) / jnp.maximum(n_alive_1, 1.0)[
+        ..., None
+    ]
     bullets = f32(s["bullet_life"] > 0).mean(-1)
     scaled = pos / spec.ARENA_RADIUS
     from_0 = (pos - centre_0) / spec.ARENA_RADIUS
     from_1 = (pos - centre_1) / spec.ARENA_RADIUS
     speed = s["speed"] / spec.MAX_SPEED
     cos, sin = jnp.cos(s["heading"]), jnp.sin(s["heading"])
-    ship = jnp.stack([
-        scaled[..., 0], scaled[..., 1], speed * cos, speed * sin, cos, sin, speed,
-        s["hp"] / spec.MAX_HP, alive_f, f32(s["cooldown"]) / spec.COOLDOWN,
-        1.0 - 2.0 * f32(team), f32(s["respawn"]) / spec.RESPAWN_DELAY,
-        jnp.sqrt((scaled * scaled).sum(-1)), bullets,
-        from_0[..., 0], from_0[..., 1], from_1[..., 0], from_1[..., 1],
-        jnp.broadcast_to(frac_0, alive_f.shape), jnp.broadcast_to(frac_1, alive_f.shape)], -1)
+    ship = jnp.stack(
+        [
+            scaled[..., 0],
+            scaled[..., 1],
+            speed * cos,
+            speed * sin,
+            cos,
+            sin,
+            speed,
+            s["hp"] / spec.MAX_HP,
+            alive_f,
+            f32(s["cooldown"]) / spec.COOLDOWN,
+            1.0 - 2.0 * f32(team),
+            f32(s["respawn"]) / spec.RESPAWN_DELAY,
+            jnp.sqrt((scaled * scaled).sum(-1)),
+            bullets,
+            from_0[..., 0],
+            from_0[..., 1],
+            from_1[..., 0],
+            from_1[..., 1],
+            jnp.broadcast_to(frac_0, alive_f.shape),
+            jnp.broadcast_to(frac_1, alive_f.shape),
+        ],
+        -1,
+    )
     gap = centre_0[:, 0] - centre_1[:, 0]
-    glob = jnp.concatenate([
-        f32(s["tick"])[:, None] / 1000.0, frac_0, frac_1, hp_0, hp_1,
-        jnp.sqrt((gap * gap).sum(-1, keepdims=True)) / spec.ARENA_RADIUS,
-        bullets.sum(1, keepdims=True) / (count_0 + count_1), jnp.ones_like(frac_0)], -1)
+    glob = jnp.concatenate(
+        [
+            f32(s["tick"])[:, None] / 1000.0,
+            frac_0,
+            frac_1,
+            hp_0,
+            hp_1,
+            jnp.sqrt((gap * gap).sum(-1, keepdims=True)) / spec.ARENA_RADIUS,
+            bullets.sum(1, keepdims=True) / (count_0 + count_1),
+            jnp.ones_like(frac_0),
+        ],
+        -1,
+    )
     return ship, glob, pos, alive
 
 
@@ -288,7 +333,11 @@ def choose(p, s: dict, h):
     logits_0, value_0, h_0 = policy_step(p, ship, glob, pos, alive, h[0])
     logits_1, value_1, h_1 = policy_step(p, other_side(ship), glob, pos, alive, h[1])
     own = (s["team"] == 0)[..., None]
-    return jnp.where(own, logits_0, logits_1), jnp.where(own, value_0, value_1), jnp.stack([h_0, h_1])
+    return (
+        jnp.where(own, logits_0, logits_1),
+        jnp.where(own, value_0, value_1),
+        jnp.stack([h_0, h_1]),
+    )
 
 
 def rollout_tick(p, s: dict, h, key):
@@ -302,6 +351,7 @@ def rollout_tick(p, s: dict, h, key):
 
 def rollout_scan(p, s: dict, h, key, ticks: int):
     """The whole rollout as one lax.scan: no Python between ticks. Keeps actions and log-probs."""
+
     def body(carry, _):
         s, h, key, action, logp, _ = rollout_tick(p, *carry)
         return (s, h, key), (action, logp)
@@ -312,6 +362,7 @@ def rollout_scan(p, s: dict, h, key, ticks: int):
 # ============================================================================================
 # C. PPO update
 # ============================================================================================
+
 
 def to_bf16(p: dict) -> dict:
     """JAX has no autocast. The plain equivalent: keep float32 master weights and cast them (and
@@ -327,19 +378,28 @@ def ppo_loss(p, b: dict, bf16: bool = False):
     logp_all = jax.nn.log_softmax(logits.astype(jnp.float32))
     logp = jnp.take_along_axis(logp_all, b["action"][..., None], -1)[..., 0]
     ratio = jnp.exp(logp - b["old_logp"])
-    surrogate = jnp.minimum(ratio * b["advantage"],
-                            jnp.clip(ratio, 1.0 - spec.CLIP, 1.0 + spec.CLIP) * b["advantage"])
+    surrogate = jnp.minimum(
+        ratio * b["advantage"], jnp.clip(ratio, 1.0 - spec.CLIP, 1.0 + spec.CLIP) * b["advantage"]
+    )
     weight = b["alive"].astype(jnp.float32)
     count = jnp.maximum(weight.sum(), 1.0)
     policy_loss = -(surrogate * weight).sum() / count
-    value_loss = -((b["value_target"] * jax.nn.log_softmax(value_logits.astype(jnp.float32))).sum(-1) * weight).sum() / count
+    value_loss = (
+        -(
+            (b["value_target"] * jax.nn.log_softmax(value_logits.astype(jnp.float32))).sum(-1)
+            * weight
+        ).sum()
+        / count
+    )
     entropy = (-(jnp.exp(logp_all) * logp_all).sum(-1) * weight).sum() / count
     return policy_loss + spec.VALUE_COEF * value_loss - spec.ENTROPY_COEF * entropy
 
 
 def make_optimizer():
-    return optax.chain(optax.clip_by_global_norm(spec.MAX_GRAD_NORM),
-                       optax.adam(spec.LEARNING_RATE, eps=spec.ADAM_EPS))
+    return optax.chain(
+        optax.clip_by_global_norm(spec.MAX_GRAD_NORM),
+        optax.adam(spec.LEARNING_RATE, eps=spec.ADAM_EPS),
+    )
 
 
 def make_ppo_update(optimizer, bf16: bool = False):
@@ -355,6 +415,7 @@ def make_ppo_update(optimizer, bf16: bool = False):
 # ============================================================================================
 # Benchmark plumbing
 # ============================================================================================
+
 
 def to_jax(tree: dict) -> dict:
     return {k: jnp.asarray(v) for k, v in tree.items()}
@@ -387,7 +448,9 @@ class Units:
 
             def run():
                 i = self.inputs
-                self.last = step(self.params, i["ship"], i["glob"], i["pos"], i["alive"], self.h_single)
+                self.last = step(
+                    self.params, i["ship"], i["glob"], i["pos"], i["alive"], self.h_single
+                )
                 self.h_single = self.last[2]
         elif unit == "B":
             step = jitted or jax.jit(game_step)
@@ -440,11 +503,19 @@ def cache_size(jitted) -> int:
 
 # ---- children (each runs in a fresh process) -----------------------------------------------
 
+
 def child_compile(a):
     units = Units(a.child_envs, a.ships, bf16=a.precision == "bf16", micro=a.micro)
     run = units.build(a.unit)
-    record = {"suite": "compile", "unit": a.unit, "variant": "jit", "envs": a.child_envs,
-              "ships": a.ships, "precision": a.precision, "import_s": IMPORT_SECONDS}
+    record = {
+        "suite": "compile",
+        "unit": a.unit,
+        "variant": "jit",
+        "envs": a.child_envs,
+        "ships": a.ships,
+        "precision": a.precision,
+        "import_s": IMPORT_SECONDS,
+    }
     if a.unit == "C":
         record.update(envs=a.micro[0], time=a.micro[1])
     record.update(first_calls(run, units.sync))
@@ -455,8 +526,14 @@ def child_steady(a):
     for unit in a.unit.split(","):
         units = Units(a.child_envs, a.ships, bf16=a.precision == "bf16", micro=a.micro)
         run = units.build(unit)
-        record = {"suite": "steady", "unit": unit, "variant": "jit", "envs": a.child_envs,
-                  "ships": a.ships, "precision": a.precision}
+        record = {
+            "suite": "steady",
+            "unit": unit,
+            "variant": "jit",
+            "envs": a.child_envs,
+            "ships": a.ships,
+            "precision": a.precision,
+        }
         if unit == "C":
             record.update(envs=a.micro[0], time=a.micro[1])
         record.update(first_calls(run, units.sync))
@@ -472,8 +549,13 @@ def child_sizes(a):
         units = Units(a.child_envs, ships, pad_to=a.pad_to if padded else None)
         run = units.build("tick", jitted=step)
         before = cache_size(step)
-        record = {"suite": "sizes", "method": a.method, "envs": a.child_envs, "ships": ships,
-                  "slots": units.slots}
+        record = {
+            "suite": "sizes",
+            "method": a.method,
+            "envs": a.child_envs,
+            "ships": ships,
+            "slots": units.slots,
+        }
         try:
             record.update(first_calls(run, units.sync))
             record.update(steady(run, units.sync, a.repeats, a.budget))
@@ -493,6 +575,7 @@ def child_loop(a):
         def rollout():
             units.last = scan(units.params, units.state, units.h, units.key, ticks=a.ticks)
             units.state, units.h, units.key = units.last[0]
+
         label = "lax.scan, one jit"
     else:
         tick = units.build("tick")
@@ -502,7 +585,12 @@ def child_loop(a):
             for _ in range(a.ticks):
                 tick()
                 kept.append(units.last[3:5])
-            units.last = (units.last, jnp.stack([k[0] for k in kept]), jnp.stack([k[1] for k in kept]))
+            units.last = (
+                units.last,
+                jnp.stack([k[0] for k in kept]),
+                jnp.stack([k[1] for k in kept]),
+            )
+
         label = "jit tick, Python loop"
 
     start = time.perf_counter()
@@ -511,10 +599,19 @@ def child_loop(a):
     first = time.perf_counter() - start
     rollout()
     stats = spec.timed_repeats(rollout, units.sync, a.repeats, 1)
-    spec.emit({"suite": "loop", "variant": label, "envs": a.child_envs, "ships": a.ships,
-               "ticks": a.ticks, "first_rollout_s": first, "rollout": stats,
-               "ticks_per_s": a.ticks / (stats["median_ms"] / 1000.0),
-               "env_ticks_per_s": a.ticks * a.child_envs / (stats["median_ms"] / 1000.0)})
+    spec.emit(
+        {
+            "suite": "loop",
+            "variant": label,
+            "envs": a.child_envs,
+            "ships": a.ships,
+            "ticks": a.ticks,
+            "first_rollout_s": first,
+            "rollout": stats,
+            "ticks_per_s": a.ticks / (stats["median_ms"] / 1000.0),
+            "env_ticks_per_s": a.ticks * a.child_envs / (stats["median_ms"] / 1000.0),
+        }
+    )
 
 
 def child_latency(a):
@@ -530,8 +627,14 @@ def child_latency(a):
         tick()
         units.sync()
         samples.append((time.perf_counter() - start) * 1000.0)
-    record = {"suite": "latency", "variant": "jit", "ships": a.ships, "threads": a.threads,
-              "xla_flags": os.environ.get("XLA_FLAGS", ""), "warmup": a.warmup}
+    record = {
+        "suite": "latency",
+        "variant": "jit",
+        "ships": a.ships,
+        "threads": a.threads,
+        "xla_flags": os.environ.get("XLA_FLAGS", ""),
+        "warmup": a.warmup,
+    }
     try:
         record["affinity"] = sorted(os.sched_getaffinity(0))
     except AttributeError:
@@ -554,34 +657,68 @@ def child_ops(a):
     units = Units(1, a.ships)
     i = units.inputs
     parts = {
-        "rollout tick (observe + 2 forwards + sample + game step)":
-            jax.make_jaxpr(rollout_tick)(units.params, units.state, units.h, units.key),
+        "rollout tick (observe + 2 forwards + sample + game step)": jax.make_jaxpr(rollout_tick)(
+            units.params, units.state, units.h, units.key
+        ),
         "observe": jax.make_jaxpr(observe)(units.state),
-        "one policy forward (A)":
-            jax.make_jaxpr(policy_step)(units.params, i["ship"], i["glob"], i["pos"], i["alive"], units.h[0]),
+        "one policy forward (A)": jax.make_jaxpr(policy_step)(
+            units.params, i["ship"], i["glob"], i["pos"], i["alive"], units.h[0]
+        ),
         "game step (B)": jax.make_jaxpr(game_step)(units.state, units.actions[0]),
     }
     for label, closed in parts.items():
-        spec.emit({"suite": "ops", "what": label, "ships": a.ships,
-                   "jaxpr_primitives": count_equations(closed.jaxpr)})
+        spec.emit(
+            {
+                "suite": "ops",
+                "what": label,
+                "ships": a.ships,
+                "jaxpr_primitives": count_equations(closed.jaxpr),
+            }
+        )
 
 
-CHILDREN = {"compile": child_compile, "steady": child_steady, "sizes": child_sizes,
-            "loop": child_loop, "latency": child_latency, "ops": child_ops}
+CHILDREN = {
+    "compile": child_compile,
+    "steady": child_steady,
+    "sizes": child_sizes,
+    "loop": child_loop,
+    "latency": child_latency,
+    "ops": child_ops,
+}
 
 
 # ---- parent: one fresh process per measurement ---------------------------------------------
 
+
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--device", default="cpu", choices=["cpu", "cuda"])
-    parser.add_argument("--suite", default="all",
-                        choices=["all", "compile", "steady", "sizes", "loop", "latency", "ops"])
-    parser.add_argument("--envs", default=None, help="comma list for steady/loop; default 1,2048 (cuda) or 1,256 (cpu)")
+    parser.add_argument(
+        "--suite",
+        default="all",
+        choices=["all", "compile", "steady", "sizes", "loop", "latency", "ops"],
+    )
+    parser.add_argument(
+        "--envs",
+        default=None,
+        help="comma list for steady/loop; default 1,2048 (cuda) or 1,256 (cpu)",
+    )
     parser.add_argument("--ships", type=int, default=10)
     parser.add_argument("--micro", default="16x128", help="PPO micro-batch: environments x ticks")
-    parser.add_argument("--compile-envs", type=int, default=None, help="E for the compile suite (default: largest --envs)")
-    parser.add_argument("--size-envs", type=int, default=None, help="E for the size test; default 256 (cuda) or 32 (cpu)")
+    parser.add_argument(
+        "--compile-envs",
+        type=int,
+        default=None,
+        help="E for the compile suite (default: largest --envs)",
+    )
+    parser.add_argument(
+        "--size-envs",
+        type=int,
+        default=None,
+        help="E for the size test; default 256 (cuda) or 32 (cpu)",
+    )
     parser.add_argument("--sizes", default="20,40,100")
     parser.add_argument("--pad-to", type=int, default=100)
     parser.add_argument("--ticks", type=int, default=128, help="rollout length for the loop suite")
@@ -591,7 +728,9 @@ def main():
     parser.add_argument("--warmup", type=int, default=300)
     parser.add_argument("--repeats", type=int, default=7)
     parser.add_argument("--budget", type=float, default=1.0, help="seconds per timed repeat")
-    parser.add_argument("--precisions", default=None, help="for C: f32 or f32,bf16 (default f32,bf16 on cuda)")
+    parser.add_argument(
+        "--precisions", default=None, help="for C: f32 or f32,bf16 (default f32,bf16 on cuda)"
+    )
     parser.add_argument("--out", default=None)
     # Internal: what a child process measures.
     parser.add_argument("--child", default=None, choices=list(CHILDREN))
@@ -604,8 +743,10 @@ def main():
     a = parser.parse_args()
     cuda = a.device == "cuda"
     if cuda and jax.default_backend() != "gpu":
-        sys.exit(f"--device cuda, but jax.default_backend() is {jax.default_backend()!r} "
-                 "(is the CUDA build of jax installed? see README)")
+        sys.exit(
+            f"--device cuda, but jax.default_backend() is {jax.default_backend()!r} "
+            "(is the CUDA build of jax installed? see README)"
+        )
     a.micro = tuple(int(x) for x in str(a.micro).split("x"))
     a.sizes = [int(x) for x in str(a.sizes).split(",")]
 
@@ -618,9 +759,21 @@ def main():
     size_envs = a.size_envs or (256 if cuda else 32)
     precisions = (a.precisions or ("f32,bf16" if cuda else "f32")).split(",")
     micro = f"{a.micro[0]}x{a.micro[1]}"
-    common = ["--device", a.device, "--ships", a.ships, "--micro", micro, "--repeats", a.repeats,
-              "--budget", a.budget]
-    suites = ["compile", "steady", "sizes", "loop", "latency", "ops"] if a.suite == "all" else [a.suite]
+    common = [
+        "--device",
+        a.device,
+        "--ships",
+        a.ships,
+        "--micro",
+        micro,
+        "--repeats",
+        a.repeats,
+        "--budget",
+        a.budget,
+    ]
+    suites = (
+        ["compile", "steady", "sizes", "loop", "latency", "ops"] if a.suite == "all" else [a.suite]
+    )
     records = []
 
     def child(name, *extra, env=None, note=None):
@@ -629,18 +782,36 @@ def main():
         for record in got:
             if note:
                 record.update(note)
-            print("   ", {k: (round(v, 4) if isinstance(v, float) else v) for k, v in record.items()
-                          if k != "stderr_tail"}, flush=True)
+            print(
+                "   ",
+                {
+                    k: (round(v, 4) if isinstance(v, float) else v)
+                    for k, v in record.items()
+                    if k != "stderr_tail"
+                },
+                flush=True,
+            )
         records.extend(got)
 
     if "compile" in suites:
         # Cold: fresh process, empty persistent-cache directory (JAX caches nothing on disk unless
         # asked). Warm: a second fresh process reading that directory.
-        for unit, precision in [("A", "f32"), ("B", "f32"), ("tick", "f32")] + [("C", p) for p in precisions]:
+        for unit, precision in [("A", "f32"), ("B", "f32"), ("tick", "f32")] + [
+            ("C", p) for p in precisions
+        ]:
             cache = tempfile.mkdtemp(prefix="spike-jax-cache-")
             for temperature in ("cold", "warm"):
-                child("compile", "--unit", unit, "--precision", precision, "--child-envs", compile_envs,
-                      env={"SPIKE_JAX_CACHE": cache}, note={"cache": temperature})
+                child(
+                    "compile",
+                    "--unit",
+                    unit,
+                    "--precision",
+                    precision,
+                    "--child-envs",
+                    compile_envs,
+                    env={"SPIKE_JAX_CACHE": cache},
+                    note={"cache": temperature},
+                )
             shutil.rmtree(cache, ignore_errors=True)
 
     if "steady" in suites:
@@ -651,8 +822,17 @@ def main():
 
     if "sizes" in suites:
         for method in ("rejit", "padded"):
-            child("sizes", "--method", method, "--child-envs", size_envs, "--sizes", ",".join(map(str, a.sizes)),
-                  "--pad-to", a.pad_to)
+            child(
+                "sizes",
+                "--method",
+                method,
+                "--child-envs",
+                size_envs,
+                "--sizes",
+                ",".join(map(str, a.sizes)),
+                "--pad-to",
+                a.pad_to,
+            )
 
     if "loop" in suites:
         for variant in ("scan", "python"):
@@ -664,21 +844,39 @@ def main():
             print("note: the latency suite is meant for --device cpu; running it on cuda as asked")
         for ships in a.latency_ships.split(","):
             for threads in a.latency_threads.split(","):
-                child("latency", "--ships", ships, "--threads", threads,
-                      "--latency-ticks", a.latency_ticks, "--warmup", a.warmup)
+                child(
+                    "latency",
+                    "--ships",
+                    ships,
+                    "--threads",
+                    threads,
+                    "--latency-ticks",
+                    a.latency_ticks,
+                    "--warmup",
+                    a.warmup,
+                )
 
     if "ops" in suites:
         child("ops", "--ships", a.ships)
 
     meta = {
-        "framework": "jax", "jax": jax.__version__, "jaxlib": __import__("jaxlib").__version__,
-        "optax": optax.__version__, "numpy": np.__version__, "device": a.device,
-        "backend": jax.default_backend(), "devices": [str(d) for d in jax.devices()],
+        "framework": "jax",
+        "jax": jax.__version__,
+        "jaxlib": __import__("jaxlib").__version__,
+        "optax": optax.__version__,
+        "numpy": np.__version__,
+        "device": a.device,
+        "backend": jax.default_backend(),
+        "devices": [str(d) for d in jax.devices()],
         "compile_options": "jax.jit(fn) with defaults; float32 (jax_enable_x64 off)",
         "default_matmul_precision": str(jax.config.jax_default_matmul_precision),
         "xla_flags": os.environ.get("XLA_FLAGS", ""),
-        "argv": sys.argv[1:], "envs": envs, "compile_envs": compile_envs, "size_envs": size_envs,
-        "micro_batch": micro, "machine": spec.machine(),
+        "argv": sys.argv[1:],
+        "envs": envs,
+        "compile_envs": compile_envs,
+        "size_envs": size_envs,
+        "micro_batch": micro,
+        "machine": spec.machine(),
     }
     out = a.out or os.path.join(os.path.dirname(HERE), "results", f"jax_{a.device}_{a.suite}.json")
     spec.write_results(out, meta, records)

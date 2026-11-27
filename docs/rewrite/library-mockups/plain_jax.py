@@ -2,7 +2,6 @@
 
 import jax
 import jax.numpy as jnp
-
 from common import CONV_KERNEL, causal_conv, gelu, rglru_inputs, rglru_scan, rms_norm
 
 

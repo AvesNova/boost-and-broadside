@@ -4,7 +4,6 @@ Triton kernels counted as one op each (forward and backward).
 usage: python v2_learn.py V2_CHECKOUT [ppo|bc] [length]
 """
 
-import dataclasses
 import functools
 import importlib
 import inspect
@@ -13,10 +12,9 @@ import sys
 
 sys.path.insert(0, sys.argv[1] + "/src")
 sys.path.insert(0, ".")
+import regions as R
 import torch
 import torch.nn.functional as F
-
-import regions as R
 
 objective = sys.argv[2] if len(sys.argv) > 2 else "ppo"
 length = int(sys.argv[3]) if len(sys.argv) > 3 else 16
@@ -99,9 +97,9 @@ print("learner:", type(learner).__name__, "auxiliary:", learner.auxiliary)
 # --- every function and method of the model and the learner is a region (exclusive) ---
 prefixes = ("bnb.models.yemong", "bnb.learn", "bnb.models.heads")
 skip = ("bnb.models.yemong.kernels",)
-for info in list(pkgutil.walk_packages(importlib.import_module("bnb.models").__path__, "bnb.models.")) + list(
-    pkgutil.walk_packages(importlib.import_module("bnb.learn").__path__, "bnb.learn.")
-):
+for info in list(
+    pkgutil.walk_packages(importlib.import_module("bnb.models").__path__, "bnb.models.")
+) + list(pkgutil.walk_packages(importlib.import_module("bnb.learn").__path__, "bnb.learn.")):
     try:
         importlib.import_module(info.name)
     except Exception:
@@ -183,20 +181,44 @@ def measured_update(segments, bootstrap, environment_steps=0, cadence=False, hea
         micro = learner._micro_batches(chosen, sizes if len(chosen) in sizes else ())
         derived = prepared["derived"]
         total = prepared["counts"][learner._on_device(chosen)].sum(0).clamp_min(1.0)
-        denominator = dict(zip(type(learner).__mro__[0].__dict__.get("COUNTS", ()) or __import__("bnb.learn.ppo", fromlist=["COUNTS"]).COUNTS, total.unbind()))
+        denominator = dict(
+            zip(
+                type(learner).__mro__[0].__dict__.get("COUNTS", ())
+                or __import__("bnb.learn.ppo", fromlist=["COUNTS"]).COUNTS,
+                total.unbind(),
+            )
+        )
         learner.optimizer.zero_grad(set_to_none=True)
         trajectory, shot_labels = next(iter(learner.staged(segments, micro[:1])))
         v = learner._on_device(micro[0])
-        label = phase("phase: label codes (per micro-batch)", learner.labels, trajectory, shot_labels)
+        label = phase(
+            "phase: label codes (per micro-batch)", learner.labels, trajectory, shot_labels
+        )
         part = {name: value.index_select(1, v) for name, value in derived.items()}
-        out = phase("phase: forward and loss (per micro-batch)", learner.loss, trajectory, label, part, denominator, prepared["scale"])
+        out = phase(
+            "phase: forward and loss (per micro-batch)",
+            learner.loss,
+            trajectory,
+            label,
+            part,
+            denominator,
+            prepared["scale"],
+        )
         phase("phase: backward (per micro-batch)", out[0].backward)
         if out[5] is not None:
             with torch.no_grad():
-                phase("phase: heads' sums (cadence only)", learner.head_sums, out[5], trajectory, label)
+                phase(
+                    "phase: heads' sums (cadence only)",
+                    learner.head_sums,
+                    out[5],
+                    trajectory,
+                    label,
+                )
 
         def step():
-            norm = torch.nn.utils.clip_grad_norm_(learner.model.parameters(), learner.config.max_grad_norm)
+            norm = torch.nn.utils.clip_grad_norm_(
+                learner.model.parameters(), learner.config.max_grad_norm
+            )
             learner._step(torch.isfinite(norm))
 
         phase("phase: clip and optimizer (per minibatch)", step)

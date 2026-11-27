@@ -2,29 +2,32 @@
 
 Run: python check.py (needs jax, flax, equinox, optax, flatbuffers).
 """
+# ruff: noqa: E402  (a design-record script, kept as written)
 
 import warnings
 
 warnings.simplefilter("error", DeprecationWarning)  # surface API churn loudly
 
 import equinox as eqx
+import equinox_
 import jax
 import jax.numpy as jnp
-import optax
-from flax import nnx as fnnx
-from jax import export
-
-import equinox_
 import linen
 import nnx
+import optax
 import plain_jax
 from common import CONV_KERNEL
+from flax import nnx as fnnx
+from jax import export
 
 T, B, D, SLOTS = 16, 6, 8, 4
 key = jax.random.key(0)
 x = jax.random.normal(jax.random.key(1), (T, B, D))
 first = jax.random.bernoulli(jax.random.key(2), 0.15, (T, B))
-carry = (jax.random.normal(jax.random.key(3), (B, D)), jax.random.normal(jax.random.key(4), (CONV_KERNEL - 1, B, D)))
+carry = (
+    jax.random.normal(jax.random.key(3), (B, D)),
+    jax.random.normal(jax.random.key(4), (CONV_KERNEL - 1, B, D)),
+)
 
 # Each library: native init, and the contract function apply_plain(plain, x, carry, first).
 lin_block = linen.GriffinTemporalBlock()
@@ -41,7 +44,9 @@ libs = {
         lambda p, *a: lin_block.apply({"params": p}, *a),
     ),
     "nnx": (
-        lambda k: nnx.to_plain(fnnx.split(nnx.GriffinTemporalBlock(D, rngs=fnnx.Rngs(params=k)))[1]),
+        lambda k: nnx.to_plain(
+            fnnx.split(nnx.GriffinTemporalBlock(D, rngs=fnnx.Rngs(params=k)))[1]
+        ),
         lambda p, *a: fnnx.merge(nnx_graphdef, nnx_from_plain(p))(*a),
     ),
     "equinox": (
@@ -77,8 +82,12 @@ for name, (init, apply) in libs.items():
     updates, _ = opt.update(grads, opt.init(ref_plain), ref_plain)
     optax.apply_updates(ref_plain, updates)
     # 5. Export and reload the contract function (leaderboard submission path).
-    exported = export.deserialize(export.export(jax.jit(apply))(ref_plain, x, carry, first).serialize())
+    exported = export.deserialize(
+        export.export(jax.jit(apply))(ref_plain, x, carry, first).serialize()
+    )
     assert jnp.allclose(exported.call(ref_plain, x, carry, first)[0], ref_y, atol=1e-5), name
-    print(f"{name:9s} ok: matches plain JAX, rollout == sequence, {SLOTS} league slots, grad + optax, export")
+    print(
+        f"{name:9s} ok: matches plain JAX, rollout == sequence, {SLOTS} league slots, grad + optax, export"
+    )
 
 print("jax", jax.__version__)
