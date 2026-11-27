@@ -219,8 +219,6 @@ def run_stage(
     checkpoints = SnapshotSchedule((config.checkpoint_every,))
     if out is not None:
         league.snapshot_directory = out / SNAPSHOTS
-    if stage.name == "rl":
-        league.open(policy)  # the network table from the stage's first tick (static routing)
     envs = stage.state.exists.shape[0]
     while stage.index < stage.updates:
         index = stage.index

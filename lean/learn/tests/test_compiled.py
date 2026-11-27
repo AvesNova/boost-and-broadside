@@ -16,6 +16,7 @@ from lean.learn.rollout import (
     advance,
     draw_next_episodes,
     league_actions,
+    merge_league,
     self_play_count,
     slot_actions,
 )
@@ -172,10 +173,11 @@ def test_the_league_tick_compiles_fullgraph_so_it_never_reads_the_host():
 
 
 def test_the_league_routing_is_static_for_the_whole_run():
-    """The routing's table is fixed for the run (lean.learn.pool): K slots on W rows from
-    League.open, the empty ones on a placeholder; so under the static compile (training's,
-    a recompile raises) the routing graph compiles at the first tick and serves the table
-    before any snapshot, after the first ones and after more join, unchanged."""
+    """The routing's shapes are fixed for the run (lean.learn.pool): every slot on W rows,
+    the merge on K entries (a skipped empty slot's a filler); so under the static compile
+    (training's, a recompile raises) the routing and merge graphs compile when the first
+    network member joins and serve the table unchanged as more join, though the slots run
+    (the ones holding weights) grow from 3 to 5."""
     torch._dynamo.reset()
     torch.manual_seed(0)
     config = LearnConfig(team_size_minimum=2, team_size_maximum=2, league_capacity_factor=7.5)
@@ -184,21 +186,22 @@ def test_the_league_routing_is_static_for_the_whole_run():
     league = League(config)
     opponent = Opponent(scripted.ScriptedConfig(), league)
     state, carry = start(config, game_config, policy, opponent, 8, None)
-    league.open(policy)
     from lean.contract import compile_graph
 
     routing = compile_graph(slot_actions, "static")  # its own: graphs() is per process
+    merge = compile_graph(merge_league, "static")
     shapes = []
 
     def league_tick(carry):
         league.prepare(4, carry.slot)
-        shapes.append((len(league.table.slots), league.table.positions.shape[0]))
+        table = league.table
+        shapes.append(None if table is None else (len(table.slots), table.positions.shape[0]))
         decision = act(config, game_config, policy, opponent, state, carry, None)
         return league_actions(
-            config, opponent, decision.views, carry, decision.scripted.action, None, routing
+            config, opponent, decision.views, carry, decision.scripted.action, None, routing, merge
         )
 
-    league_tick(carry)  # open, no snapshot yet: every slot a placeholder on no rows
+    league_tick(carry)  # no snapshot yet: no slot holds weights, every game scripted
     add_snapshots(league, [policy, model.Policy(model.ModelConfig())])
     chosen = torch.tensor([0, EMA, FIRST_SNAPSHOT, FIRST_SNAPSHOT + 1])
     carry = dataclasses.replace(carry, member=chosen, slot=league.member_slot[chosen])
@@ -208,7 +211,7 @@ def test_the_league_routing_is_static_for_the_whole_run():
     chosen = torch.tensor([FIRST_SNAPSHOT + 3, FIRST_SNAPSHOT + 2, 0, FIRST_SNAPSHOT + 3])
     carry = dataclasses.replace(carry, member=chosen, slot=league.member_slot[chosen])
     league_tick(carry)  # a recompile here would raise (fail_on_recompile)
-    assert shapes == [(league.slot_count, 2)] * 3
+    assert shapes == [None, (3, 2), (5, 2)]
 
 
 def test_the_first_league_networks_do_not_recompile_the_tick():
@@ -257,7 +260,7 @@ def test_the_first_league_networks_do_not_recompile_the_tick():
     chosen = torch.tensor([0, EMA, FIRST_SNAPSHOT, FIRST_SNAPSHOT + 1])
     carry = dataclasses.replace(carry, member=chosen, slot=league.member_slot[chosen])
     league.prepare(4, carry.slot)
-    assert len(league.table.slots) == league.slot_count
+    assert len(league.table.slots) == 3  # the EMA and the two snapshots
     for row in (5, 6):
         state, carry = tick(state, carry, row)
     stats = torch._dynamo.utils.counters["stats"]

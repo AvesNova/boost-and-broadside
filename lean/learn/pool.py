@@ -36,11 +36,13 @@ on the games it is in (`retiring`) until they end; then the slot is free. A slot
 and the next segment's network table built (`prepare`), between segments, with one host
 read of the rows per slot. The averages' slots take the averages' new weights after every
 update: an average is one moving player, its running games continue with the new weights
-(as the live policy's do). The table is fixed for the run (a training run is static): from
-the RL stage's start (`open`) it holds all K slots, each on W = C rows (no slot ever holds
-more: a draw never takes a member past C, and a retiring slot keeps the rows it had), an
-empty slot running a placeholder network (the policy's weights at `open`) on no rows; so the
-routing graph compiles once, at the stage's first tick, and the tick makes K calls of it.
+(as the live policy's do). The table's shapes are fixed for the run (a training run is
+static): every slot runs on W = C rows (no slot ever holds more: a draw never takes a member
+past C, and a retiring slot keeps the rows it had), so one routing graph serves every slot
+and compiles once, when the first network member joins. A segment's table lists only the
+slots holding weights (members and retiring slots; the others can have no rows that
+segment), so the tick calls the graph once per such slot and skips the empty ones; the
+merge still takes K entries, a skipped slot's a zero filler no row reads (NetworkTable).
 
 Snapshot schedule (`SnapshotSchedule`, v2's src/bnb/runtime/snapshots.py): v2's
 LEAGUE_SNAPSHOTS, 5, 10, 15, 20, 25, 30, 40, 50, 60, 75, 90, 110, 130 and 160M environment
@@ -138,13 +140,20 @@ def retained(ordinals, recent: int, history_from: int, cap: int) -> set[int]:
 
 @dataclasses.dataclass
 class NetworkTable:
-    """One segment's network table (League.prepare): all K slots, each as (slot, parameters,
-    buffers) with `slot` a 0-d long tensor (a tensor, so that one compiled graph serves every
-    slot) and an empty slot's weights the placeholder's, and `positions` (W,) arange of the
-    rows a slot runs on (W = the network members' capacity, fixed for the run)."""
+    """One segment's network table (League.prepare): the slots holding weights, each as
+    (index, slot, parameters, buffers) with `index` the slot's int and `slot` the same as a
+    0-d long tensor (a tensor, so that one compiled graph serves every slot); `positions` (W,)
+    arange of the rows a slot runs on (W = the network members' capacity, fixed for the run);
+    `count` K, the merge's entries. `fillers` (built by the segment's first tick,
+    lean.learn.rollout.network_actions): per slot not in `slots`, a zero action and carry
+    shaped as a slot's output, so the merge always takes K entries of the same shapes (one
+    graph) though only the listed slots run; no row reads a filler (no row has a slot that
+    holds no weights)."""
 
-    slots: list[tuple[Tensor, dict[str, Tensor], dict[str, Tensor]]]
+    slots: list[tuple[int, Tensor, dict[str, Tensor], dict[str, Tensor]]]
     positions: Tensor
+    count: int
+    fillers: dict[int, tuple[Tensor, Tensor]] | None = None
 
 
 class League:
@@ -194,8 +203,7 @@ class League:
         self.snapshot_step: dict[int, int] = {}  # snapshot member -> its environment steps
         self.taken = 0  # snapshots taken so far
         self.abandoned = 0  # games re-dealt because no slot was free (should stay 0)
-        self.template: Stepper | None = None
-        self.placeholder: dict[str, Tensor] | None = None  # an empty slot's weights (open)
+        self.template: Stepper | None = None  # the network the slots' weights fill
         self.table: NetworkTable | None = None
 
     # ---- members
@@ -274,16 +282,6 @@ class League:
 
     # ---- between updates and segments (host side)
 
-    def open(self, policy) -> None:
-        """Make the network table (all K slots) exist from now on: the RL stage's start,
-        before its first segment, so the routing graph compiles once there and never mid-run
-        (the BC stage, which takes no snapshots, runs no network). The placeholder for empty
-        slots is a copy of the policy's weights now. Idempotent."""
-        if self.template is None:
-            self.template = template(policy)
-        if self.placeholder is None:
-            self.placeholder = stepper_weights(policy)
-
     def _start_member(self, member: int) -> None:
         self.present[member] = True
         self.games[member] = 0.0
@@ -327,7 +325,8 @@ class League:
         (L,). Returns (member, abandon): member with the games of dropped members RETIRED,
         and the slot (or None) whose games the caller must re-deal (lean.learn.rollout.
         abandon) because no slot was free for the new snapshot (counted in `abandoned`)."""
-        self.open(policy)
+        if self.template is None:
+            self.template = template(policy)
         abandon = None
         if self.schedule.due(steps_before, steps_after):
             rows = self.free_retired(slot)
@@ -379,15 +378,19 @@ class League:
     def prepare(self, league_envs: int, slot: Tensor) -> None:
         """Before a segment: free the retiring slots without games, set the capacities (the
         network members' C = ceil(capacity_factor * L / members), the scripted agent's L:
-        the same every segment of a run) and, once the league is open, build the network
-        table (NetworkTable) of all K slots on W = C rows. One host read (the rows per
-        slot)."""
+        the same every segment of a run) and build the network table (NetworkTable) of the
+        slots holding weights on W = C rows (None while no slot holds any: every league game
+        is scripted). One host read (the rows per slot)."""
         rows = self.free_retired(slot)
         width = min(league_envs, math.ceil(self.capacity_factor * league_envs / self.members))
         self.width = width
         self.capacity.fill_(width)
         self.capacity[SCRIPTED] = league_envs
-        if self.placeholder is None or league_envs == 0:
+        held = [index for index, weights in enumerate(self.slot_weights) if weights is not None]
+        orphans = [index for index in range(self.slot_count) if rows[index] and index not in held]
+        if orphans:
+            raise RuntimeError(f"league slots {orphans} have games but no weights")
+        if not held or league_envs == 0:
             self.table = None
             return
         over = [index for index in range(self.slot_count) if rows[index] > width]
@@ -398,15 +401,13 @@ class League:
             )
         slots = [
             (
+                index,
                 torch.tensor(index, device=self.device),
-                *split_weights(
-                    self.template,
-                    self.placeholder if weights is None else weights,
-                ),
+                *split_weights(self.template, self.slot_weights[index]),
             )
-            for index, weights in enumerate(self.slot_weights)
+            for index in held
         ]
-        self.table = NetworkTable(slots, torch.arange(width, device=self.device))
+        self.table = NetworkTable(slots, torch.arange(width, device=self.device), self.slot_count)
 
     # ---- checkpoints
 
@@ -477,8 +478,6 @@ class League:
         self.ordinal, self.snapshot_step = dict(state["ordinal"]), dict(state["snapshot_step"])
         self.taken, self.abandoned = state["taken"], state["abandoned"]
         self.template = template(policy)
-        if any(weights is not None for weights in self.slot_weights):
-            self.open(policy)
 
 
 SNAPSHOTS = "snapshots"

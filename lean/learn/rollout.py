@@ -309,8 +309,9 @@ def slot_actions(
 def merge_league(
     carry: CollectCarry, scripted_action: Tensor, actions: list[Tensor], carries: list[Tensor]
 ) -> LeagueMove:
-    """The league side's move from the slots' outputs (slot_actions, all K in slot order):
-    each league environment played by a network takes its slot's action and carry
+    """The league side's move from the slots' outputs (slot_actions, all K in slot order, a
+    skipped slot's a filler no row reads, NetworkTable): each league environment played by a
+    network takes its slot's action and carry
     (lean.model.agent.merge_routed), the others the scripted agent's action and their
     carry. One pass over the league environments."""
     league_envs = carry.member.shape[0]
@@ -342,17 +343,28 @@ def network_actions(
     step=slot_actions,
     merge=merge_league,
 ) -> LeagueMove:
-    """The league side's move: each slot of the league's network table (League.prepare)
-    runs on its own environments (`step`: slot_actions or its compiled form), one call per
-    slot: all K of them, the empty ones on no rows, so the calls are the same every tick of
-    the run; then `merge` (merge_league or its compiled form) puts the moves back."""
-    actions, carries = [], []
-    for slot, parameters, buffers in league.table.slots:
+    """The league side's move: each slot of the league's network table (League.prepare: the
+    slots holding weights) runs on its own environments (`step`: slot_actions or its compiled
+    form), one call per listed slot, the same calls every tick of a segment; then `merge`
+    (merge_league or its compiled form) puts the moves back from K entries, the unlisted
+    slots' the table's zero fillers (made at the segment's first tick, shaped as a slot's
+    output), so the merge's shapes never change."""
+    table = league.table
+    outputs = {}
+    for index, slot, parameters, buffers in table.slots:
         network_ = Network(league.template, parameters, buffers, config.bf16)
-        action, new_carry = step(network_, slot, league.table.positions, views, carry, generator)
-        actions.append(action)
-        carries.append(new_carry)
-    return merge(carry, scripted_action, actions, carries)
+        outputs[index] = step(network_, slot, table.positions, views, carry, generator)
+    if table.fillers is None:
+        action, new_carry = next(iter(outputs.values()))
+        table.fillers = {
+            index: (torch.zeros_like(action), torch.zeros_like(new_carry))
+            for index in range(table.count)
+            if index not in outputs
+        }
+    entries = [outputs.get(index) or table.fillers[index] for index in range(table.count)]
+    return merge(
+        carry, scripted_action, [entry[0] for entry in entries], [entry[1] for entry in entries]
+    )
 
 
 def league_actions(
