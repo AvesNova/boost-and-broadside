@@ -23,6 +23,7 @@ from lean.model import draw_position_offset, next_state_target
 from lean.model.agent import (
     Network,
     agent_step,
+    merge_routed,
     routed_step,
     seat_view,
     select_environments,
@@ -276,15 +277,14 @@ def slot_actions(
     positions: Tensor,
     views: tuple[Obs, Obs],
     carry: CollectCarry,
-    league_move: LeagueMove,
     generator,
-) -> LeagueMove:
+) -> tuple[Tensor, Tensor]:
     """One network slot's moves (lean.model.agent.routed_step, the routing the evaluation
     runner shares): the league environments it plays (carry.slot == `slot`, a 0-d long) run
     on a W-row batch (W = positions.shape[0], League.prepare's table width, fixed for the run:
-    never fewer than the slot's environments) from their league side's view, and read their
-    actions and carry back into `league_move`; the other environments keep theirs. No host
-    read, and one compiled graph for every slot (an empty slot runs on no rows)."""
+    never fewer than the slot's environments) from their league side's view. Returns the
+    batch's actions (W, N, 3) and carry (merge_league puts them back). No host read, and one
+    compiled graph for every slot (an empty slot runs on no rows)."""
     league_envs = carry.member.shape[0]
     envs = carry.learner_team.shape[0]
     first = envs - league_envs
@@ -294,7 +294,7 @@ def slot_actions(
             views, first + environment, 1 - carry.learner_team.index_select(0, first + environment)
         )
 
-    action, new_carry = routed_step(
+    return routed_step(
         network_,
         carry.slot == slot,
         positions,
@@ -302,9 +302,24 @@ def slot_actions(
         carry.opponent,
         carry.position_offset[first:],
         generator,
-        league_move.action,
-        league_move.carry,
         carry.reset[first:],
+    )
+
+
+def merge_league(
+    carry: CollectCarry, scripted_action: Tensor, actions: list[Tensor], carries: list[Tensor]
+) -> LeagueMove:
+    """The league side's move from the slots' outputs (slot_actions, all K in slot order):
+    each league environment played by a network takes its slot's action and carry
+    (lean.model.agent.merge_routed), the others the scripted agent's action and their
+    carry. One pass over the league environments."""
+    league_envs = carry.member.shape[0]
+    action, new_carry = merge_routed(
+        carry.slot,
+        actions,
+        carries,
+        scripted_action[scripted_action.shape[0] - league_envs :],
+        carry.opponent,
     )
     return LeagueMove(action, new_carry)
 
@@ -312,8 +327,8 @@ def slot_actions(
 def league_rows(scripted_action: Tensor, league_envs: int) -> Tensor:
     """The scripted agent's actions of the league environments (the last `league_envs` rows),
     as a tensor of their own: a slice is a view, and a compiled graph guards a view's base,
-    so a view here and a graph's output there (no base) would be two graphs (the routing
-    graph's second slot, and `advance` when the league's first network joins)."""
+    so a view here and a graph's output there (no base) would be two graphs (`advance`
+    when the league opens)."""
     return scripted_action[scripted_action.shape[0] - league_envs :].clone()
 
 
@@ -325,20 +340,19 @@ def network_actions(
     scripted_action: Tensor,
     generator,
     step=slot_actions,
+    merge=merge_league,
 ) -> LeagueMove:
-    """The league side's move: the scripted agent's `scripted_action` rows, then each slot of
-    the league's network table (League.prepare) moves its own environments (`step`:
-    slot_actions or its compiled form), one call per slot: all K of them, the empty ones on
-    no rows, so the calls are the same every tick of the run."""
-    league_envs = carry.member.shape[0]
-    # Copies to write into: an input that aliases another (carry.opponent) would be a second
-    # compiled graph, and a view (the scripted rows) is guarded through its base, so the
-    # next slot's input (a graph output, no base) would recompile the graph.
-    move = LeagueMove(league_rows(scripted_action, league_envs), carry.opponent.clone())
+    """The league side's move: each slot of the league's network table (League.prepare)
+    runs on its own environments (`step`: slot_actions or its compiled form), one call per
+    slot: all K of them, the empty ones on no rows, so the calls are the same every tick of
+    the run; then `merge` (merge_league or its compiled form) puts the moves back."""
+    actions, carries = [], []
     for slot, parameters, buffers in league.table.slots:
         network_ = Network(league.template, parameters, buffers, config.bf16)
-        move = step(network_, slot, league.table.positions, views, carry, move, generator)
-    return move
+        action, new_carry = step(network_, slot, league.table.positions, views, carry, generator)
+        actions.append(action)
+        carries.append(new_carry)
+    return merge(carry, scripted_action, actions, carries)
 
 
 def league_actions(
@@ -349,16 +363,17 @@ def league_actions(
     scripted_action: Tensor,
     generator,
     step=slot_actions,
+    merge=merge_league,
 ) -> LeagueMove:
     """The league side's move in every league environment: the scripted agent's actions
     (already computed as the BC target) and the unchanged opponent carry until the league is
-    open (League.open: the RL stage), then network_actions (`step` the per-slot function,
-    slot_actions or its compiled form)."""
+    open (League.open: the RL stage), then network_actions (`step` the per-slot function and
+    `merge`, or their compiled forms)."""
     league = opponent.league
     league_envs = carry.member.shape[0]
     if league is None or league.table is None or league_envs == 0:
         return LeagueMove(league_rows(scripted_action, league_envs), carry.opponent)
-    return network_actions(config, league, views, carry, scripted_action, generator, step)
+    return network_actions(config, league, views, carry, scripted_action, generator, step, merge)
 
 
 def start(config: LearnConfig, game_config, policy, opponent: Opponent, envs: int, generator):
@@ -680,13 +695,13 @@ def collect(
 
         compiled_graphs = graphs(config.compile_shapes)
         act_part, advance_part = compiled_graphs.act, compiled_graphs.advance
-        networks = compiled_graphs.slot_actions
+        networks, merge = compiled_graphs.slot_actions, compiled_graphs.merge_league
         generator = None
         # A fresh state can hold broadcast (stride 0) tensors where a re-dealt one holds
         # whole ones (even empty ones: fields with F = 0).
         state = whole_state(state)
     else:
-        act_part, advance_part, networks = act, advance, slot_actions
+        act_part, advance_part, networks, merge = act, advance, slot_actions, merge_league
     if opponent.league is not None:
         opponent.league.prepare(carry.member.shape[0], carry.slot)
     carry = dataclasses.replace(
@@ -709,7 +724,14 @@ def collect(
         decision = act_part(config, game_config, policy, opponent, state, carry, generator, support)
         deal_row = carry.deal_row.index_select(0, seat_environment)
         league_move = league_actions(
-            config, opponent, decision.views, carry, decision.scripted.action, generator, networks
+            config,
+            opponent,
+            decision.views,
+            carry,
+            decision.scripted.action,
+            generator,
+            networks,
+            merge,
         )
         state, carry, tick_records = advance_part(
             config,

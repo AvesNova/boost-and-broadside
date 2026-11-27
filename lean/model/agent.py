@@ -200,32 +200,48 @@ def routed_step(
     carry: Tensor,
     offset: Tensor,
     generator,
-    action: Tensor,
-    carry_out: Tensor,
     reset: Tensor | None = None,
 ) -> tuple[Tensor, Tensor]:
     """One network's moves on its own rows of R (capacity routing, mixture-of-experts style):
     the rows where `mine` (R,) bool take the rows 0, 1, ... of a W-row batch in order (W =
-    positions.shape[0], never fewer than the network's rows), the network runs once on those
-    W rows (`view_of(rows)` the view of the R-rows `rows` (W,), `carry` (blocks, R, ...),
-    `offset` (R, 2) and `reset` (R,) bool or None read at them), and each of its rows reads
-    its sampled action (N, 3) and new carry back into `action` (R, N, 3) and `carry_out` (the
-    carry's shape); the other
-    rows keep theirs. Padding rows (fewer of the network's rows than W) run on row 0's input
-    and are never read. No host read, and one compiled graph for every network, W and R.
-    Returns (action, carry_out), the carry contiguous (a compiled graph is specialised on
-    strides, so the carry keeps one layout from tick to tick)."""
-    source, rank = route_rows(mine, positions.shape[0])
-    width = positions.shape[0]
+    positions.shape[0], never fewer than the network's rows), and the network runs once on
+    those W rows (`view_of(rows)` the view of the R-rows `rows` (W,), `carry` (blocks, R,
+    ...), `offset` (R, 2) and `reset` (R,) bool or None read at them). Returns the batch's
+    sampled actions (W, N, 3) and new carry (blocks, W, ...): row k is the network's k-th row
+    of R (merge_routed puts them back); padding rows (fewer of the network's rows than W) run
+    on row 0's input and are never read. No host read, and one compiled graph for every
+    network."""
+    source, _ = route_rows(mine, positions.shape[0])
     view = view_of(source)
     rows_carry = carry.index_select(SEAT_AXIS, source)
     rows_reset = None if reset is None else reset.index_select(0, source)
     step = network_step(
         network_, view, rows_carry, offset.index_select(0, source), generator, rows_reset
     )
-    read = rank.clamp(min=0, max=width - 1)
-    sampled = split_joint(step.joint).index_select(0, read)
-    new_action = torch.where(mine[:, None, None], sampled, action)
-    new_carry = step.carry.index_select(SEAT_AXIS, read)
-    chosen = mine.view(*[1] * SEAT_AXIS, -1, *[1] * (carry_out.dim() - SEAT_AXIS - 1))
-    return new_action, torch.where(chosen, new_carry, carry_out).contiguous()
+    return split_joint(step.joint), step.carry
+
+
+def merge_routed(
+    slot: Tensor,
+    actions: list[Tensor],
+    carries: list[Tensor],
+    action: Tensor,
+    carry: Tensor,
+) -> tuple[Tensor, Tensor]:
+    """The K networks' routed_step outputs back on their rows in one pass: row r of R with
+    `slot` (R,) long s >= 0 takes row k of network s's batch, k its rank among the rows of
+    slot s (route_rows' order); rows with slot -1 keep `action` (R, N, 3) and `carry`
+    (blocks, R, ...). actions, carries: the K networks' (W, N, 3) and (blocks, W, ...).
+    Returns (action, carry), the carry contiguous (a compiled graph is specialised on
+    strides, so the carry keeps one layout from tick to tick)."""
+    networks, width = len(actions), actions[0].shape[0]
+    valid = slot >= 0
+    owner = slot.clamp(min=0)
+    counts = torch.nn.functional.one_hot(owner, networks) * valid[:, None].long()
+    rank = counts.cumsum(0).gather(1, owner[:, None]).squeeze(1) - 1
+    read = torch.where(valid, owner * width + rank.clamp(min=0, max=width - 1), 0)
+    sampled = torch.cat(actions).index_select(0, read)
+    new_action = torch.where(valid[:, None, None], sampled, action)
+    new_carry = torch.cat(carries, SEAT_AXIS).index_select(SEAT_AXIS, read)
+    chosen = valid.view(*[1] * SEAT_AXIS, -1, *[1] * (carry.dim() - SEAT_AXIS - 1))
+    return new_action, torch.where(chosen, new_carry, carry).contiguous()
