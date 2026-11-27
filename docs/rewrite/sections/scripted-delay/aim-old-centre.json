@@ -1,0 +1,24 @@
+{
+ "variant": "old",
+ "rows": "docs/rewrite/sections/lookahead-personas/candidates/robust-centre-3.json",
+ "envs": 128,
+ "ticks": 1800,
+ "fire_decisions": 10283,
+ "from_decision_pose": {
+  "median": 0.25227248668670654,
+  "p75": 0.6504806280136108,
+  "p90": 1.368000435829164,
+  "over_half_width": 0.15413789750072937
+ },
+ "from_pose_after_pending": {
+  "median": 0.03121422976255417,
+  "p75": 0.09311825782060623,
+  "p90": 0.2499006241559983,
+  "over_half_width": 0.0022367013517455995
+ },
+ "shots": 9977,
+ "hits": 1816,
+ "hit_rate": 0.18201864287862082,
+ "shots_per_ship_minute": 38.97265625,
+ "seconds": 113.76144192199718
+}

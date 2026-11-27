@@ -1,0 +1,24 @@
+{
+ "variant": "old",
+ "rows": null,
+ "envs": 128,
+ "ticks": 1800,
+ "fire_decisions": 3927,
+ "from_decision_pose": {
+  "median": 0.36256152391433716,
+  "p75": 0.8787466585636139,
+  "p90": 1.6076112985610962,
+  "over_half_width": 0.209065444359562
+ },
+ "from_pose_after_pending": {
+  "median": 0.057944606989622116,
+  "p75": 0.14069585502147675,
+  "p90": 0.2859170973300934,
+  "over_half_width": 0.008148714031066972
+ },
+ "shots": 4131,
+ "hits": 1291,
+ "hit_rate": 0.31251512950859356,
+ "shots_per_ship_minute": 16.13671875,
+ "seconds": 158.62858057700214
+}
