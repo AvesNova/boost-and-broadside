@@ -33,7 +33,7 @@ In:
 - one GPU for training; two teams;
 - elimination without shrink, 4v4, fields drawn per environment, fog;
 - one ship (the P-51D) on the core flight model;
-- the BFM scripted agent as yardstick and BC teacher;
+- the look-ahead scripted agent as yardstick and BC teacher;
 - the policy (attention plus a recurrent block per token, categorical heads), BC, then
   PPO with half self-play and half league games;
 - the evaluation runner and its result store, Elo, the crossover;
@@ -101,30 +101,11 @@ Tabled (built so they stay easy to add):
 - `docs/rewrite/core-decisions.md`: every decision and deliberate change to v2.
 - `docs/rewrite/core-backlog.md`: planned work and status. `core-worklog.md`: what was
   done, when, and how it was checked.
-- `docs/questions.md` and `docs/rewrite/author-review-2.md`: what waits on the author.
+- `docs/questions.md`: what waits on the author. `docs/rewrite/author-review-2.md`: the
+  2026-11-24 review (answers in core-decisions.md).
 - `docs/rewrite/scoreboard.md`: measured speed, memory, compile time.
 - `docs/provenance.md`: where each component of the model and learner comes from.
 
-## For the author to confirm
+## Open for the author
 
-1. **Training targets.** Answered 2026-11-25 (above).
-2. **Size generalisation.** Answered 2026-11-25: train at 4v4, keep skill up to 32v32 (99%
-   win rate against the scripted agent).
-3. **Speed floor.** The old brief kept v2's steady training speed as a floor; the core
-   game measured below it (question 12, open). Is there a speed requirement?
-4. **Parallel work.** "One GPU job at a time" against "agents may run in parallel except
-   during careful measurements" (2026-11-24). Is the rule one GPU job, with CPU and
-   analysis work in parallel?
-5. **Rented GPUs.** The old brief had the author launch rented-GPU runs; the 2026-11-16
-   rule lets me restart and choose the next job on my own judgement to keep a rented GPU
-   busy. Which holds for lean?
-6. **Tests per merge.** core-decisions says the quick suite on every merge; the older v2
-   rule was the quick tier on the touched files only. For lean, the whole `lean` quick
-   tier?
-7. **Where open items live.** `docs/questions.md`, `author-review-2.md` and the morning
-   notes all hold items for the author. One place?
-8. **Records.** The old brief planned goals, lessons, assumptions, findings and an
-   experiments index; only `docs/provenance.md` exists. Keep the rule that every model
-   and learner component has a provenance row? Drop the rest?
-9. **CLAUDE.md.** The old brief was to become the root `CLAUDE.md` on `core`. Should this
-   one?
+In `docs/questions.md` (the brief's own points: question 18).

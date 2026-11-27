@@ -879,7 +879,7 @@ ticks, compiled, finished games re-dealt; 1v1 fog off no fields, 4v4 fields and 
   dive goes out of use (23%, 9%, 1-5%). **Chosen: `store_weight` 0.25** (decision-safe: the
   smallest change that fixes the empty store, the store back at round 1's top (0.44-0.51), all
   three powers in use, and it beats round 2 in both setups). The 1v1 preference for more is a
-  question for the author (docs/questions.md (question 18)).
+  question for the author (docs/questions.md (question 19)).
 
 ## R3 step 4: final pass (2026-11-27 02:50-03:10)
 
@@ -952,4 +952,4 @@ ticks, compiled, finished games re-dealt; 1v1 fog off no fields, 4v4 fields and 
   `scripted1v1_nofields_fogoff_seed0..1.mp4` (seed 0 Blue wipe at 28.2 s; seed 1 both gone at
   41.5 s, a draw: round 2's slow seed, see step 3), `scripted4v4_seed0..1.mp4` (default map,
   fields, fog: Blue wipes at 21.6 s and 51.0 s). Not watched by me (I cannot play video).
-- Not done: the compile budget (question 1 in docs/questions.md (question 18)).
+- Not done: the compile budget (question 1 in docs/questions.md (question 19)).

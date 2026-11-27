@@ -29,9 +29,19 @@ it blocks. Answered questions move to the bottom with the answer and its date.
    (proposal-2.json); the BC persona spread and good region; which league personas; the clocks
    per team size. Blocks: the BC dry run's settings.
 
+18. **The brief's points to confirm (2026-11-24, docs/rewrite/core-brief.md).** Training
+   targets and size generalisation were answered 2026-11-25. Still open as written: (a) a
+   speed requirement beyond the training targets; (b) parallel work: one GPU job at a time
+   with CPU and read-only work alongside (practised since 2026-11-27, docs/rewrite/queue.md
+   rules); (c) rented GPUs: may the coordinator restart and choose the next job on its own
+   judgement; (d) tests: the quick tier once at the end of a branch on the touched tests
+   (practised since 2026-11-26); (e) one place for open items: this file; (f) records: keep a
+   provenance row for every model and learner component, drop the other planned records;
+   (g) whether core-brief.md becomes the root CLAUDE.md.
+
 ## Answered
 
-18. **Questions from the overnight branches, 2026-11-27** (`scripted-lookahead`,
+19. **Questions from the overnight branches, 2026-11-27** (`scripted-lookahead`,
    `bullet-deflector`, `deflector-lookahead`; first kept in a branch questions.md).
    - Scripted cold compile over the 260 s budget: **answered 2026-11-27 ~05:40**, budget
      provisionally raised; after the hot-path fixes the cold compile is about 121 s and the

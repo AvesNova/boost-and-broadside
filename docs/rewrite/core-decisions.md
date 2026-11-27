@@ -959,7 +959,7 @@ Bullet deflector and the runtime hit model (PROPOSAL, branch `bullet-deflector`,
 - **Found on the way** (own commit f583eb0c): the flight's 2x2 matrix exponential as batched
   matrix products was four cuBLAS calls, 43% of the step's CUDA time; written out elementwise
   the step is 1.76 -> 1.07 ms (deflector off).
-- Questions for the author: docs/questions.md (question 18, answered). Notes and numbers:
+- Questions for the author: docs/questions.md (question 19, answered). Notes and numbers:
   docs/rewrite/sections/bullet-deflector/progress.md.
 
 ## Author decisions 2026-11-27 (~05:40, relayed on branch deflector-lookahead)
