@@ -15,7 +15,7 @@ core when sensible (author 2026-11-27).
 ## Running
 
 - R1 Persona study round 2 (`personas-2`): 1v1 / 4v4 / 16v16, fields and fog, longer clocks,
-  crowd-dependent parameters, tuning, proposals. Game statistics (not timing-sensitive).
+  crowd-dependent parameters; (redirected 00:55) a Bradley-Terry skill surface over the parameters from all games, its robust centre as the proposed yardstick and persona centre, a loose adaptive ladder as validation and as a test of the ladder. Game statistics (not timing-sensitive).
 - R2 Two-level league (`league-pool`): pool, PFSP loader, duplicates, drain, scripted personas
   in one call, precompiled routing, resume. Includes timings: nothing else timing-sensitive
   runs beside it.
@@ -73,3 +73,4 @@ start); residual stream stays float32; compile baselines reset after item 1.
 - ~00:20 R2 two-level league done (`league-pool` 10f9ae2b, unmerged). Agent's numbers: share-tracking total variation over 100 updates 0.010 (core's capacity rule 0.246); RL tick 28.65 ms at 1 snapshot (core 26.37), 33.06 at 12 (32.51); BC 25.51 (24.19, per-row scripted parameters); smoke run RL 10 updates + resume, 8,100 steps/s, no recompile; fixed a core bug in train.set_random_states (GPU resume). Open for the author: K/R, personas sharing one member's share (scripted members took 88% early from random weights), real personas from R1. Item 2 (hit-range port, `hit-range-2`, CPU only) started beside R1.
 - Item 2 done: hit-range tool ported (`hit-range-2` d93bf0ae, unmerged; to merge with R1/R2 in item 1). Agent's check at 200 m astern with the new defaults: DPS 186.7, 287/300 hits, implied TTK 0.536 s, actual ~0.58 s, 2-sigma 2.39 m straight / 12.7 m after the egg (287 lines within 12 m = the 287 hits), half-width 2.375 m; no-store verified. Porting bug (old egg_entry arguments) caught in review and fixed.
 - 00:35 author: stop R1's CMA search (gen 1 already good enough; over-optimising risks a brittle agent tuned to the yardstick and eval conditions; no re-centred yardstick from it). R1 redirected to the study's goals, roughly and cheaply: which parameters matter for behaviour and for skill per size (Sobol), couplings and trade-offs, working ranges, iso-Elo diverse personas (league personas, BC good region). Budget ~1.5 h GPU.
+- 00:55 author: R1 revised — re-centring the yardstick IS wanted (correction: the 00:35 line's 'no re-centred yardstick' was the coordinator's overreach); fit a skill surface from all games, robust centre (plateau, not peak), uncertainty-directed games, loose ladder over the top candidates + anchors with a small round-robin to test the ladder. Budget ~2 h GPU.
