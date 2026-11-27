@@ -62,3 +62,10 @@ Python loop unrolls), act 4,535 -> 4,613, advance 3,194 -> 3,307; cold 142.2 s a
 For item 4 (training review): the fixed cost (fold the columns' supports into one padded
 tensor, one cross-entropy call); the store's extra 32 bytes per ship-tick of the geometry
 record at the real update size.
+
+## Tests (end of branch, 2026-11-28 ~05:20)
+
+Quick tier `-m "not slow"` lean/learn lean/model lean/eval lean/game: 303 passed. Slow lean/learn:
+5 passed and `test_compiled_loss_matches_eager` failed on its stale argument list (no geometry
+record or draw); fixed, then it passed (6 of 6). `ruff check lean`: clean; `ruff format --check`:
+clean. Compile check: see "Cost".

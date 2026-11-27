@@ -85,6 +85,7 @@ def test_a_static_graph_refuses_to_compile_again():
 def test_compiled_loss_matches_eager():
     from lean.learn import RolloutStore
     from lean.learn.compiled import graphs
+    from lean.learn.geometry import draw_keys
     from lean.learn.training import LOSS_NAMES, minibatch_loss, target_pass
 
     torch.manual_seed(0)
@@ -114,6 +115,15 @@ def test_compiled_loss_matches_eager():
         batch["next_state"],
         batch["next_valid"],
         batch["hit_label"],
+        batch["geometry"],
+        *draw_keys(
+            config.pair_samples,
+            config.field_pair_samples,
+            *observation.key_mask.shape,
+            observation.field_pos.shape[-2],
+            generator,
+            "cpu",
+        ),
         torch.tensor([1.0, 0.003, 0.5]),
         store.counts().index_select(0, views).sum(0),
     )
