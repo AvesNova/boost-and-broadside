@@ -49,9 +49,10 @@ def main():
     parser.add_argument("out")
     parser.add_argument("--group", default="sampler")
     parser.add_argument("--extra", nargs="*", default=[])
+    parser.add_argument("--centre", default=str(round3.CENTRE))
     a = parser.parse_args()
     group = round3.read_group(a.group)
-    centre = round3.rows_of(round3.CENTRE)
+    centre = round3.rows_of(a.centre)
     result = {}
     for size in blur2.SIZES:
         states = blur2.States(STATES, size)

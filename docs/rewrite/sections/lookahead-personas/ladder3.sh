@@ -1,0 +1,10 @@
+#!/bin/bash
+# Round 3 ladder (10 agents, every pair, adaptive to score SE 0.05, 1v1/4v4/16v16), then the
+# label blur from the round-3 centre with the league's pairwise JS. Locked jobs, at most 6.
+D=docs/rewrite/sections/lookahead-personas
+DATA=/home/vizia/avesnova/boost-and-broadside/data/lookahead-personas-3
+for i in $(seq 1 6); do
+  grep -q "ladder done" $DATA/logs/ladder-*.log 2>/dev/null && break
+  $D/locked3.sh ladder-$i "uv run --no-sync python $D/round3.py ladder robust-centre-3=docs/rewrite/sections/lookahead-personas/candidates/robust-centre-3.json robust-centre-2=docs/rewrite/sections/lookahead-personas/candidates/robust-centre.json yardstick=docs/rewrite/sections/lookahead-personas/candidates/yardstick.json crowd-known=docs/rewrite/sections/lookahead-personas/candidates/crowd-known.json surface-peak-3=docs/rewrite/sections/lookahead-personas/candidates/surface-peak-3.json league3-1=docs/rewrite/sections/lookahead-personas/candidates/league3-1.json league3-2=docs/rewrite/sections/lookahead-personas/candidates/league3-2.json league3-3=docs/rewrite/sections/lookahead-personas/candidates/league3-3.json league3-4=docs/rewrite/sections/lookahead-personas/candidates/league3-4.json league3-5=docs/rewrite/sections/lookahead-personas/candidates/league3-5.json --target-error 0.05 --minutes 9"
+done
+$D/locked3.sh blur-centre3 "uv run --no-sync python $D/blur3.py $D/blur-3.json --centre docs/rewrite/sections/lookahead-personas/candidates/robust-centre-3.json --extra robust-centre-2=docs/rewrite/sections/lookahead-personas/candidates/robust-centre.json robust-centre-3=docs/rewrite/sections/lookahead-personas/candidates/robust-centre-3.json league3-1=docs/rewrite/sections/lookahead-personas/candidates/league3-1.json league3-2=docs/rewrite/sections/lookahead-personas/candidates/league3-2.json league3-3=docs/rewrite/sections/lookahead-personas/candidates/league3-3.json league3-4=docs/rewrite/sections/lookahead-personas/candidates/league3-4.json league3-5=docs/rewrite/sections/lookahead-personas/candidates/league3-5.json"
