@@ -137,13 +137,85 @@ heads now train on visible enemies, so the first review's item 7 (heads on own r
 applies only to the policy and value heads; the pair head's per-ship projections run on all
 8 slots, also the masked ones (needed for the gather at fixed shapes).
 
-## 2. Activation checkpointing and the micro-batch curve
+## 2. Activation checkpointing, selective recompute, and the micro-batch curve
 
-TBD
+`memory_curve.py`: the compiled update over 384 views (256 environments, one segment), one
+epoch of one minibatch, at micro-batch B views, three ways: plain (the trainer's graph);
+**checkpoint** (every residual sublayer, 2 temporal and 4 spatial, under non-reentrant
+`torch.utils.checkpoint`: per-block checkpointing at sublayer grain, only each sublayer's input
+kept); **budget 0.5** (`torch._functorch.config.activation_memory_budget = 0.5`: the
+partitioner recomputes activations, cheapest element-wise ones first, to keep at most half the
+saved bytes: inductor's selective recompute). Each its own process and empty cache; the
+losses agree to 6-7 digits across all of them (the same minibatch; different pair draws).
+
+| B (views) | plain: ms per 64 views | plain: peak allocated | checkpoint | budget 0.5 |
+|---|---|---|---|---|
+| 8 | **140.9** (-14.6%) | | | |
+| 16 | **147.8** (-10.4%) | 1.21 GiB | | |
+| 24 | 154.1 (-6.6%) | | | |
+| 32 | 158.8 (-3.8%) | 2.35 GiB | | 185.0, 1.79 GiB |
+| 48 | 163.0 (-1.2%) | 3.50 GiB | | |
+| 64 (recipe) | 165.0 | 4.61 GiB | 198.7 (+20.4%), 2.98 GiB | 190.6 (+15.5%), 3.46 GiB |
+| 128 | out of memory | | 201.8 per 64 (+22%), 5.89 GiB | out of memory |
+| 256 | out of memory | | out of memory | out of memory |
+
+(B 4 at 8 environments: 159.6 ms per 64 views, 10.0 ms per micro-batch against the 6.0 ms host
+floor at B 1: host-bound from about B 4 down.)
+
+**The curve runs the other way from the usual one: on this GPU smaller micro-batches are
+faster per view**, down to at least B 8. The profile at B 16 (`profile_update.py --b 16`, 12
+micro-batches) against B 64, kernel time per 64 views: GEMMs 37.6 against 46.3 ms (-19%),
+"other pointwise" 23.8 against 29.3, norms 22.0 / 23.5, GELU 16.7 / 18.1, sigmoid 12.1 / 13.8,
+attention and losses about equal; the kernel count per micro-batch is the same (about 1,000) at
+every B, so B 16 launches 4x as many per view, and the GPU's busy share falls from 98.2% to
+95.0%. The likely cause is the L2 cache (32 MB on this GPU): at B 64 a float32 (tokens x width)
+activation is 37.7 MB, at B 16 9.4 MB, so a norm's output is still in L2 when the next GEMM or
+pointwise kernel reads it. (Not proven: no L2 counters read.) Below B 8 the host's fixed ~6 ms a
+micro-batch takes over.
+
+Checkpointing and the memory budget work (memory down 35% and 25% at B 64) but cost 20% and
+15% of the step, and buy nothing here: B is already limited by speed, not memory, and the faster
+small micro-batches use less memory too (1.2 GiB at B 16). They would matter only to run a large
+B on a small GPU, or to keep the whole rollout on the device (`stream_rollout=False`) on the
+laptop. Not proposed.
+
+On the 5090 the optimum moves (its L2 is 96 MB, and its faster kernels make the ~6 ms of host
+per micro-batch binding at a larger B): measure the same curve there (`memory_curve.py plain B`)
+and set `micro_batch_views` per machine. The recipe's numbers do not change with B (a
+minibatch's gradient is the sum over its micro-batches; within rounding), apart from which
+geometry pairs are drawn (a fresh draw per micro-batch either way).
 
 ## 3. Compiler modes per graph
 
-TBD
+`grid_loss.py` (the update's graph: minibatch_loss forward and backward, as the update section)
+and `profile_collect.py bc MODE` (act and advance together, the BC tick at 2,048
+environments). Each mode its own cache directory: "cold" empties it first, "warm" is the next
+process on the cache the cold one left.
+
+| graph | mode | cold first call | warm first call | steady | vs default |
+|---|---|---|---|---|---|
+| minibatch_loss | default (the trainer's) | 49.6 s | 3.4 s | 165.85 ms / micro-batch | |
+| minibatch_loss | max-autotune-no-cudagraphs | 498.8 s | 3.8 s | 163.4-163.8 | -1.3% |
+| minibatch_loss | reduce-overhead | fails (gradient accumulation: section 4) | | | |
+| minibatch_loss, 1 micro-batch per minibatch | default | | 3.5 s | 166.3 | |
+| minibatch_loss, 1 micro-batch per minibatch | reduce-overhead | 50.1 s | 3.5 s | 165.4-165.5 | -0.5% |
+| minibatch_loss, 1 micro-batch per minibatch | max-autotune | MA_LOSS_COLD | MA_LOSS_WARM | MA_LOSS_STEADY | MA_LOSS_VS |
+| act + advance (BC tick) | default | 94.3 s (first segment) | 14.9 s | 25.34 ms / tick | |
+| act + advance | max-autotune-no-cudagraphs | 305.7 s | 35.2 s | 25.04-25.06 | -1.2% |
+| act + advance | reduce-overhead | fails (outputs overwritten: section 4) | | | |
+| act + advance | max-autotune | MA_COLLECT_COLD | MA_COLLECT_WARM | MA_COLLECT_STEADY | MA_COLLECT_VS |
+
+The first call includes the eager work before it (the collect's own set-up for the tick rows);
+the "cold" loss row's 49.6 s is almost all compile. max-autotune on this GPU autotunes only
+pointwise and reduction kernels ("Not enough SMs to use max_autotune_gemm mode": 36 SMs, the
+threshold is 68): -1.2% to -1.3% for 6-10x the cold compile, which breaks the 150 s compile
+budget (the warm cache recovers it). reduce-overhead gains 0.5% where it runs at all (the host
+is hidden). slot_actions and merge_league (RL only) were not put through the grid: they are
+the same model step on 107 rows and a merge; minibatch_values runs only with
+`targets_every_epoch`. The losses agree across modes to 6-7 digits (first_loss in grid.jsonl).
+
+Verdict on the laptop: keep default. On the 5090 GEMM autotuning applies and the host share
+is larger: run the grid there (both scripts take the mode) before deciding.
 
 ## 4. The CUDA-graph rewrite
 

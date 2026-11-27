@@ -2,7 +2,7 @@
 environments, 4v4, the training game), the trainer's stage set-up (lean.train.new_stage: its
 league, BC or RL with the EMA playing), streamed into a store.
 
-    PYTHONPATH=. python docs/rewrite/sections/training-review-2/profile_collect.py bc|rl [MODE] [cold] [--no-profile] [--envs N]
+    PYTHONPATH=. python docs/rewrite/sections/training-review-2/profile_collect.py bc|rl [MODE] [cold] [--no-profile] [--envs N] [--chunks C]
 
 MODE (default "default"): the torch.compile mode of act and advance (the compiler grid).
 One compiling segment of 128 ticks, one timed steady segment of 128 ticks, then
@@ -26,8 +26,8 @@ TEMPERATURE = "cold" if "cold" in sys.argv else "warm"
 if TEMPERATURE == "cold":
     import shutil
 
-    shutil.rmtree(f"{common.DATA}/cache/collect-{STAGE}-{MODE}" + ("-small" if "--envs" in sys.argv else ""), ignore_errors=True)
-common.cache_dir(f"collect-{STAGE}-{MODE}" + ("-small" if "--envs" in sys.argv else ""))
+    shutil.rmtree(f"{common.DATA}/cache/collect-{STAGE}-{MODE}" + ("-small" if "--envs" in sys.argv else "") + ("-chunks" if "--chunks" in sys.argv else ""), ignore_errors=True)
+common.cache_dir(f"collect-{STAGE}-{MODE}" + ("-small" if "--envs" in sys.argv else "") + ("-chunks" if "--chunks" in sys.argv else ""))
 
 import os  # noqa: E402
 import time  # noqa: E402
@@ -46,6 +46,35 @@ def main() -> None:
     record = {"job": "profile_collect", "stage": STAGE, "mode": MODE, "cache": TEMPERATURE, **common.machine()}
     if MODE != "default":
         common.patch_graphs({"act": MODE, "advance": MODE})
+    if "--chunks" in sys.argv:  # prototype: the live policy's step over seat chunks
+        chunks = int(sys.argv[sys.argv.index("--chunks") + 1])
+        record["policy_step_chunks"] = chunks
+        import dataclasses as _dataclasses
+
+        from lean.model import policy as _policy
+
+        whole_step = _policy.Policy.step
+
+        def chunked_step(self, obs, carry, position_offset=None, reset=None):
+            seats = obs.key_mask.shape[0]
+            size = -(-seats // chunks)
+            parts = []
+            for start in range(0, seats, size):
+                part = slice(start, start + size)
+                view = _dataclasses.replace(
+                    obs, **{f.name: getattr(obs, f.name)[part] for f in _dataclasses.fields(obs)}
+                )
+                parts.append(
+                    whole_step(
+                        self, view, carry[:, part],
+                        None if position_offset is None else position_offset[part],
+                        None if reset is None else reset[part],
+                    )
+                )
+            logits, values, carries = zip(*parts)
+            return torch.cat(logits), torch.cat(values), torch.cat(carries, 1)
+
+        _policy.Policy.step = chunked_step
     device = torch.device("cuda")
     torch.manual_seed(0)
     generator = torch.Generator(device=device).manual_seed(0)
