@@ -272,3 +272,85 @@ gather went to memory; a masked sum over the 8 ships is another reduction over t
 and stays in the pair kernel's registers. Why B and E lost: in B inductor split the turn into a
 second kernel that re-reads 25 per-bullet values; in E the unrolled pairs were materialised
 per ship. Next: the whole-tick breakdown by feature; the ghost-only bullet prototype.
+
+## 14:50 egg speed: after the reboot (14:20); hardware counters; whole tick by feature
+
+Re-measured after the reboot on a quiet machine (load < 2, GPU idle but the desktop, laptop
+4070, performance), bench_tick, 2 rounds each, trees alternating:
+
+| tree | off ms | egg ms |
+|---|---|---|
+| base 180d16a8 | 0.980 / 0.975 | 1.392 / 1.387 |
+| egg-speed D0 (00e3c654) | 0.974 / 0.976 | 1.091 / 1.093 |
+| ghost-only prototype (egg-speed-ghostonly b3a16e9d) | 0.757 / 0.785 | 1.062 / 1.108 |
+
+ncu (counters now enabled; one tick, `--cache-control none`, kernels serialised at ncu's
+clocks, so its us run ~20% above the profiler's): DRAM per tick off 131.5 MB (70 read, 61
+write), D0 egg 143 MB, base egg 225 MB. At the 4070's ~256 GB/s that is ~0.5 ms of the off
+tick's 1.2 ms: **the tick is mostly not DRAM-bound**. The egg's pair kernel (D0) is
+compute-bound: SM throughput 65%, issue slots busy 66%, DRAM 26%, 127 registers per thread,
+occupancy 33% (limited by registers), 358 us under ncu.
+
+Whole tick by feature (kernels grouped by their FX source-node names; ncu us and DRAM MB of
+one tick; launches per tick):
+
+| feature | off: launches / us / MB | D0 egg: launches / us / MB | base egg: us / MB |
+|---|---|---|---|
+| ship flight (fields on ships; 4 kernels) | 4 / 371 / 24.4 | 4 / 371 / 24.3 | 372 / 24.9 |
+| bullet move (fields on bullets + the frozen-if-not-flying block) | 2 / 339 / 37.0 | 2 / 337 / 41.3 | 328 / 38.1 |
+| hit test + damage (+ egg turn, deflect) | 6 / 182 / 24.9 | 6 / 363 / 33.0 | 670 / 122.0 |
+| fog / sight (sight lines through fields, seen rows, bullet share) | 7 / 148 / 12.3 | 7 / 152 / 13.1 | 151 / 14.9 |
+| fire (incl. ghosts: every living ship writes a bullet a tick) | 2 / 90 / 20.2 | 3 / 81 / 17.4 | 57 / 12.2 |
+| bullet bookkeeping (moves-left / fired-tick counts) | 2 / 44 / 9.6 | 2 / 44 / 10.0 | 43 / 9.4 |
+| collisions + boundary + shields | 1 / 16 / 2.6 | 1 / 19 / 3.5 | 18 / 3.6 |
+| end check | 1 / 4 / 0.4 | 1 / 4 / 0.4 | 3 / 0.1 |
+| misc (slot ring, alive select) | 2 / 5 / 0.2 | 2 / 5 / 0.1 | 5 / 0.1 |
+| total | 27 / 1,200 / 131.5 | 28 / 1,374 / 143.0 | 1,648 / 225.3 |
+
+Bullets in total (fire, move, hit test and damage, bookkeeping; ghosts included, every bullet
+slot is computed whether ghost, real or idle): off 655 us of 1,200 (55%), 92 MB; egg 825 us
+(60%). Ships (flight, collisions, shields, end check): 391 us (33%), 27 MB. Fog/sight 148 us
+(12%). The fields' share is inside the flight and bullet-move kernels (fused); the ablation
+below separates it. Observations are not built in the tick (only the fog's seen rows).
+
+Ghost-only prototype (branch egg-speed-ghostonly, off D0; measurement only, not for merge):
+12-slot ring, every ship alive or dead writes one bullet a tick, life exactly 12 ticks, no
+moves-left countdown, one uint8 state (0 ghost, 1 real, 2 contacted: no more contact or
+damage, keeps flying), fired tick from the ring age, slots start as ghosts parked on their
+owner. Off 0.975 -> 0.77 ms (-21%); egg 1.09 -> 1.06-1.11 ms (no clear change). Kernels
+(ncu): off 27 -> 23 launches, 1,200 -> 1,012 us, 131.5 -> 91.6 MB: the frozen-if-not-flying
+block write is gone (bullet move 339 -> 231 us, 37 -> 19 MB), the counts kernels are gone
+(44 -> 8 us), the bullet share is one kernel less, the hit test 182 -> 170 us. Egg: the
+pair kernel grows 330 -> 431 us and a new 124 us per-bullet kernel appears (the move is no
+longer materialised, so the pair kernel recomputes the moved columns, as cut C showed), so
+the egg keeps 589 us of hit test. Tests: lean/game quick tier 116 passed, 1 failed
+(test_every_living_ship_emits_a_bullet_every_tick: dead ships now write too and states are
+uint8: the intended rule change). Parked ghosts at the owner can give contact labels to ships
+passing within the hit radius in the first 12 ticks (a side effect of the rule as specified).
+
+Egg cuts tried after D0 (against D0 in the same session):
+
+| try | what | egg ms (D0) | kept |
+|---|---|---|---|
+| F | select the bend pass's inputs, egg_turn once per bullet (B again, on D0) | 1.301 (1.090) | no: inductor splits the damage into a separate per-bullet kernel |
+| G | only the straight impact from the selected pass (one line impact per bullet, not per pair) | 1.239 (1.094) | no: same split |
+
+Why: the fused pair kernel is compute-bound and register-limited; any extra post-reduction
+selection makes inductor cut the damage (and its ~20 per-bullet inputs) into its own kernel,
+which costs more than the per-pair arithmetic it saves.
+
+Ablation (D0 tree, one process, each config compiled and timed like bench_tick; 14:45):
+
+| config | off ms | egg ms |
+|---|---|---|
+| default (fields, fog, ghosts) | 1.016 | 1.133 |
+| no fields | 0.728 | 0.932 |
+| no fog | 0.880 | 1.041 |
+| no ghost bullets | 1.031 | 1.102 |
+| no fields, fog or ghosts | 0.705 | 0.842 |
+
+So fields cost ~0.29 ms off (28% of the tick: in flight, bullet motion and sight lines), fog
+~0.14 ms, ghost bullets nothing measurable (every slot is computed densely either way; ghosts
+change which slots are live, not the work). The egg's extra over off: 0.12 ms with
+everything on, 0.20 ms without fields (the fields' kernels hide part of it).
+Next: final checks (tests, ruff, compile check).
