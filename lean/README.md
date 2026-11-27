@@ -46,9 +46,10 @@ Run from the repository root, each with `uv run --no-sync` in front and `PYTHONP
     PYTHONPATH=. python docs/rewrite/sections/scoreboard/compile_check.py   # the compile tripwire
 
 Training and evaluation use a GPU when there is one, and training compiles; `--device cpu` and `--no-compile`
-run eagerly. The compile tripwire needs the GPU (about 4 minutes on the laptop's 4070): run it at the
-end of every step that touches `lean/`; it fails on a graph break, a recompile, or a function's
-traced operations growing by more than 10%. Set `OMP_NUM_THREADS` to a few threads for small CPU runs.
+run eagerly. The compile tripwire needs the GPU (a cold compile of about 2 minutes on the
+laptop's 4070, budget 150 s): run it at the end of every step that touches `lean/`; it fails on a
+graph break, a new graph, a recompile, a function's traced operations growing by more than 10%,
+or a cold compile over the budget. Set `OMP_NUM_THREADS` to a few threads for small CPU runs.
 A checkpoint plays in the evaluation as `net:CHECKPOINT[:live|ema|uniform]`.
 
 ## Tests read the code's values

@@ -31,7 +31,7 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
   `slot_draws`, draining slots, the persona parameter table), `SnapshotSchedule`, `retained`.
 - `rewards.py`: v2's five reward levels and the damage ledger.
 - `compiled.py`: `graphs(shapes)`: act, advance, slot_actions, merge_league, minibatch_values,
-  minibatch_loss. `LearnConfig.compile_shapes` (2026-11-27): "static" (the default) compiles
+  minibatch_loss. `LearnConfig.compile_shapes`: "static" (the default) compiles
   each for the run's sizes (environments, slots, fields, micro-batch, the league table: all
   fixed in a run) and any second compile raises; "dynamic" compiles once for every size (duck
   sizing off). The critic's support (`returns.value_support`) is built once per collect and
@@ -72,9 +72,8 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
 
 ## The league
 
-Two levels (2026-11-27, author ~20:15 "implement and test out the two level league"; PROPOSAL
-in docs/rewrite/core-decisions.md until the author decides; progress and numbers in
-docs/rewrite/sections/league-pool/progress.md).
+Two levels (`pool.py`; a proposal in docs/rewrite/core-decisions.md "The two-level league"
+until the author decides; numbers in docs/rewrite/sections/league-pool/progress.md).
 
 - Environments 0 to E/2 - 1 are self-play (two live seats); the rest are league games (one live
   seat); the live policy's games continue across updates.
@@ -95,8 +94,8 @@ docs/rewrite/sections/league-pool/progress.md).
   a member dropped by retention unloads every slot (its games RETIRED, untallied). No game is
   ever re-dealt.
 - Level 2 (`draw`, at a game's end, in the tick): uniform over the loaded slots with a free row
-  (C = ceil(1.25 L / K) = 107 at L 1,024), as the old draws (accept within the free rows, one
-  redraw, then in slot order); past every free row the overflow slot (a capacity-free yardstick
+  (C = ceil(1.25 L / K) = 107 at L 1,024): accepted within the free rows, one
+  redraw, then in slot order; past every free row the overflow slot (a capacity-free yardstick
   slot; `overflow_games` counts, never seen in the simulations).
 - Compute: each network slot holding weights (loaded or draining) runs once on W = C rows
   (`slot_actions`, one graph; empty slots skipped); scripted slots (yardstick, personas) take the
@@ -115,29 +114,24 @@ docs/rewrite/sections/league-pool/progress.md).
 
 ## Numbers (laptop RTX 4070, performance profile, 2,048 x 4 x 128, compiled, bf16, core game)
 
-- Loop speed 2026-11-27 (train-audit): BC 8,255 steps/s, 127.0 s per update (collect plus
-  update); the update alone 114.5 s (149.1 ms per micro-batch), peak allocated 4.74 GiB.
-- Loop speed (collect plus update), earlier: 6,670 steps/s in RL before the first snapshot (step L2,
-  2026-11-23); BC 6,668. Peak allocated 5.7 GiB. Steady speed with league networks playing is
-  not measured under the per-slot routing (the one short run included its compile: 4,852).
-- League side, two levels (2026-11-27, league-pool, back to back with core): the RL tick 27.9 ms
-  with no snapshot (EMA, 2 x 107 rows; core 24.1, no network), 28.6 ms with 1 (core 26.4),
-  33.1 ms with 12 (core 32.5); the BC tick 25.5 ms (core 24.2: the per-row scripted
-  parameters, 1.3 ms). Share tracking and the smoke run: docs/rewrite/sections/league-pool/.
-- League side before the two-level league (2026-11-27, slots x 86 rows, the empty slots skipped): the RL tick at E 2,048 is
-  26.4 ms with 1 snapshot (2 slot calls) and 32.5 ms with 12 (11 calls), against 24.2 ms
-  without league networks; running all 18 slots it was 38.5 and 38.6 ms (the rows are
-  compute-bound work, so a single vmap call over the stacked slots measured the same, 38.9 ms,
-  and was reverted). Tick-audit's varying table cost 30.1 ms (2 slots x 427) to 36.9 ms
-  (11 x 107).
-- Compile: cold start about 240 s; the compile tripwire (`compile_check.py`) fails on any graph
-  break, new graph, recompile, or a function's traced operations over 10% above its baseline
+- Loop speed (2026-11-27, before the two-level league): BC 8,255 steps/s, 127.0 s per update
+  (collect plus update); the update alone 114.5 s (149.1 ms per micro-batch), peak allocated
+  4.74 GiB.
+- League side, two levels (2026-11-27, back to back with the one-level league): the RL tick
+  27.9 ms with no snapshot (EMA, 2 x 107 rows; one-level 24.1, no network), 28.6 ms with 1
+  (26.4), 33.1 ms with 12 (32.5); the BC tick 25.5 ms (24.2: the per-row scripted parameters,
+  1.3 ms). Share tracking and the smoke run: docs/rewrite/sections/league-pool/.
+- Compile (baseline reset 2026-11-27 ~22:00, `compile_baseline.json`): 5 graphs (act 4,535
+  traced operations, advance 3,194, minibatch_loss 861, slot_actions 720, merge_league 28),
+  cold 121 s, budget 150 s. The compile tripwire (`compile_check.py`) fails on any graph break,
+  new graph, recompile, or a function's traced operations over 10% above its baseline
   (`docs/rewrite/scoreboard.md` "Compile time"). Run it at the end of every step:
 
       PYTHONPATH=. python docs/rewrite/sections/scoreboard/compile_check.py
 
-- First BC check (3 updates, GPU): teacher cross-entropy 3.65, 2.91, 2.23 nats; the KL monitor
-  fired in the warm-up (fourth-epoch means 0.14 to 0.34).
+- The inductor and triton caches default to ~/.cache/bnb-inductor (lean.contract, when
+  TORCHINDUCTOR_CACHE_DIR is unset): /tmp is wiped at reboot, and a warm cache skips most of the
+  cold compile.
 
 ## Tests
 
@@ -152,8 +146,6 @@ retention), `test_learn.py`, `test_hit_head.py`,
 equal to eager, the league tick fullgraph, and static for the whole run: one compile at RL's
 start through loads, unloads, duplicates and a retention drop).
 
-- The inductor and triton caches default to ~/.cache/bnb-inductor (lean.contract.compile_dynamic, when TORCHINDUCTOR_CACHE_DIR is unset): /tmp is wiped at reboot and the warm cache saves about 140 s.
-
 ## Open
 
 - The league's personas are placeholders (round 1's strongest four) until the persona study
@@ -164,8 +156,10 @@ start through loads, unloads, duplicates and a retention drop).
   should share one member's share is the author's call.
 - The teacher term's numbers (0.5, 0.95, cut-off 0.005) and the BC length are defaults with
   reasons, not measured; v2's BC ran 8x the Adam steps per update.
-- The KL warning fired on every update after the first in the GPU check; if it fires routinely in
-  a longer run, make 0.02 a stop checked after each epoch (for the author).
+- The KL warning fired on every update after the first in the first BC check (3 updates, GPU,
+  2026-11-23); if it fires routinely in a longer run, make 0.02 a stop checked after each epoch
+  (for the author).
+- Steady loop speed with league networks playing (the two-level league) is not measured.
 - Entropy stays on during the teacher phase (VPT dropped it there). The uniform average in BC
   includes the stage's early weights; the hand-off uses the EMA.
 - Checkpoints repeat the games in progress and Adam's moments (43 MB at smoke size).

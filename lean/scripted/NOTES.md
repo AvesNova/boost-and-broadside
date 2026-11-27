@@ -2,11 +2,10 @@
 
 The scripted opponent: the yardstick that the evaluation rates against (1000 Elo), the BC
 teacher, and a population of personas around it. Plus a weaker deterministic chaser. A
-look-ahead scoring agent (author 2026-11-26; design, steps and measurements:
+look-ahead scoring agent (design, steps and measurements:
 `docs/rewrite/sections/scripted-lookahead/progress.md`; decisions:
-`docs/rewrite/core-decisions.md` "Scripted look-ahead"). It replaced the rule-based BFM agent
-(`docs/rewrite/scripted-bfm-design.md`; its code, kept for comparison through round 2, was
-removed in round 3).
+`docs/rewrite/core-decisions.md` "Scripted look-ahead"); history (the rule-based BFM agent it
+replaced): `docs/rewrite/core-worklog.md`.
 
 ## Entry points
 
@@ -26,8 +25,7 @@ label is a function of the observation. The sandbox flies against it (`World(opp
 - `paths.py`: `predict`, the 7 stick candidates' paths of every ship at its table power at the
   look-ahead points (`LOOK_AHEAD`, a module setting read at call time); `power_outlook`, each
   ship's speed and store at the 3 powers over the power look (`POWER_LOOK`, 1 to 5 s). Both
-  read the game's steady-flight table (`core.steady_lookup`, round 3), not the flight
-  functions.
+  read the game's steady-flight table (`core.steady_lookup`), not the flight functions.
 - `opponent.py`: `explain` and its stages; `pair_tables` + `collapse` are the plain twin of the
   kernel.
 - `kernels.py`: `pair_scores`, the pair stage (and the cover) as one Triton kernel (CUDA;
@@ -41,12 +39,12 @@ label is a function of the observation. The sandbox flies against it (`World(opp
    of own ships, the time since seen; ln n and its gradient are functions of the position and the
    fields). A hidden enemy is dead-reckoned from his last sighting by the time since seen (his
    last speed and nose rate for up to 2 s, then straight; `dead_reckon`).
-2. Power (round 2, author 2026-11-26): per ship from the own-ship terms only, over the power
+2. Power: per ship from the own-ship terms only, over the power
    look (`paths.power_outlook`: speed and store at each power holding the pending stick, from
    the game's steady-flight table per segment): minus the speed term, plus energy (at
    `energy_weight` while engaged, `disengaged_energy_weight` while not), plus the store itself
-   (`store_weight`, round 3: diving trades the store for speed at almost no change in total
-   energy, so without it the store ran nearly empty), discounted by `power_horizon`; its own
+   (`store_weight`: diving trades the store for speed at almost no change in total energy, so
+   without it the store runs nearly empty), discounted by `power_horizon`; its own
    softmax (`power_temperature`) and stickiness (`power_stickiness`) on the pending power. The
    table power: the own ship's pending power; an enemy's (not observable) the power his outlook
    scores best from straight flight with the yardstick's rows.
@@ -66,7 +64,7 @@ label is a function of the observation. The sandbox flies against it (`World(opp
 5. Pair tables per enemy, 7 x 7 at each point (`pair_tables` / the kernel): my gun on him
    (nose against the drag-law lead point in my medium, tolerance his angular size (half the
    game's hit width at the bullet's aspect, `core.hit_width` on the `hit_widths` column: the
-   egg deflector, round 4) plus `aim_blur` x t, a smoothstep range band 0.8 to 1.2 gun
+   egg deflector) plus `aim_blur` x t, a smoothstep range band 0.8 to 1.2 gun
    ranges, the hit's kinetic worth, his nose cone by `core.aspect_factor` weighted by the hit
    model's `nose_cone`, 0 by default), his gun on me (mirrored), angles ((cos ATA_me - cos
    ATA_him) / 2) and energy (speed^2 / 2 + store, in my full stores) both times a closeness 1 /
@@ -82,19 +80,19 @@ label is a function of the observation. The sandbox flies against it (`World(opp
    `boundary_margin` turn radii, more flying outward, growing past the edge), slow medium (ln n
    in half-octaves), cover (behind a field core from an enemy flying straight on, worth his
    angular advantage on me now), team-mates (contacts with the nearest 3 flying their pending
-   action), and with no enemy known (author 2026-11-26: no goal point) an energy preference and
+   action), and with no enemy known (no goal point) an energy preference and
    a seek toward the freshest dropped last-seen position. The stickiness bonus for the pending
    stick.
 8. Stick = softmax(scores / tau_me); flight = stick x power; fire = the trigger now (aim gate
    at the lead point in target sizes x `fire_tolerance`, the size from the game's hit width at
    the predicted aspect; range gate; the expected hit (damage x hit chance) worth `fire_worth`
    ticks of shield recharge or his whole shield; never through a team-mate; the gun ready).
-   The hit chance (round 4, 2026-11-27: with the egg a centred shot always does full damage,
-   so the worth must weigh the chance of landing within the narrow width) = erf(half width /
-   (sqrt 2 sigma)), sigma = flight time x sqrt(spread^2 + (`lead_error` x 0.5 x his sustained
-   turn acceleration x flight time)^2); `lead_error` 0.25 is a reasoned choice, not tuned.
-   `store_crowd` (1, on; author 2026-11-27 with `store_weight` 0.5, from egg-experiments.md; 0 is off): scales the store weight by (1 + k) / (1 + k x the
-   scored enemies within 2 gun ranges). The hit's worth,
+   The hit chance (with the egg a centred shot always does full damage, so the worth must
+   weigh the chance of landing within the narrow width) = erf(half width / (sqrt 2 sigma)),
+   sigma = flight time x sqrt(spread^2 + (`lead_error` x 0.5 x his sustained turn
+   acceleration x flight time)^2); `lead_error` 0.25 is a reasoned choice, not tuned.
+   `store_crowd` (the default, 1 with `store_weight` 0.5; 0 is off) scales the store weight
+   by (1 + k) / (1 + k x the scored enemies within 2 gun ranges). The hit's worth,
    here and in the pair tables' gun, is the game's hit model through one call
    (`hit_worth` -> `core.hit_damage`: kinetic at the distance, the target's nose cone, dead
    centre), so a change of the hit model in the game reaches the agent without edits (the
@@ -117,7 +115,7 @@ docs/rewrite/sections/lookahead-personas/results-2.md.
 See `docs/rewrite/sections/scripted-lookahead/progress.md` (speed, usage, entropy, kills,
 draws, duels, merge turn, the grouped stick change).
 
-## The steady-flight table (round 3)
+## The steady-flight table
 
 `core.steady_flight` tabulated once per ship type when the ship card is built
 (`core.steady_characteristics`): turn rate, d speed / dt, d store / dt and the angle of attack
@@ -125,7 +123,7 @@ for each stick level, power, 17 store nodes (the store matters only in its edge 
 sink-room nodes, 9 top-room nodes, `core.store_room`) and 400 speeds (half Sustain's step,
 from a quarter of stall speed). `core.steady_lookup` reads it bilinearly by the ship's type
 (`State.type`); the table rides on `Constants.per_type` (by type, not dealt to slots). Its
-error against the direct functions and the path check: progress.md round 3 step 1.
+error against the direct functions and the path check: progress.md (round 3, step 1).
 
 ## Tests
 
@@ -138,12 +136,12 @@ against its twin (CUDA), the power from the own-ship terms, games against the ch
 
 ## Open
 
-- Compile: the cold compile check still fails after round 3's steady-flight table (280.2 s
-  against 260 s on a quiet laptop; `act` 4,451 traced operations, round 2 7,864). What is left
-  is the unrolled path loop (medium, nose spring, lookup per segment); a paths kernel or fewer
-  segments would cut it (docs/rewrite/questions.md on this branch).
+- Compile: `act` is the largest training graph (4,535 of 9,338 traced operations in the
+  2026-11-27 ~22:00 baseline; the whole cold compile 121 s, within its 150 s budget). Most of
+  it is the unrolled path loop (medium, nose spring, lookup per segment); a paths kernel or
+  fewer segments would cut it.
 - The stick distribution moves about 0.15 total variation per tick; grouped by side 0.07-0.09,
   weighted by the steady turn rate 4-5% of the rate span (round 3 step 2). Not tuned.
-- `store_weight` 0.5 with `store_crowd` 1 (author 2026-11-27; was a fixed 0.25, round 3 step 3): the
-  situational weight won 1v1 (0.60 against 0.25) and is even in 4v4.
+- `store_weight` 0.5 with `store_crowd` 1 (author 2026-11-27): the situational weight won 1v1
+  (0.60 against the fixed 0.25) and is even in 4v4; not tuned further.
 - Defaults otherwise chosen by reasoning (the energy weight from the card's `store_turn`).

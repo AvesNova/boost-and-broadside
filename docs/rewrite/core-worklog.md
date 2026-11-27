@@ -289,3 +289,148 @@ checked, the commit. Numbers are measured unless marked otherwise.
 - 18:37 Design profiles merged (agent): PROFILES with documents (card default) and performance_points (g limit and corner speed closed form; top speed, best climb, best sustained speed and the gap by Newton for zero-lift drag, power, induced drag, separation drag). All 24 moves (+-1%, +-3%) converge, condition 8-10, 3 iterations full (1.8-1.95 s), 2-3 fast (0.11-0.23 s); tool drags 0.22-0.33 s. No profile-specific solver code; warnings keyed to card fields. My checks: quick suite passed.
 - 2026-11-24 19:15 Merged feat/solve-progress (d71e3194, fast-forward): solve progress over /api/solve, fail fast (6 stalled iterations, 4 s, impossible targets) naming the unmet inputs, previous charts kept dimmed, cancellation (new request, instant reset, Ctrl-C). Tool tests 44 passed; page JS not browser-tested.
 - 2026-11-24 21:25 Simpler flight and design (agent, 4 commits): flaps removed (P-51D numbers unchanged to every printed digit); one profile "documents" (stall, g, top speed, best climb solved for C_D0 and power; e 0.85, separation 0.3 at exponent 8, thrust softness 2.83 closed): P-51D best climb at 167.8 mph (was 165), best sustained 17.85 deg/s at 172.6 mph (was 18.99 at 181.6), gap 0.886 (was 0.85), C_D0 0.0160, prop 0.875; stick levels fixed thirds renamed gradual/middle/full (were 0.440/0.881 derived), BFM-CMA2 not retuned; play shell A/D middle, Shift full, Ctrl gradual. Quick suite 314 passed; compile tripwire 4 graphs, 5,683 ops, 0 breaks, cold 219.0 s, within the baseline.
+
+
+## 2026-11-28: history moved from the package notes
+
+Moved out of `lean/*/NOTES.md` when the notes were cut to what is and what is open. What
+`docs/rewrite/core-decisions.md` already records was dropped, not moved.
+
+### lean/game
+
+- 2026-11-24: tried and dropped the same day: the "performance points" profile (g limit, corner
+  speed, top speed, best climb, best sustained speed and gap solved for drag, power, induced and
+  separation drag), and solving e, the best-climb speed and the gap in the documents' profile.
+- 2026-11-24: operations per step, uncompiled, CPU, E = 256, 5v5
+  (`docs/rewrite/sections/scoreboard/game_ops.py`): step 1,625 compute + 210 view (no fields
+  1,287 + 162); observe 102 + 54; `reset_done` 265 + 82; scripted `act` for both teams 439 +
+  109 (CPU times vary by about 25% between runs; the counts are the measure).
+- 2026-11-26: until this day a collision pass was scored on the tick holding its closest
+  approach; with both ships turning that fell in two ticks or none. Since then: first touch.
+- 2026-11-26: nose cone and collisions sanity (`docs/rewrite/sections/nose-cone/sanity.py`, the
+  yardstick on both teams, `GameConfig()`, 256 games each, seed 0; before = core eba3e474).
+  Collisions per game are passes inside the two hit radii (before: passes through, no damage);
+  a head-on pass is one inside 100 m with the noses at least 150 deg apart. Game step +82
+  operations (1,243 no fields, 1,581 with fields). The few damaging "inside 30 deg" hits in 4v4
+  are most likely the bench's target guess (the enemy nearest the bullet's last move), not the
+  rule (the step test: 29 deg does 0). Referenced from core-decisions "Nose cone and
+  collisions".
+
+| | 1v1 | 1v1 fields | 4v4 | 4v4 fields |
+|---|---|---|---|---|
+| draws, before / after | 93 / 41 | 43 / 13 | 1 / 3 | 2 / 4 |
+| mean game length, s | 58.2 / 32.1 | 50.2 / 30.5 | 34.1 / 27.1 | 40.5 / 33.6 |
+| deaths in all | 10 / 227 | 85 / 235 | 1,268 / 1,395 | 1,259 / 1,380 |
+| contacts per game | 6.74 / 0.97 | 4.32 / 0.81 | 8.49 / 3.07 | 7.32 / 2.88 |
+| head-on passes per game | 6.74 / 2.08 | 4.43 / 1.32 | 8.62 / 3.63 | 7.77 / 3.16 |
+| contacts per head-on pass | 0.999 / 0.004 | 0.969 / 0.018 | 0.935 / 0.046 | 0.856 / 0.072 |
+| deaths on a collision tick (after) | 24 | 24 | 101 | 112 |
+| real hits within 30 deg of the nose | 84.6% / 0.7% | 48.4% / 2.6% | 30.8% / 3.5% | 32.8% / 3.3% |
+| of those that did damage (after) | 0 | 0 | 8 | 5 |
+
+- 2026-11-26: collisions at first touch (the same sanity.py, counting `core.collisions`
+  contacts; before = core 17e6cf3b, the closest-approach rule;
+  `docs/rewrite/sections/first-touch/`). An overlap episode is a run of ticks a pair is scored
+  or ends inside the two hit radii; "closed" episodes end with both ships alive, "cut" ones in a
+  death or the game's end. On the same play (`first-touch/episodes.py`, both rules on the before
+  tree's moves) every overlap episode holds exactly one first touch (2 spawned overlapping in
+  4v4 hold none). The extra contacts are cut episodes, never scored by the old rule (1v1 68 of
+  316 episodes, 1v1 fields 45 of 252, 4v4 103 of 886, 4v4 fields 120 of 853): also most of the
+  rise in deaths on a collision tick (a ship at 0 shield now dies at the touch). Referenced
+  from core-decisions "Collisions at first touch".
+
+| | 1v1 | 1v1 fields | 4v4 | 4v4 fields |
+|---|---|---|---|---|
+| contacts, before / after | 248 / 290 | 207 / 243 | 787 / 883 | 737 / 826 |
+| closed episodes scored 0 times | 0 / 0 | 1 / 0 | 3 / 0 | 5 / 0 |
+| closed episodes scored twice | 0 / 0 | 1 / 0 | 4 / 0 | 5 / 0 |
+| of those, fast (over 100 m/s): 0 / twice | 0, 0 / 0, 0 | 1, 1 / 0, 0 | 1, 1 / 0, 0 | 2, 4 / 0, 0 |
+| deaths on a collision tick | 24 / 72 | 24 / 40 | 101 / 115 | 112 / 97 |
+| deaths in all | 227 / 237 | 235 / 256 | 1,395 / 1,424 | 1,380 / 1,390 |
+| draws | 41 / 49 | 13 / 30 | 3 / 3 | 4 / 3 |
+| mean game length, s | 32.1 / 30.7 | 30.5 / 29.1 | 27.1 / 26.7 | 33.6 / 33.0 |
+
+### lean/learn
+
+- 2026-11-23 (step L2): loop 6,670 steps/s in RL before the first snapshot, BC 6,668, peak
+  allocated 5.7 GiB; one short run with league networks, its compile included: 4,852.
+- 2026-11-23: first BC check (3 updates, GPU): teacher cross-entropy 3.65, 2.91, 2.23 nats; the
+  KL monitor fired in the warm-up (fourth-epoch means 0.14 to 0.34).
+- 2026-11-27 (before the two-level league; slots x 86 rows, empty slots skipped): RL tick at E
+  2,048 26.4 ms with 1 snapshot (2 slot calls), 32.5 ms with 12 (11 calls), 24.2 ms without
+  league networks; all 18 slots 38.5 and 38.6 ms; a single vmap over the stacked slots measured
+  the same (38.9 ms) and was reverted; tick-audit's varying table 30.1 ms (2 slots x 427) to
+  36.9 ms (11 x 107).
+- Until the 2026-11-27 ~22:00 baseline reset: cold compile about 240 s (budget 260 s); a warm
+  inductor cache saved about 140 s.
+
+### lean/model
+
+- 2026-11-23: operations per eager `step` (E = 4, N = 8, F = 10): 531 compute + 304 view; over
+  the 650 tripwire, about 150 of them eager RMSNorm decompositions that fuse when compiled.
+- 2026-11-25 re-measurement (after the 2,200 hp P-51D, stick thirds, flaps gone, the trimmed
+  BFM-CMA2 scripted agent, the 1,800-tick clock, the shared tick): one collection of 2,048
+  environments x 3,600 ticks, scripted yardstick both teams, `GameConfig(training_spawn=True)`,
+  4v4, 6,592 episodes; returns discounted per level to the episode's end. Next-state 0.1st /
+  99.9th percentiles (42.7M rows): along -0.363 / 0.338 m (extremes -1.57, 1.89), across -0.579
+  / 0.581 (-1.81, 1.82), heading -0.0422 / 0.0422 rad (-0.100, 0.099), speed -2.65 / 2.78 m/s
+  (-5.39, 4.02), energy -640 / 594 (-976, 976), shield -14.6 / 0 (-61.5, 0); 3.62% of rows lose
+  shield, 0.07% gain (by at most 3e-6, rounding). The 2026-11-23 ranges (5.55M rows) were +-0.35,
+  +-0.6, +-0.05, +-3, +-700, -90 to 0.3. Value returns (35.5M rows), 0.1% / 99.9% / extremes:
+  damage -2.08 / 2.12 / -3.91, 5.37; kill_death -2.83 / 3.68 / -6.47, 7.50; outcome -9.985 /
+  9.997 / +-10. The 2026-11-23 supports were the extremes with a margin by hand (+-7, +-8,
+  +-12); since then the extremes, symmetric, with the buffer columns as the margin. Hit shares
+  (42.5M bullets; 2026-11-23 5.52M): missed 94.57% -> 93.74%, enemy 4.44% -> 5.47%, team-mate
+  0.99% -> 0.80%. Columns 64 -> 70 (64 + 3 + 3) -> 63 (57 + 3 + 3, symlog) the same day.
+
+### lean/eval
+
+- 2026-11-24 (before the routing, laptop 4070): scripted 4v4 at E 4,096 and 16 games per slot
+  810 games/s (4 games per slot 539); the network tick about 110 s cold; the style counters
+  cost about 1-2%; `functional_call` 9% against calling the policy directly.
+- 2026-11-24: the drain is unbiased: the yardstick against a variant with fight_speed 1.3
+  scored 0.4656 +- 0.0019 over a whole queue of 65,536 games and 0.4654 +- 0.0034 over the
+  22,043 started before a 20 s cutoff.
+- 2026-11-25: unequal sizes stored under the mirrored conditions; before, the reverse
+  orientation was looked up under the same id, and the rule that seated a network in seat A
+  stored a scripted-first unequal pairing where `ensure` could not find it, so it replayed
+  every call.
+- 2026-11-25: routing against pairing-by-pairing (`docs/rewrite/sections/eval-scale/ladder/`,
+  a 4v4 ladder of 7 agents, old tree c85503d9, routed 7f05d4cf; the 1.78x / 1.43x / parity
+  summary is in core-decisions "Evaluation runner and scripted search"): per tick, one pairing
+  (E 2,688, 4v4), network against scripted 125,905 env ticks/s old, 116,322 routed; network
+  against network 66,712 and 62,255 (the routing's gathers and split graphs cost 7-8%). The
+  first routed version (a carry for all 2E seats, cloned per tick, a `where` per network) ran
+  95,392 and lost the ladder (407.3 s). The gain was smaller than training's 2.5x because the
+  old runner never ran a network on rows it did not play; what one batch saves is calls (each
+  pays a drain), so adaptive rounds of many small pairings gain most.
+- 2026-11-25: crossover with an untrained network (`--weights live --sizes 4 8 16 32 --games
+  64`, tree 9bb1f597, `docs/rewrite/sections/eval-scale/crossover/`): 7 rounds, 4,352 games,
+  249.8 s; every walk went down from parity to beats_up_to 0 (32 ships won 21 of 64 against one
+  scripted ship, 16 won 11, 8 won 2, 4 none). Again on the same store: 1.1 s, no game played,
+  the same walks. Elo at 8 against 6 and 6 against 8, `styles --sizes 8 6` and `report
+  yardstick net:... --sizes 6 8` all read the crossover's games.
+
+### lean/scripted
+
+- The look-ahead agent (2026-11-26) replaced the rule-based BFM agent
+  (`docs/rewrite/scripted-bfm-design.md`); the BFM code was kept for comparison through round 2
+  and removed in round 3. Round labels in progress.md: power from the own-ship terms (round 2,
+  2026-11-26), the steady-flight table and `store_weight` (round 3), the egg's hit width and the
+  trigger's hit chance (round 4, 2026-11-27).
+- Before the 2026-11-27 ~22:00 baseline reset the cold compile check failed after round 3's
+  steady-flight table (280.2 s against 260 s on a quiet laptop; `act` 4,451 traced operations,
+  round 2 7,864).
+- `store_weight` was a fixed 0.25 until 2026-11-27 (round 3 step 3).
+
+### lean/tool and lean/sandbox
+
+- 2026-11-24: a whole slider change (solve, panels, readouts, both charts) went from about
+  2.0 s warm to 0.8-1.0 s.
+- 2026-11-25 (2,200 hp card, the fixed-thirds levels gradual / middle / full): lowest flown
+  speeds full 118.4, middle 109.2, gradual 104.7, dive 133.7, climb 118.4 m/s (game); corner
+  flown 252.0 m/s 66.3 deg/s, best sustained 166.4 m/s 39.9 deg/s (stick 0.90), tightest
+  148.4 m/s 217.8 m. A random search (8192 ships, 60 s of random 0.2-12 s segments) found the
+  same lowest speeds to 1.6 m/s. The estimated lowest speeds (the preset's times the stall
+  speed ratio) were within about 6% of flown ones for g limit x1.3, stall speed x1.2, cruise
+  x0.85, settled turn x1.2.

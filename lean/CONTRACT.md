@@ -31,8 +31,8 @@ run's graphs, specialised to its sizes, a recompile an error; "dynamic": `compil
 place duck sizing is turned off, for evaluation across sizes), `random_keywords` (a factory's generator keywords; compiled graphs draw from torch's
 default generator).
 
-Stick: 0 straight, then (1, 2) gradual, (3, 4) middle, (5, 6) full, one direction odd and the
-other even. Power: 0 coast, 1 dive, 2 climb. Fire: 0 or 1.
+Stick: 0 straight, then (1, 2) Sustain, (3, 4) Max, (5, 6) Snap (`lean.game.card.LEVEL_NAMES`),
+odd right and even left. Power: 0 coast, 1 dive, 2 climb. Fire: 0 or 1.
 
 **`Constants`**: per-ship constants of one run, read by name (`constants["lift"]` or
 `constants.lift`). A value equal for the whole lineup is a Python number; one that differs by
@@ -99,7 +99,7 @@ act(config, state, team, persona, uniforms) -> Tensor
     # (E, N, 3) long, rows of other teams 0 (team None: both teams in one call); no memory
 decide(...) -> tuple[Tensor, Choice]     # act, plus the Choice (Choice.joint: the BC teacher)
 explain(config, state, team, persona) -> Choice
-chaser_act(state, team) -> Tensor        # the memoryless floor
+chaser_act(state, team, chaser=None) -> Tensor   # the memoryless floor
 ```
 
 ## `lean/model`

@@ -38,9 +38,8 @@ then `ensure([(a, b, (4, 4), games)])`, `adaptive(pairings, target_error=0.02)`,
 - `style.py`: style counters, summed per slot and seat inside the compiled tick (no host read),
   zeroed at each deal, written to the game's record. Per game and seat (columns `a_...`, `b_...`
   of `games`): ship-minutes; share of time in a turning fight (the ship and its nearest living
-  enemy both turning at least 0.25 sustained rates) and the share of that in two-circle flow
-  (same turn sense; the rest one-circle), the flow of lean/scripted/situation.py with a hard
-  floor; mean store fraction; mean speed in corner speeds; real shots per ship-minute; hits and
+  enemy both turning at least 0.25 sustained rates, `style.TURNING_FLOOR`) and the share of
+  that in two-circle flow (same turn sense; the rest one-circle); mean store fraction; mean speed in corner speeds; real shots per ship-minute; hits and
   mean range at hits (shooter to target at the hit tick's start, gun ranges); share of time
   climbing and diving (power applied). `python -m lean.eval styles STORE [AGENT ...]` prints the
   view: per agent and conditions, means weighted by ship-minutes (two-circle by turning-fight
@@ -61,9 +60,7 @@ then `ensure([(a, b, (4, 4), games)])`, `adaptive(pairings, target_error=0.02)`,
 - A pairing is read in both orientations; A's games as team 0 are kept at half of the total.
   With unequal sizes the other orientation is stored under the mirrored conditions (A on 4
   ships against B on 8 is B on 8 against A on 4): `counts`, `elo` (`pairing_totals`) and
-  `styles` read both conditions ids (2026-11-25; before, the reverse orientation was looked
-  up under the same id, and the old rule that seated a network in seat A stored a
-  scripted-first unequal pairing where `ensure` could not find it, so it replayed every call).
+  `styles` read both conditions ids.
 
 ## Shared game counts
 
@@ -80,10 +77,10 @@ ids, so network games from before it are not reused (scripted games are).
 
 ## Routing
 
-The training league routes its environments to its members (L2, "mixture-of-experts style"):
-`lean.model.agent.route_rows` gives each network the rows it plays, in order, padded to a
-width W; `routed_step` (the league's `slot_actions`) runs the network once on its W rows and
-writes back with a `where` over all rows. The runner routes the 2E seats (seat A of every
+The training league routes its games to its slots ("mixture-of-experts style",
+`lean/learn/NOTES.md`): `lean.model.agent.route_rows` gives each network the rows it plays, in
+order, padded to a width W; `routed_step` (the league's `slot_actions`) runs the network once
+on its W rows and writes back with a `where` over all rows. The runner routes the 2E seats (seat A of every
 environment, then seat B) the same way, with `route_rows` and `network_step`, but writes in
 place: each network gathers its seats' view, carry and offset, runs on W rows, and scatters
 its moves and carry back to its own seats only (`index_copy_`, padding rows to a spare row
@@ -99,13 +96,6 @@ architecture), and the scripted-only games into a call of their own: inside a ne
 they would pay the network tick's per-environment costs (views, routing). `minimum_envs`
 (default 2,048) lets a short job fill the GPU rather than keep 16 games per slot.
 
-Why the gain is smaller than training's 2.5x: before L2 the league ran every member on every
-environment (a vmap over the slots); the old runner never ran a network on rows it did not
-play. What one batch saves here is calls: E is bounded by a call's games, and each call pays a
-drain, so many small pairings (adaptive rounds) ran at a small E. With one call the whole
-round shares the GPU.
-
-
 ## What compiles
 
 Without networks one graph (`tick`); with networks three (`decide` for a call's first tick,
@@ -113,7 +103,7 @@ Without networks one graph (`tick`); with networks three (`decide` for a call's 
 architecture (each is new data for `seat_moves`) and scripted vectors in one queue. Team
 sizes are dynamic (lean.contract.compile_dynamic, duck sizing off): 4v4, 8v8, 16v16, 32v32
 and 4 against 8, one after another in one process and all five in one queue, compiled once
-with no recompile (TORCH_LOGS=recompiles silent, Dynamo's graph count unchanged; 2026-11-25).
+with no recompile (TORCH_LOGS=recompiles silent, Dynamo's graph count unchanged).
 No new graph either for E, the queue length, W, a new arena radius, spawn rule or clock. Fog
 off compiles a new graph. Another architecture compiles `seat_moves` again (not measured).
 A queue's games are padded to its largest ship count, so `ensure` splits calls by ship
@@ -121,9 +111,9 @@ bucket (a power of two); the graph is the same.
 
 ## Numbers
 
-Laptop RTX 4070 (8 GB), performance profile, the core game (5,400-tick clock), untrained
-network (initial weights) in seat A against the yardstick, or the yardstick against itself;
-2026-11-25, tree a37d37a9 (core 9d8b2300). games/s over a call of 30 s of starts and its
+Last measured 2026-11-25, tree a37d37a9 (core 9d8b2300; a 5,400-tick
+clock): laptop RTX 4070 (8 GB), performance profile, an untrained network (initial weights) in
+seat A against the yardstick, or the yardstick against itself. games/s over a call of 30 s of starts and its
 drain; env ticks/s = E x ticks while starting; memory = peak while playing.
 docs/rewrite/sections/eval-scale/sizes/.
 
@@ -148,33 +138,6 @@ its throughput, not E. Scripted 32v32 fits at 6,144 (5.2 allocated) and not at 8
 after the 6,144 call in the same process). Per size, network cost grows about as the ships
 (env ticks/s halve per doubling).
 
-Routing against pairing-by-pairing (docs/rewrite/sections/eval-scale/ladder/): a 4v4 ladder of
-7 agents (3 untrained networks, the yardstick and 3 variants), every pair, `ensure` in one
-job; the old tree c85503d9 (one call per network pairing group, 7 calls) against the routed
-tree 7f05d4cf (all network games in one call, scripted-only in another), same game code:
-
-| games per pairing (total) | old, its defaults | old, minimum E 2,048 | routed, minimum E 256 | routed, minimum E 2,048 |
-|---|---|---|---|---|
-| 128 (2,688) | 41.3 s | 38.5 s | 44.0 s | 21.6 s |
-| 512 (10,752) | 113.0 s | 131.0 s | 101.9 s | 78.8 s |
-| 2,048 (43,008) | 289.7 s | | 300.6 s | |
-
-So 1.78x at 128 games per pairing and 1.43x at 512 against the old tree's best, parity at
-2,048 (where each old call already fills the GPU). Ratings agree within their errors in each
-row (e.g. 2,048: fight_speed 0.8 at 935.0 and 932.3 +- 5.5, turn 0.003 at 1006.1 and 1004.7).
-Per tick, one pairing (E 2,688, 4v4): network against scripted 125,905 env ticks/s old,
-116,322 routed; network against network 66,712 and 62,255: the routing's gathers and the
-split graphs cost 7-8%. The first routed version (a carry for all 2E seats, cloned per tick,
-a `where` per network) ran 95,392 and lost the ladder (407.3 s).
-
-Earlier numbers (2026-11-24, before the routing, same laptop): scripted 4v4 at E 4,096 and 16
-games per slot 810 games/s (4 games per slot 539); the network tick about 110 s cold; the
-style counters cost about 1-2%; `functional_call` 9% against calling the policy directly.
-
-The drain is unbiased: the yardstick against a variant with fight_speed 1.3 scored 0.4656 +-
-0.0019 over a whole queue of 65,536 games and 0.4654 +- 0.0034 over the 22,043 started before
-a 20 s cutoff (2026-11-24). A drain lasts up to the longest game.
-
 ## Tests
 
 `lean/eval/tests`: the rolling queue, the drain, store reuse and identity, Bradley-Terry and
@@ -182,20 +145,12 @@ allocation, the crossover walk; many networks and scripted agents in one queue, 
 getting its own network's step (the routing), one call per job and ship bucket, unequal
 sizes read in both orientations (counts, Elo, styles).
 
-## Crossover with a network (2026-11-25)
-
-`crossover STORE untrained.pt --weights live --sizes 4 8 16 32 --games 64` (an untrained
-network: no BC or RL checkpoint of the lean core exists yet), tree 9bb1f597,
-docs/rewrite/sections/eval-scale/crossover/: 7 rounds, 4,352 games, 249.8 s. Every walk went
-down from parity to beats_up_to 0 (32 ships won 21 of 64 against one scripted ship, 16 won 11,
-8 won 2, 4 none). Run again on the same store: 1.1 s, no game played, the same walks. Elo at
-8 against 6 and at 6 against 8, `styles --sizes 8 6` and `report yardstick net:... --sizes 6 8`
-all read the crossover's games (the last turned round, 64-0-0). The upward walk is covered by
-the stand-in tests only, until a trained network exists.
-
 ## Open
 
-- The upward crossover walk with a real network (needs a trained checkpoint).
+- The upward crossover walk with a real network (needs a trained checkpoint; the downward walk
+  ran with an untrained network on 2026-11-25, docs/rewrite/sections/eval-scale/crossover/).
+- The speed numbers above predate the ghost-only bullets, the deflector, collisions at first
+  touch and the look-ahead scripted agent.
 - The batched crossover's GPU gain over v1's walk is not shown.
 - A call pads to its largest game, at most twice a game's ships within a bucket; a finer
   split (more calls, more drains) is not measured.
