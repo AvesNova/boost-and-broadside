@@ -80,3 +80,5 @@ performance profile. Data: ~/avesnova/boost-and-broadside/data/lookahead-persona
   space: 19 rows (boundary, seek dropped) + 5 crowd ratios (angles, aggression, speed,
   preferred speed, reply temperature) + store_crowd; popsize 12, 192 games per size, sigma 0.15.
 - Next: CMA, bound 60 generations or 05:30; first generation ETA 23:50.
+- 23:40 CMA running, about 3 minutes per generation; generations 1-3 mean Elo against
+  crowd-known 982 / 1028 / 1058. ETA 60 generations 02:40 (worst 05:30, the loop's bound).
