@@ -101,6 +101,17 @@ label is a function of the observation. The sandbox flies against it (`World(opp
    Triton kernel has its own copy of the gun's worth; the kernel-against-twin test flags a
    difference). Joint = stick (7) x power (3) x fire (2).
 
+## The crowd rows (personas round 2, 2026-11-28; off by default)
+
+`parameters.CROWDED` (10 rows): each has a duel value (its own row) and a crowd value (the
+row x `<row>_crowd`, a ratio; 1, the default, is off). The value read is row x ratio^w, the
+crowd weight w = (m - 1) / (m - 1 + `crowd_half`) with m the crowd measure (`crowd_measure`:
+0 the scored enemies within 2 gun ranges, as `store_crowd`; 1 the known enemies; 2 my team's
+living ships) clamped to at least 1, so a duel reads the row itself. Applied once in `explain`
+(the `read` after the crowd), so every use of the row (kernel, trigger, power) sees it. All
+rows FIXED: `SAMPLED` and the persona draw are unchanged; `vector` is longer. Study:
+docs/rewrite/sections/lookahead-personas/results-2.md.
+
 ## Numbers
 
 See `docs/rewrite/sections/scripted-lookahead/progress.md` (speed, usage, entropy, kills,
