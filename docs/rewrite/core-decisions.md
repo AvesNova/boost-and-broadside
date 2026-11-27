@@ -1112,7 +1112,7 @@ Bullet deflector and the runtime hit model (PROPOSAL, branch `bullet-deflector`,
   (168.9 -> 149.1 ms per micro-batch); the BC loop 8,255 steps/s (127.0 s per update); the
   cold compile 135.4 -> 121.0 s.
 
-## The two-level league (PROPOSAL 2026-11-27, author ~20:15 "implement and test out the two level league"; branch `league-pool`)
+## The two-level league (decided 2026-11-28: the author made it the default and the only league; built 2026-11-27, branch `league-pool`)
 
 - **Why**: on core every network member had a fixed 86-row capacity and the scripted agent was
   uncapped, so the league was mostly scripted until snapshots filled it (852 of 1,024 games with

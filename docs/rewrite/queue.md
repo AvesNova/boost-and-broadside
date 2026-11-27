@@ -26,7 +26,7 @@ port), 3 (docs cleanup), 7 (correctness review): see the Log.
 ## Queue (in order)
 
 8a. Correctness fixes (from item 7; fix and report; all on one branch, tests once at the end):
-   - Dead ships (author 2026-11-28 ~04:15, option C): after a ship dies, its value for the
+   - Dead ships (author 2026-11-28 ~04:00, option C): after a ship dies, its value for the
      return is the mean value of its living team-mates (it has no observation of its own;
      a perfect critic on every team-mate predicts the same match outcome), so the outcome
      reaches its earlier ticks at gamma, not (gamma lambda)^k; the death penalty stays. When
@@ -37,13 +37,13 @@ port), 3 (docs cleanup), 7 (correctness review): see the Log.
      (review: negligible).
    - Team-shared payments split over living ships only (not dead ones).
    - Separate seeds for the explicit generator and torch's default generators.
-   - Not a fix (author ~04:15): EMA / uniform slots taking new weights mid-game is fine (the
+   - Not a fix (author ~04:00): EMA / uniform slots taking new weights mid-game is fine (the
      live policy changes mid-game too, and the averages move more slowly).
 8b. After R3: the scripted agent's one-tick action delay (its trigger and candidate paths act
    as if the action applied now; 22% of fire decisions move more than the target's half
    width before the shot leaves). Then a quick re-check of the persona centre (Elo of the
    fixed agent vs the unfixed one at 1v1 / 4v4 / 16v16, loose).
-8c. Heads (author 2026-11-28 ~04:30), one branch:
+8c. Heads (author 2026-11-28 ~04:05), one branch:
    - next-state and hit losses on all visible ships (own and visible enemies); hidden masked.
    - A pairwise relative-geometry head (representation shaping, current state, exact targets
      from what the team sees). Per-ship projections (a shared ship-side projection, a
@@ -88,14 +88,13 @@ port), 3 (docs cleanup), 7 (correctness review): see the Log.
   elimination at 1v1 / 4v4 / 16v16).
 - The value loss averaged over 2 zero-target placeholder levels (effective 0.03 vs the
   configured 0.05): average over the live levels only, or leave it.
-- Adopting the two-level league as the default league (entry still PROPOSAL); its K and R; whether
-  the personas share one member's PFSP share.
+- The two-level league's K and R; whether the personas share one member's PFSP share.
 - Optional: a literature check on team critics / a super-token critic (MAPPO's death masking).
 - Muon (tabled); Liger-style kernels (tabled); the BC dry run itself (proposed first).
 
 Decided 2026-11-27 ~22:00: hidden enemies masked in the per-enemy losses (visible only, to
 start); residual stream stays float32; compile baselines reset after item 1.
-Decided 2026-11-28 ~04:30: dead ships option C; EMA/uniform mid-game reloads fine; the
+Decided 2026-11-28 ~04:05: dead ships option C; EMA/uniform mid-game reloads fine; the
 scripted delay is a bug; next-state and hit on all visible ships; the pairwise head as in 8c.
 
 ## Log
@@ -111,5 +110,6 @@ scripted delay is a bug; next-state and hit on all visible ships; the pairwise h
 - ~03:00 author: extend the persona study to capture the whole summit (box edges were arbitrary) and draw personas from a Gaussian with covariance proportional to the inverse curvature of the Elo surface. R3 started (`personas-3`, game statistics beside the docs cleanup; budget ~1.5 h GPU). The five persona decisions wait for R3.
 - ~03:00 item 3 done: core fast-forwarded to 5b54fccb (docs cleanup: duplicate questions file folded into docs/questions.md; 65 closed briefs/notes and ~80 dead scripts deleted, all still on the v2 branch or a named commit; docs ruff 2,424 -> 0 with a per-file E501 ignore for docs/**/*.py in pyproject.toml; package notes checked against the code; sections/INDEX.md). For the author: value_knee (lean/learn/config.py:166) still derives from a 21-point hit while hit damage is 8. Item 7 (correctness review, read-only, no GPU) started beside R3; item 4 waits for R3 (timing work runs alone).
 - ~04:00 item 7 done (`correctness-review` 2319245f, report docs/rewrite/sections/correctness-review-2026-11-28.md). Findings: (1) a dead ship's outcome target decays by (gamma lambda)^k after death (horizon 33 ticks instead of 3,333): dying early on a losing team avoids the -10 — design call for the author; (2) the enemy-head decision (visible enemies trained, hidden masked) is not built: heads train on own ships only, no pairwise head; (3) EMA/uniform league slots reload weights mid-game; (4) the scripted trigger and paths ignore the one-tick action delay (22% of fire decisions move more than the target's half width); (5) hit-class prior 8x off (0.0547 vs 0.0070 measured), stale "hits of about 21" comment; (6-8) low: dead ships' shares of team payments, value loss averaged over 2 zero-target levels (effective 0.03 vs 0.05), the same seed in two generators. Item 8 (fixes) waits: (4) after R3 (it changes the scripted agent R3 measures); (1) and (7) to the author.
-- ~04:30 author decisions recorded and queue reordered: 8a correctness fixes (dead ships option C, hit prior, team shares, seeds), 8b scripted delay after R3, 8c heads (visible ships, pairwise relative-geometry head with sampled pairs, field and map-edge signed distances), then 4 (training review on that tree), 5, 6, 9.
-- ~04:35 item 8a started (`fixes-8a`, lean/learn only, beside R3).
+- ~04:05 author decisions recorded and queue reordered: 8a correctness fixes (dead ships option C, hit prior, team shares, seeds), 8b scripted delay after R3, 8c heads (visible ships, pairwise relative-geometry head with sampled pairs, field and map-edge signed distances), then 4 (training review on that tree), 5, 6, 9.
+- ~04:08 item 8a started (`fixes-8a`, lean/learn only, beside R3).
+- ~04:12 author: the two-level league is the default and the only league (the old capacity rule is already gone from the code; core-decisions entry marked decided). Clock times in the 04:xx lines corrected (were estimates).
