@@ -38,3 +38,10 @@ performance profile. Data: ~/avesnova/boost-and-broadside/data/lookahead-persona
 - Re-check of inert rows: boundary and seek inert at both sizes; disengaged energy weight is
   not inert in 1v1 with fog (-43 +- 11 per box), 0 in 4v4.
 - Next: 16v16 skill (ETA 22:10, worst 22:40), crowd measures job.
+- 22:08 16v16 skill target SE 0.02 (about 14 Elo) instead of 0.015: 16v16 plays about 22
+  games/s here (16,384 games in 812 s with compile), so 0.015 (about 131k games) would take
+  about 100 minutes; 0.02 about 74k games. Pure persona teams kept (no mixed lineups).
+- 22:08 Coordinator: no hard 08:30 bound; finish when adequately done, no rabbit holes.
+
+### 22:08 step 2 16v16 running
+- Next: 16v16 to SE 0.02, ETA 23:00 (worst 23:30); the crowd-measure job is on the GPU now.
