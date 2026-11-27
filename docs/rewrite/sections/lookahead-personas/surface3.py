@@ -114,9 +114,15 @@ def design_command(a):
 # --------------------------------------------------------------------------- step 2
 
 
+def positive(values):
+    """Off the log scale (collision weight 0, step 1's hard end): left out of the fit."""
+    return all(values[n] > 0 for n in SAMPLED if PARAMETERS[n].law == "log")
+
+
 def fit_command(a):
     surface.load_default = surface.load
     pairings, agents = surface.load(STORES)
+    agents = {k: v for k, v in agents.items() if positive(v)}
     surface.load = lambda stores=STORES: surface.load_default(stores)  # top's starts too
     data = surface.Data(pairings, agents)
     games = {s: sum(r[3] for r in data.rows if r[0] == s) for s in surface.SIZES}
@@ -182,7 +188,11 @@ def top_command(a):
     of the mean surface at the peak (eigenvalues, vectors), slices through the peak along
     each row out to 3 box units either side (where it falls 50 / 100 / 200)."""
     surface.load_default = surface.load
-    surface.load = lambda stores=STORES: surface.load_default(stores)
+    def load(stores=STORES):
+        pairings, agents = surface.load_default(stores)
+        return pairings, {k: v for k, v in agents.items() if positive(v)}
+
+    surface.load = load
     surface.Space2 = HeldSpace
     surface.top_command(argparse.Namespace(surface=a.surface, out=a.out, band=50.0, kappa=1.0,
                                            steps=a.steps))
@@ -240,6 +250,7 @@ def top_command(a):
 
 STICKINESS_MAX = 0.15
 HORIZON_MIN = 0.35
+LEAGUE_STEP_MAX = 1.0  # box units along a direction (the data's reach)
 FLOOR = 10.0  # Elo per box^2: flatter (or upward) directions are given this curvature
 SD_CAP = 0.75  # box units: no direction's sd beyond this (the data's reach)
 
@@ -279,6 +290,13 @@ def rejected(space, theta) -> bool:
     count only."""
     rows = space.config(theta)
     return rows["stickiness"] > STICKINESS_MAX or rows["horizon"] < HORIZON_MIN
+
+
+def rejected_share(space, centre, sampler, c):
+    z = np.random.default_rng(5).standard_normal((4000, len(sampler.free))) * sampler.sds(c)
+    thetas = np.repeat(centre[None], len(z), 0)
+    thetas[:, sampler.free] += z @ sampler.vectors.T
+    return float(np.mean([rejected(space, t) for t in thetas]))
 
 
 def box_draw(space, centre, scale, count, rng):
@@ -328,12 +346,11 @@ def sampler_command(a):
         drops = space.g(centre)[0][0] - space.g(thetas)[0]
         per_size = [float(np.mean(space.g(centre)[2][k][0] - space.g(thetas)[2][k]))
                     for k in range(3)]
-        draws = sampler.draw(c, 8000, np.random.default_rng(3))
         out["c"][str(target)] = {
             "c": c,
             "sd_per_direction": sampler.sds(c).tolist(),
             "capped": int(np.sum(sampler.sds(c) >= SD_CAP - 1e-9)),
-            "rejected_share": 1.0 - len(draws) / 32000.0,
+            "rejected_share": rejected_share(space, centre, sampler, c),
             "predicted_drop_mean": float(drops.mean()),
             "predicted_drop_quantiles": np.quantile(drops, [0.1, 0.5, 0.9]).tolist(),
             "predicted_drop_per_size": per_size,
@@ -363,7 +380,7 @@ def sampler_command(a):
         v[sampler.free] = sampler.vectors[:, k]
         for sign in (-1, 1):
             t = solve(lambda t: space.g(centre)[0][0] - space.g(centre + sign * t * v)[0][0]
-                      if not rejected(space, centre + sign * t * v) else 1e9, 30, 1e-3, 5.0)
+                      if not rejected(space, centre + sign * t * v) else 1e9, 30, 1e-3, LEAGUE_STEP_MAX)
             theta = centre + sign * t * v
             label = f"flat{k:02d}{'+' if sign > 0 else '-'}"
             group[label] = space.config(theta)

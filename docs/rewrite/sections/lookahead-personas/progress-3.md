@@ -33,3 +33,19 @@ performance profile. Data: `~/avesnova/boost-and-broadside/data/lookahead-person
 - 03:22 Sobol design: 96 points over the enlarged top (design-3-ranges.json, offsets from the
   round-2 centre in box units), 256 / 256 / 128 games each against the centre.
   ETA 03:40 (worst 03:55).
+- 03:43 design done (96 points; 69% beat the round-2 centre, mean over sizes; best +178:
+  +46/+185/+303). Surface refit (surface-r3.json): 711 agents, 2,207 pairings, 748,416 games;
+  held-out deviance 75.9% of coin-to-saturated (round 2: 82.7% on the narrower range: a
+  quadratic fits a wider range less well). Predicts the step-1 sweep with r 0.91 (RMSE 78 Elo)
+  and the design with r 0.95 (RMSE 30).
+- 03:45 summit (top-r3.json): the robust centre moved far (collision weight 1.63 -> 0.36,
+  caution 1.66 -> 7.85, fire tolerance 1.85 -> 4.89, power horizon 5.1 -> 9.3 s, horizon
+  0.81 -> 0.58 s, ...). The peak still sits at the (now wider) data edge in the plateau rows
+  (threat, collision, caution, power horizon / temperature, disengaged energy, fire
+  tolerance, stickiness); the steep directions are interior.
+- 03:52 sampler (sampler-3.json): Gaussian on the round-3 centre, covariance c x (-H)^-1 of
+  the mean surface, curvatures floored at 10 Elo/box^2, sd capped at 0.75 box; c 7.4 / 11.5 /
+  21.8 for predicted drops 25 / 50 / 100; box at equal drop = 1.55 x round 2's half-widths.
+  Playing 108 agents (16 + 32 + 16 Gaussian, 32 box, 12 along flat directions) against the
+  round-3 centre, 128 / 128 / 64 games. ETA 04:06 (worst 04:20); then label blur (no
+  games), then the ladder.
