@@ -199,11 +199,11 @@ process on the cache the cold one left.
 | minibatch_loss | reduce-overhead | fails (gradient accumulation: section 4) | | | |
 | minibatch_loss, 1 micro-batch per minibatch | default | | 3.5 s | 166.3 | |
 | minibatch_loss, 1 micro-batch per minibatch | reduce-overhead | 50.1 s | 3.5 s | 165.4-165.5 | -0.5% |
-| minibatch_loss, 1 micro-batch per minibatch | max-autotune | MA_LOSS_COLD | MA_LOSS_WARM | MA_LOSS_STEADY | MA_LOSS_VS |
+| minibatch_loss, 1 micro-batch per minibatch | max-autotune | 469.8 s | 3.9 s | 163.75-163.77 | -1.5% |
 | act + advance (BC tick) | default | 94.3 s (first segment) | 14.9 s | 25.34 ms / tick | |
 | act + advance | max-autotune-no-cudagraphs | 305.7 s | 35.2 s | 25.04-25.06 | -1.2% |
 | act + advance | reduce-overhead | fails (outputs overwritten: section 4) | | | |
-| act + advance | max-autotune | MA_COLLECT_COLD | MA_COLLECT_WARM | MA_COLLECT_STEADY | MA_COLLECT_VS |
+| act + advance | max-autotune | not run: it includes inductor's CUDA graphs, which fail on act as reduce-overhead does; its other half is the row above | | | |
 
 The first call includes the eager work before it (the collect's own set-up for the tick rows);
 the "cold" loss row's 49.6 s is almost all compile. max-autotune on this GPU autotunes only
@@ -333,6 +333,61 @@ microseconds of host time. Not worth a change.
   reduction autotuning only. On the 5090 (170 SMs) GEMM autotuning would apply: re-run the
   grid there before choosing.
 
+## The live policy's step in seat chunks (rollout, measured; found while profiling)
+
+The micro-batch curve suggested the same effect in the rollout, whose live-policy step runs
+3,072 seats x 9 tokens (27,648 tokens, between the update's B 32 and B 48) in one call.
+Prototype (`profile_collect.py --chunks C`): `Policy.step` patched to run the seats in C
+equal chunks inside the compiled `act` (one graph, the chunks unrolled), the outputs
+concatenated. On the CPU the chunked step equals the whole one to 3e-8 (logits; carry 5e-6 of
+4.3; `chunk_check.py`).
+
+| chunks (seats each) | BC tick | vs one call | first (compiling) segment, cold |
+|---|---|---|---|
+| 1 (the trainer) | 25.34 ms | | 94.3 s |
+| 3 (1,024) | 23.60 | -6.9% | 107.2 s |
+| 6 (512) | **22.27** | **-12.1%** | 127.4 s |
+| 12 (256) | 23.17 | -8.6% | 171.1 s |
+| 24 (128) | 26.26 | +3.6% | 259.9 s |
+| RL tick, one call (EMA playing, 2 slot calls) | 27.70 | | 112.1 s |
+| RL tick, the live policy in 6 chunks, the slots whole | **24.70** | **-10.8%** | 146.9 s |
+| RL tick, every step in 6 chunks (the slots' 107 rows too) | 30.71 | +10.9% | 185.1 s |
+
+Six chunks save about 3 ms a tick (BC and RL alike), 1.5-1.6 s of an update's 13-14 s of
+collect (estimate from the tick), about 1.1% of the loop. Chunking the league networks' small
+slot tables too (107 rows into chunks of 18) makes the RL tick slower: chunk only the large
+seat batch. The compile grows with the unrolled chunks (+33 s cold at 6):
+against the 150 s budget, the chunking wants a loop the compiler does not unroll (one
+compiled chunk function called C times from `act`'s caller, or `torch._higher_order_ops`'s
+scan) or the warm cache. The league networks' `slot_actions` (107 rows) need no chunking.
+
 ## Ranked proposals for item 5
 
-TBD
+Gains on the laptop, per BC update of about 140 s (768 micro-batches x 165.6 ms = 127.2 s of
+learning plus 512 ticks x 25.34 ms = 13.0 s of collect, from the measured parts; the loop
+itself was not timed end to end here). "Within rounding": the recipe's numbers do not change.
+
+| # | what | gain (laptop) | size | risk |
+|---|---|---|---|---|
+| 1 | `micro_batch_views` 64 -> 16 (or 8), a per-machine setting | measured -10.4% (B 16) / -14.6% (B 8) of the micro-batch step: about -13.7 / -19.0 s an update, ~-10% / -14% of the loop (estimate); peak memory 4.6 -> 1.2 GiB at B 16 | S (a config number; the store and target pass already take any B) | within rounding (a minibatch's gradient is the sum of its micro-batches'); re-measure the curve on the 5090 (larger L2, host floor binding sooner) |
+| 2 | The hit-label selection bias near episode and update ends (section 1) | correctness, not speed | S | changes the hit loss's rows (a fix) |
+| 3 | The live policy's step in 6 seat chunks in `act` | measured -12.1% of the BC tick, -10.8% of the RL tick (live policy only), about -1.5 s an update (~1.1%) | S-M (a loop; keep the compile in budget: section above) | within rounding (checked on the CPU) |
+| 4 | max-autotune-no-cudagraphs for minibatch_loss and act / advance | measured -1.3% / -1.2% | S | none; but cold compile 6-10x (499 s / 306 s; warm 3.8 / 35 s): not on the laptop; re-run the grid on the 5090 where GEMM autotuning applies |
+| 5 | The critic's support built on the device once (two pageable copies per update in `value_support`) | negligible (per update) | S | bitwise |
+| 6 | CUDA graphs for the rollout tick (section 4's plan) | at most the GPU's idle 1.9% (BC) / 2.7% (RL) here; on a faster GPU up to the host floor (2.94 / 5.23 ms a tick, ~1.1 ms more per slot call) | M-L | bitwise with the same draws; only if the 5090's RL tick measures host-bound; batched league slots (first review item 9) first |
+| 7 | The geometry heads' fixed cost (15.4 ms a micro-batch) | folded columns: measured -0.3% (165.1 against 165.6) and -4 s of cold compile; the gathers' backward (aten scatter-add fallback, 1.6 ms) as an index_select / index_add on flattened rows: estimate up to 1% | S each | within rounding (fold: equal losses, gradients 3.8e-6 of 0.024) |
+| 8 | A fused rotary: the spatial sublayer's `cat` of rotated and unrotated projections and the keys' and values' `cat` with the map memory materialise copies (kernels named for them about 15 ms a micro-batch, 9%, rough) | estimate 3-5% of the step, not prototyped | M | within rounding |
+
+Not proposed (measured): activation checkpointing per sublayer (+20.4% at B 64, memory -35%),
+the activation memory budget 0.5 (+15.5%, memory -25%), reduce-overhead for the loss (-0.5%,
+and it needs the gradient accumulation reworked), attention as explicit matmuls instead of
+SDPA (+2.8%: 170.2 ms), max-autotune for the loss with CUDA graphs (-1.5% at one micro-batch
+per minibatch, cold 470 s).
+
+Still open from the first review (not re-measured): the scripted agent on the league slice
+only once the teacher term is off (its 5.5 ms a tick), the compact teacher record (queue item
+6), the field memory once per deal row (estimate 3-6%), the policy and value heads on own
+rows only (the auxiliary and pair heads now need the visible enemies).
+
+Order for item 5: 1 (and the same curve on the 5090), 2, 3, 5; then 4 and 6 only from the
+5090's numbers; 7 and 8 if the step still matters after 1.

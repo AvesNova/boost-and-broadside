@@ -57,6 +57,8 @@ def main() -> None:
 
         def chunked_step(self, obs, carry, position_offset=None, reset=None):
             seats = obs.key_mask.shape[0]
+            if seats < 1024:  # the league networks' slot tables (W rows) stay whole
+                return whole_step(self, obs, carry, position_offset, reset)
             size = -(-seats // chunks)
             parts = []
             for start in range(0, seats, size):
