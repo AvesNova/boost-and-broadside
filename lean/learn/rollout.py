@@ -329,7 +329,7 @@ def league_rows(scripted_action: Tensor, league_envs: int) -> Tensor:
     """The scripted agent's actions of the league environments (the last `league_envs` rows),
     as a tensor of their own: a slice is a view, and a compiled graph guards a view's base,
     so a view here and a graph's output there (no base) would be two graphs (`advance`
-    when the league opens)."""
+    when the first network member joins)."""
     return scripted_action[scripted_action.shape[0] - league_envs :].clone()
 
 
@@ -378,9 +378,10 @@ def league_actions(
     merge=merge_league,
 ) -> LeagueMove:
     """The league side's move in every league environment: the scripted agent's actions
-    (already computed as the BC target) and the unchanged opponent carry until the league is
-    open (League.open: the RL stage), then network_actions (`step` the per-slot function and
-    `merge`, or their compiled forms)."""
+    (already computed as the BC target) and the unchanged opponent carry while the league has
+    no network table (no slot holds weights: the BC stage, RL before its first snapshot),
+    then network_actions (`step` the per-slot function and `merge`, or their compiled
+    forms)."""
     league = opponent.league
     league_envs = carry.member.shape[0]
     if league is None or league.table is None or league_envs == 0:
