@@ -1047,9 +1047,9 @@ Bullet deflector and the runtime hit model (PROPOSAL, branch `bullet-deflector`,
   micro-batch) with `dynamic=False` and makes any second compile an error
   (`lean.contract.compile_graph`, `StaticGraph`, stance fail_on_recompile). "dynamic" keeps
   `compile_dynamic` (duck sizing off) for crossover evaluation, as the evaluation runner does.
-  This replaces "Dynamic shapes, not fixed" (Deliberate changes, Game) for training. Open for
-  the author: the league routing's table width follows the league's capacity, so slot_actions
-  stays dynamic; making it static means a fixed width with padded rows.
+  This replaces "Dynamic shapes, not fixed" (Deliberate changes, Game) for training. All five
+  learner graphs are static; the league routing keeps its table width W symbolic (it follows
+  the league's capacity; a fixed W is separate, later work).
 - **Hit labels per segment**: advance returns each ship's bullet outcomes by age and collect
   assembles the labels at the segment's end; nothing is written into a buffer in the tick.
 - **Constants per ship type**: State carries the card's (C, T) table and the slots' types, not
@@ -1061,3 +1061,4 @@ Bullet deflector and the runtime hit model (PROPOSAL, branch `bullet-deflector`,
 - **Cost** (laptop 4070, performance profile): core.step at E 4096, 4v4, egg 1.777 ms on the
   old trainer path (compile_dynamic) -> 0.766 ms static (off 1.713 -> 0.572); the training
   tick at E 2048 31.8 -> 25.2 ms (collect 64.4k -> 81.4k steps/s), advance 3.67 -> 1.84 ms.
+  The update at E 2048: 141.0 -> 129.8 s (183.6 -> 169.0 ms per micro-batch).

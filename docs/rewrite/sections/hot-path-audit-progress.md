@@ -31,6 +31,17 @@ compile_graph, 300-tick blocks, median of 3):
 (The audit measured the old path at 1.92 ms egg on b70dcd18, before ghost-only.) Compile
 wall time with 20 warm ticks: static 25 s, dynamic 51-60 s.
 
+**The update** (bench_update, E 2048, RL update over one update's 4 segments, 4 epochs,
+128 Adam steps, 64-view micro-batches; job 4, the final tree, dynamic then static in separate
+processes, 1 warm and 2 timed updates each):
+
+| compile | per update | per Adam step | per micro-batch (768) |
+|---|---|---|---|
+| dynamic | 140.97 / 141.07 s | 1101.3 / 1102.1 ms | 183.6 / 183.7 ms |
+| static | 129.75 / 129.76 s | 1013.7 / 1013.7 ms | **169.0 / 169.0 ms** |
+
+(-8%; the training-path audit measured 182.8 -> 168.0 ms per micro-batch.)
+
 **The training tick** (bench_advance, E 2048, 128-tick segments, 4 timed segments after 2
 warm; ms per tick; act and advance by CUDA events around each call):
 
@@ -59,10 +70,12 @@ run-uniform Python number of the first call specialised: fully static, the envir
 included), then every later call under `torch.compiler.set_stance("fail_on_recompile")`
 (StaticGraph; 0.85 us per call): a stray dynamic shape raises at once
 (test_a_static_graph_refuses_to_compile_again). Dynamic: `compile_dynamic`, unchanged, for the
-evaluation runner (crossover sizes). act, advance, minibatch_values and minibatch_loss follow
-the setting; **the league routing (slot_actions) stays dynamic**: its table width W is the
-league's capacity ceil(capacity_factor L / present), which changes as members join, so in
-training it is a dynamic shape (open point below). bench_tick.py and profile_tick.py compile
+evaluation runner (crossover sizes). All five learner graphs follow the setting (act, advance,
+slot_actions, minibatch_values, minibatch_loss). The league routing (slot_actions) is static
+with one axis left symbolic: its table width W (`positions`) is the league's capacity
+ceil(capacity_factor L / present), which changes as members join, so it is marked dynamic
+(`maybe_mark_dynamic`) on every call and a new W does not compile again; the width itself is
+unchanged (separate, later work). bench_tick.py and profile_tick.py compile
 through compile_graph (`--shapes`). Numbers: the tables above (step 1.777 -> 0.766 ms egg,
 1.713 -> 0.572 off; training tick 31.1 -> 25.2 ms with item 2 in both).
 
@@ -141,11 +154,26 @@ cudaLaunchKernel). A pre-built deal pool would save nothing measurable.
 - **Items 6 (sight on unordered pairs) and 7 (fire's block rewrite): not done.** M effort for
   an estimated 25 us and 40-75 us at E 4096 in a step that is now ~7% of the training tick.
 
+## Tests and compile check
+
+Quick tier (`-m "not slow"`, lean/game, scripted, tool, sandbox, learn, eval, model) and
+test_compiled.py (slow, CPU: the static graphs through collect and update with league
+networks, 5 passed); ruff. Compile check (job 4, the final tree, cold cache, baseline not
+updated): 4 graphs, 0 graph breaks, no recompile; cold 135.4 s (baseline 231.7 s, budget 260
+s); backend act 40.3 s, advance 18.5 s, minibatch_loss 13.7 s, slot_actions 11.4 s. It
+reports FAIL on traced operations: act 4,414 (baseline 1,821, +142%), advance 3,218 (2,856,
++13%), slot_actions 736 (746), minibatch_loss 1,029 (1,080). The act growth is not this
+branch: traced on the CPU with an eager backend, act has 6,605 nodes on the base tree
+cf8a41db (dynamic) and 6,323 (static) / 6,696 (dynamic) here; the baseline predates the
+scripted look-ahead and the egg. The advance growth is likely the per-type constants (a row
+read is now two indexing ops); its compile time and run time both went down.
+
 ## Open points
 
-- The league routing is a dynamic shape in training: its table width W follows the league's
-  capacity. To make it static: W fixed for the run (the capacity at the smallest present
-  count, or the league's environments), at the cost of padded rows per slot. For the author.
+- The league routing's table width W is still a dynamic axis in training (symbolic in an
+  otherwise static graph). Fixing it is separate, later work (a fixed W, padded rows).
+- The compile baseline is out of date (act 1,821 traced operations against 4,414 now, from
+  merges before this branch); resetting it is the author's call.
 - The biggest part of the training tick is act (23 ms of 25 ms at E 2048): the policy, both
   views and the scripted agent. The training-path audit covers it.
 - CUDA graphs (item 1, above): three blockers listed; measure the launch share first.
