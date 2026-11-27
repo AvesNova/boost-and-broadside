@@ -45,3 +45,22 @@ performance profile. Data: ~/avesnova/boost-and-broadside/data/lookahead-persona
 
 ### 22:08 step 2 16v16 running
 - Next: 16v16 to SE 0.02, ETA 23:00 (worst 23:30); the crowd-measure job is on the GPU now.
+
+### 23:20 step 2 done; step 3 crowd measures; screen launched
+- Measured (106 agents against the yardstick; 1v1, 4v4 131,072 games, SE <= 0.015; 16v16
+  65,536 games, SE <= 0.02): population sd without error 71 / 57 / 155 Elo (1v1 / 4v4 /
+  16v16); range 801-1090 / 812-1103 / 497-1350. Personas' Elo r: 1v1-4v4 +0.08, 1v1-16v16
+  -0.27, 4v4-16v16 +0.90. Linear fit R^2 0.85 / 0.85 / 0.88 (leave-one-out 0.72 / 0.75 / 0.79).
+- Size-dependent (linear slope 1v1 -> 16v16 per box, z > 4): angles weight +138 -> -231,
+  aggression +86 -> -182, energy weight -37 -> +193, speed weight +17 -> +179, horizon +12 ->
+  -205, fire tolerance 0 -> +200, reply temperature -67 -> +87, preferred speed -39 -> +86,
+  store weight -27 -> -98, threat weight +9 -> -66. 4v4 sits about 40-50% of the way.
+  Not size-dependent: temperature (colder wins at all sizes: -104 / -50 / -86).
+- Crowd measures (yardstick mirror; mean weight at crowd_half 1, 1v1/2v2/4v4/8v8/16v16): near
+  0 / .08 / .27 / .43 / .53; known 0 / .12 / .46 / .76 / .87; own 0 / .43 / .68 / .82 / .90.
+- Surrogate (additive quadratic fits; magnitudes extrapolated, not trusted): crowd candidates
+  beat the plain best point on the mean, own and known at half 0.5-1 the highest.
+- 23:20 decision: screen 6 candidates (plain, plain-half, crowd-own/known/near at half 1,
+  crowd-own-half) with fresh games at 1, 2, 4, 8, 16 per side, SE 0.02, before any CMA;
+  store_crowd kept at 1 (surrogate gain 6 Elo, under the 8 Elo bar).
+- Next: screen ETA 00:15 (worst 00:45; the GPU is shared with the league agent).
