@@ -203,6 +203,7 @@ def test_the_league_tick_is_static_through_loads_unloads_and_duplicates():
     slots = state.exists.shape[1]
     calls, duplicated, drained = [], False, False
 
+    @torch.no_grad()  # as collect: the tick's carries never require grad
     def ticks(state, carry, count):
         league.prepare(8, carry.slot)
         calls.append(0 if league.table is None else len(league.table.slots))
