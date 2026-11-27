@@ -30,12 +30,13 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
 - `pool.py`: `League` (members, network slots, capacity draws, tallies, retiring slots),
   `SnapshotSchedule`, `retained`.
 - `rewards.py`: v2's five reward levels and the damage ledger.
-- `compiled.py`: `graphs(shapes)`: act, advance, slot_actions, minibatch_values, minibatch_loss.
-  `LearnConfig.compile_shapes` (2026-11-27): "static" (the default) compiles each for the run's
-  sizes (environments, slots, fields, micro-batch: all fixed in a run) and any second compile
-  raises; "dynamic" compiles once for every size (duck sizing off). The league routing
-  (slot_actions) is static too, with its table width W symbolic (it follows the league's
-  capacity).
+- `compiled.py`: `graphs(shapes)`: act, advance, slot_actions, merge_league, minibatch_values,
+  minibatch_loss. `LearnConfig.compile_shapes` (2026-11-27): "static" (the default) compiles
+  each for the run's sizes (environments, slots, fields, micro-batch, the league table: all
+  fixed in a run) and any second compile raises; "dynamic" compiles once for every size (duck
+  sizing off). The critic's support (`returns.value_support`) is built once per collect and
+  update and passed into the graphs; the next-state support is a policy buffer (a table made
+  with torch.tensor inside a graph is a pageable copy at every call).
 - `lean/train.py`: the stages, checkpoints, `--resume`.
 
 ## The recipe
@@ -76,11 +77,16 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
 - Members (fixed indices): the scripted agent (0), the EMA (1), the uniform average (2), then up
   to 12 snapshots. Before the first snapshot every league game is against the scripted agent.
 - Draws at a game's end: PFSP (1 - p)^2 with a 1/8 uniform floor (decaying tallies, 0.99 a game,
-  unplayed 0.5), within row capacities ceil(1.25 L / present).
-- Routing: each tick, for each network slot, `slot_actions` takes that slot's environments into a
-  batch, runs the slot's network once and reads the rows back; one compiled graph serves every
-  slot, K and W. A dropped snapshot plays its running games to their end in a retiring slot (2
-  + 12 + 4 slots; with none free, the games of the slot with the fewest are re-dealt).
+  unplayed 0.5), within row capacities fixed for the run (2026-11-27): each network member C =
+  ceil(1.25 L / members), members = 3 + snapshot_members = 15 (86 rows at L 1,024); the
+  scripted agent L (it takes what the network members cannot while fewer than all members are
+  present: early in RL most league games are scripted).
+- Routing: the table is fixed for the run (a training run is static): from the RL stage's start
+  (`League.open`) all K = 2 + 12 + 4 slots, each on W = C rows, an empty slot a placeholder
+  network on no rows. Each tick `slot_actions` runs every slot's network once on its own W rows
+  (one compiled graph, compiled at the stage's first tick) and `merge_league` puts all K
+  slots' rows back in one pass. A dropped snapshot plays its running games to their end in a
+  retiring slot (with none free, the games of the slot with the fewest are re-dealt).
 - Snapshots: v2's schedule (5, 10, ... 160M RL steps, then every 30M) and retention (newest 8,
   plus the nearest to each age 2^k back, at most 12).
 - Checkpoints: every 10M environment steps, `DIR/checkpoints/<stage>_<steps>.pt`, none deleted:
@@ -115,7 +121,8 @@ term's decay and gate, averages, checkpoints, optimiser, warm-up, KL monitor, ad
 `test_train.py` (BC then RL, checkpoints, an exact resume), `test_league.py` (capacities, PFSP,
 routing, retiring slots, schedule and retention), `test_learn.py`, `test_hit_head.py`,
 `test_rewards.py`, `test_store.py`; slow, `test_compiled.py` (compiled collect and update, loss
-equal to eager, the routing graph fullgraph and reused at a new K and W).
+equal to eager, the routing graph fullgraph, and static for the whole run: one compile from the
+open league before any snapshot through more snapshots joining).
 
 - The inductor and triton caches default to ~/.cache/bnb-inductor (lean.contract.compile_dynamic, when TORCHINDUCTOR_CACHE_DIR is unset): /tmp is wiped at reboot and the warm cache saves about 140 s.
 
