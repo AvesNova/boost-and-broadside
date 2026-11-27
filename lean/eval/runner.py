@@ -466,7 +466,7 @@ def _play(
     opening = deals_from(0, envs)
     # The state is the runner's: its own copies of the deal's shared fixed rows, every tensor
     # whole (a compiled graph is specialised on strides).
-    shared = ("bullets", "bullet_counts", "bullet_real", "tick", "pending")
+    shared = ("bullets", "bullet_state", "tick", "pending")
     state = dataclasses.replace(
         opening.state, **{name: getattr(opening.state, name).clone() for name in shared}
     )

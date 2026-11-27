@@ -36,6 +36,7 @@ from pathlib import Path
 
 import torch
 
+from lean.contract import REAL
 from lean.game import card, core
 
 ASPECTS_DEG = (0, 10, 20, 25, 30, 35, 40, 45, 50, 60, 90, 120, 150, 180)
@@ -107,15 +108,13 @@ def _place(config, inputs, aspects, ranges, offsets):
     bullets[:, core.BULLET_Y, 0, SLOT] = start_y
     bullets[:, core.BULLET_DIR_X, 0, SLOT] = 1.0
     bullets[:, core.BULLET_SPEED, 0, SLOT] = bullet_speed
-    counts = state.bullet_counts.clone()
-    counts[:, core.MOVES_LEFT, 0, SLOT] = TICKS + 1
-    real = state.bullet_real.clone()
-    real[:, 0, SLOT] = True
+    bullet_state = state.bullet_state.clone()
+    bullet_state[:, 0, SLOT] = REAL
+    # The tick after the slot's: the test bullet flies BULLET_SLOTS - 1 more ticks (> TICKS).
     return state.replace(
         bullets=bullets,
-        bullet_counts=counts,
-        bullet_real=real,
-        next_slot=torch.full((envs, 2), float(SLOT + 1)),
+        bullet_state=bullet_state,
+        tick=torch.full((envs,), SLOT + 1, dtype=torch.long),
     )
 
 

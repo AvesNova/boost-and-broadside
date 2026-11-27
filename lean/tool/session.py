@@ -5,6 +5,7 @@ tick; the parent forwards controls. No physics here: World runs the real game st
 
 import time
 
+from lean.contract import REAL
 from lean.game import card, core, tuning
 from lean.sandbox.world import World, field_list, stick_index
 from lean.tool import flight_config
@@ -34,9 +35,12 @@ def frame(world: World) -> dict:
         )
     bullets = []
     slots = s.bullet_x.shape[2]
+    # The tick each slot's bullet left the gun (the newest was written on the tick before).
+    fired_tick = (s.tick - 1)[:, None] - core.bullet_ages(s.tick - 1, slots)
     for ship in range(2):
         for k in range(slots):
-            if int(s.bullet_moves_left[0, ship, k]) > 0 and bool(s.bullet_real[0, ship, k]):
+            # Real bullets in flight (a contacted one is no longer drawn).
+            if int(s.bullet_state[0, ship, k]) == REAL:
                 step = float(s.bullet_speed[0, ship, k]) * world.h
                 bx, by = float(s.bullet_x[0, ship, k]), float(s.bullet_y[0, ship, k])
                 bullets.append(
@@ -48,7 +52,7 @@ def frame(world: World) -> dict:
                         ship,
                         # the bullet's identity: its slot and firing tick (the page joins a
                         # bullet's positions tick to tick, so a deflector's bend shows as a kink)
-                        f"{ship * slots + k}:{int(s.bullet_fired_tick[0, ship, k])}",
+                        f"{ship * slots + k}:{int(fired_tick[0, k])}",
                     ]
                 )
     return dict(

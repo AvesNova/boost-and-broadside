@@ -15,6 +15,8 @@ from torch import Tensor
 
 STICKS, POWERS, FIRES = 7, 3, 2
 JOINT = STICKS * POWERS * FIRES
+# A bullet's life in ticks: every ship writes one bullet a tick into its ring of BULLET_SLOTS
+# slots (the slot of tick t is t mod BULLET_SLOTS), so each bullet flies exactly this many ticks.
 BULLET_SLOTS = 12
 SHIP_TYPES = 1  # len(lean.game.card.TYPE_NAMES)
 
@@ -185,7 +187,6 @@ SHIP_COLUMNS = (
     # attack), stored by the step once (the world velocity is this over the refractive index).
     "velocity_x",
     "velocity_y",
-    "next_slot",  # the bullet slot the next shot is written to, a whole number
 )
 FLAG_COLUMNS = (
     "alive",
@@ -203,16 +204,15 @@ BULLET_COLUMNS = (
     "bullet_gradient_x",
     "bullet_gradient_y",
 )
-BULLET_COUNT_COLUMNS = (
-    "bullet_moves_left",  # 0 is inactive
-    "bullet_fired_tick",  # the episode tick the bullet left the gun
-)
+# A bullet's state (State.bullet_state, uint8): a ghost (no damage; labels the hit head), a
+# real shot, or contacted (it touched a ship: no further contact or damage; it flies on to the
+# end of its life).
+GHOST, REAL, CONTACTED = 0, 1, 2
 BLOCKS = {
     "ships": SHIP_COLUMNS,
     "flags": FLAG_COLUMNS,
     "identity": IDENTITY_COLUMNS,
     "bullets": BULLET_COLUMNS,
-    "bullet_counts": BULLET_COUNT_COLUMNS,
 }
 COLUMN = {
     name: (block, index) for block, names in BLOCKS.items() for index, name in enumerate(names)
@@ -234,8 +234,7 @@ class State:
     identity: Tensor  # (E, IDENTITY_COLUMNS, N) long
     constants: Constants  # per-ship constants: Python numbers and one table gathered at reset
     bullets: Tensor  # (E, BULLET_COLUMNS, N, K) float32
-    bullet_counts: Tensor  # (E, BULLET_COUNT_COLUMNS, N, K) long
-    bullet_real: Tensor  # (E, N, K) bool: a real bullet (False: a ghost, which does no damage)
+    bullet_state: Tensor  # (E, N, K) uint8: GHOST, REAL or CONTACTED
     tick: Tensor  # (E,) long
     # The environment's refractive fields, (E, 5, F) float32 rows [x, y, radius, band width,
     # target ln n]; F may be 0 (no medium).
@@ -257,7 +256,7 @@ class State:
         constants: Constants,
         tick: Tensor,
         fields: Tensor,
-        bullet_real: Tensor,
+        bullet_state: Tensor,
         pending: Tensor | None = None,
         seen: Tensor | None = None,
         ticks_since_seen: Tensor | None = None,
@@ -273,7 +272,6 @@ class State:
             "flags": torch.bool,
             "identity": torch.long,
             "bullets": torch.float32,
-            "bullet_counts": torch.long,
         }
         blocks = {
             block: torch.stack([named[name].to(dtypes[block]) for name in names], 1)
@@ -288,7 +286,7 @@ class State:
             constants=constants,
             tick=tick,
             fields=fields,
-            bullet_real=bullet_real,
+            bullet_state=bullet_state,
             pending=pending,
             seen=seen,
             ticks_since_seen=ticks_since_seen,
@@ -326,8 +324,9 @@ class StepOut:
     died: Tensor  # (E, N) bool
     done: Tensor  # (E,) bool
     result: Tensor  # (E,) long: 0 or 1 = winning team, 2 = draw, -1 = not done
-    # Bullets whose flight ended this tick (real and ghost alike), per slot (E, N, K):
-    # shot_outcome -1 none ended, 0 missed (ran out of moves), 1 hit an enemy, 2 hit a team-mate;
+    # Each bullet's outcome, once, per slot (E, N, K) (real and ghost alike): at its first
+    # contact (1 hit an enemy, 2 hit a team-mate) or at its last tick without one (0 missed);
+    # -1 none this tick (a contacted bullet flies on but never reports again);
     # shot_tick the episode tick that bullet left the gun (the tick the hit head labels).
     shot_outcome: Tensor
     shot_tick: Tensor

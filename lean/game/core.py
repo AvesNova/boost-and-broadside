@@ -23,12 +23,13 @@ from torch import Tensor
 
 from lean.contract import (
     BULLET_COLUMNS,
-    BULLET_COUNT_COLUMNS,
     BULLET_SLOTS,
+    CONTACTED,
     FIELD_FEATURES,
     GLOBAL_FEATURES,
     NO_PENDING,
     POWERS,
+    REAL,
     SHIP_COLUMNS,
     SHIP_FEATURES,
     SHIP_TYPES,
@@ -55,9 +56,6 @@ BULLET_SPEED, BULLET_LOG_INDEX = (
     BULLET_COLUMNS.index("bullet_speed"),
     BULLET_COLUMNS.index("bullet_log_index"),
 )
-MOVES_LEFT = BULLET_COUNT_COLUMNS.index("bullet_moves_left")
-GHOST, REAL, CONTACTED = 0, 1, 2  # the ghost-only prototype's bullet states
-FIRED_TICK = BULLET_COUNT_COLUMNS.index("bullet_fired_tick")
 
 
 @dataclass
@@ -103,11 +101,6 @@ class GameConfig:
     field_band_width: float = 160.0
     field_high_share: float = 0.5
     field_strong_share: float = 0.5
-    # Ghost bullets (the hit head's labels, author 2026-11-22): every living ship puts a bullet
-    # in its ring every tick; only a real shot damages and kills; a ghost ends at its first
-    # contact like a real bullet. Every bullet's outcome is reported when its flight ends.
-    # False (an ablation): real shots only.
-    ghost_bullets: bool = True
     # Flight (docs/rewrite/core-decisions.md "Flight physics"): weight always on the wing, the
     # turn limited unless diving; the engine drives speed only and never feeds the store; a
     # store of `store_loops` vertical loops at corner speed; dive and climb equal and opposite;
@@ -161,7 +154,7 @@ def built_once(build):
 # --------------------------------------------------------------------------- constants
 
 # Constants counted in whole ticks: they must be equal for every type of a run.
-INTEGER_CONSTANTS = ("bullet_moves", "fire_interval")
+INTEGER_CONSTANTS = ("fire_interval",)
 # Action-indexed tables (by stick index, by power index): always rows of the per-slot table.
 # The sustain table (`_sustain_fraction`) is wide too: always rows.
 ACTION_TABLES = (
@@ -204,6 +197,15 @@ def _per_type(config: GameConfig) -> dict[str, Tensor]:
         return torch.tensor(card.CARD[name], dtype=torch.float32)
 
     lift, acceleration = of("max_lift_coefficient"), of("max_acceleration")
+    # A bullet lives exactly BULLET_SLOTS ticks (its slot is rewritten then: the ring is the
+    # clock), so the card's bullet life must be that (one source of truth: the slot count).
+    life_ticks = torch.round(of("bullet_life") / config.tick_length).long()
+    if bool((life_ticks != BULLET_SLOTS).any()):
+        raise ValueError(
+            f"the card's bullet life is {life_ticks.tolist()} ticks; a bullet lives exactly "
+            f"contract.BULLET_SLOTS = {BULLET_SLOTS} ticks (every ship writes one bullet a tick "
+            "into its ring), so bullet_life must round to that"
+        )
     stall = card.STALL_ANGLE * of("stall_angle_scale")
     # The store: `store_loops` vertical loops at corner speed. A loop climbs twice the corner
     # turn radius, whose sideways acceleration is the g limit with 1 g held on the wing.
@@ -241,7 +243,6 @@ def _per_type(config: GameConfig) -> dict[str, Tensor]:
         "muzzle_speed": of("muzzle_speed"),
         "spread_speed": card.BULLET_SPREAD * of("bullet_spread_scale"),
         "bullet_drag": card.BULLET_DRAG * of("bullet_drag_scale"),
-        "bullet_moves": torch.round(of("bullet_life") / config.tick_length).long(),
         "fire_interval": torch.round(1.0 / (config.tick_length * of("fire_rate"))).long(),
         "hit_damage": of("hit_damage"),
         "explosive_share": of("explosive_share"),
@@ -386,7 +387,7 @@ def _derived_characteristics(config: GameConfig, values: dict[str, Tensor]) -> d
             low, high = torch.where(rate > 0.0, middle, low), torch.where(rate > 0.0, high, middle)
     cruise = 0.5 * (low + high)
     launch = cruise + c.muzzle_speed
-    life = c.bullet_moves.float() * config.tick_length
+    life = BULLET_SLOTS * config.tick_length
     stall_speed = torch.sqrt(card.GRAVITY / c.lift)
     corner_speed = torch.sqrt(c.max_acceleration / c.lift)
     sustained_rate, sustained_speed = _best_sustained_turn(values, stall_speed, cruise)
@@ -1526,12 +1527,12 @@ def step(
 
     shots = _fire(config, state, shoot, noise["spread"], index)
     flown = _fly(config, state, stick, power, shots.fired)
-    # Ghost-only prototype: every bullet flies its 12 ticks (the ring); bullet_real is the
-    # bullet's state, 0 ghost, 1 real, 2 contacted (no further contact, no damage).
-    flying = shots.bullet_real < CONTACTED
+    # Every bullet moves on every tick of its life (BULLET_SLOTS ticks: the ring); only a ghost
+    # or a real bullet not yet contacted can touch a ship, and only a real one damages.
+    contactable = shots.bullet_state < CONTACTED
     bullets = _move_bullets(config, state, shots.bullets)
-    contact = _hit_test(config, state, flown, shots.bullets, bullets, flying, index)
-    real = (shots.bullet_real == REAL).reshape(E, N * K)
+    contact = _hit_test(config, state, flown, shots.bullets, bullets, contactable, index)
+    real = (shots.bullet_state == REAL).reshape(E, N * K)
     bullet_damage = _damage(state, flown, bullets, real, contact)
     if contact.bent is not None:
         bullets = _deflect(bullets, contact)
@@ -1550,13 +1551,10 @@ def step(
     recharged = shield + restored
     tick, done, result = _end_check(config, state, alive, recharged)
     enemy = state.team[:, index.owner] != _on_target(state.team, contact.target)
-    # The ring's age of each slot: 0 for the bullet written this tick, K - 1 for its last move.
-    age = (shots.next_slot[..., None] - 1 - index.bullet_slot) % K
-    hit_now = contact.hit.reshape(E, N, K)
-    ended = hit_now | ((age == K - 1) & flying)
-    outcome = torch.where(hit_now, torch.where(enemy.reshape(E, N, K), 1, 2), 0)
-    shot_outcome = torch.where(ended, outcome, -1)
-    bullet_state = torch.where(hit_now, CONTACTED, shots.bullet_real)
+    age = bullet_ages(state.tick, K)
+    bullet_state, shot_outcome = _bullet_ends(
+        shots.bullet_state, contactable, age, contact.hit, enemy
+    )
 
     # Slots not alive at tick start keep their whole row (agreed fix 3: one select, not one per
     # field).
@@ -1587,19 +1585,17 @@ def step(
                     flown.angle_cos,
                     flown.angle_sin,
                 ),
-                shots.next_slot,
             ],
             1,
         ),
         state.ships,
     )
-    fired_tick = state.tick[:, None, None] - age
     new_state = dataclasses.replace(
         state,
         ships=ships,
         flags=torch.stack([alive, state.exists, shots.fired], 1),
         bullets=bullets,
-        bullet_real=bullet_state,
+        bullet_state=bullet_state,
         tick=tick,
         pending=action,
     )
@@ -1609,7 +1605,7 @@ def step(
         done=done,
         result=result,
         shot_outcome=shot_outcome,
-        shot_tick=fired_tick,
+        shot_tick=(state.tick[:, None] - age)[:, None].expand(E, N, K),
         hit_damage=filled((E, N * N), 0.0, bullet_damage.dtype, device)
         .scatter_add(1, index.pair + contact.target, bullet_damage)
         .reshape(E, N, N)
@@ -1643,19 +1639,19 @@ class Shots(NamedTuple):
 
     fired: Tensor  # (E, N) bool
     bullets: Tensor  # (E, BULLET_COLUMNS, N, K) with the new bullets written
-    bullet_real: Tensor  # (E, N, K) bool
+    bullet_state: Tensor  # (E, N, K) uint8 with the new bullets written
     cooldown: Tensor  # (E, N), the gun's whole ticks to wait, before this tick's count down
-    next_slot: Tensor  # (E, N)
 
 
 def _fire(
     config: GameConfig, state: State, shoot: Tensor, spread: Tensor, index: SimpleNamespace
 ) -> Shots:
     """Fire, from the tick-start state. A living ship with the trigger held and the gun ready
-    fires a real shot (a shot costs no store). The new bullet goes into the ship's next slot:
-    with ghost bullets every living ship writes one every tick (a ghost unless it fired), else
-    only real shots. A new bullet starts at its ship with the ship's cached medium, at the
-    ship's velocity plus the muzzle speed along the nose and the spread."""
+    fires a real shot (a shot costs no store). Every ship, alive or dead, writes one bullet a
+    tick, into the tick's slot of its ring (tick mod K, overwriting the bullet written K ticks
+    before): a real bullet if it fired, else a ghost. A new bullet starts at its ship with the
+    ship's cached medium, at the ship's velocity plus the muzzle speed along the nose and the
+    spread."""
     c = state.constants
     E, _, _, K = state.bullets.shape
     alive = state.alive
@@ -1675,7 +1671,7 @@ def _fire(
         + c["spread_speed"] * spread[..., 1]
     )
     launch_speed = torch.sqrt(launch_x * launch_x + launch_y * launch_y)
-    written = index.bullet_slot == state.next_slot[..., None]  # every ship, every tick
+    written = (index.bullet_slot == (state.tick % K)[:, None])[:, None]  # (E, 1, K)
     launched = torch.cat(
         [
             state.ships[:, X : Y + 1],
@@ -1687,9 +1683,8 @@ def _fire(
     return Shots(
         fired=fired,
         bullets=torch.where(written[:, None], launched[..., None], state.bullets),
-        bullet_real=torch.where(written, fired[..., None].to(torch.uint8), state.bullet_real),
+        bullet_state=torch.where(written, fired[..., None].to(torch.uint8), state.bullet_state),
         cooldown=torch.where(fired, c["fire_interval"], state.cooldown),
-        next_slot=(state.next_slot + 1) % K,
     )
 
 
@@ -1738,8 +1733,8 @@ def _fly(
 
 
 def _move_bullets(config: GameConfig, state: State, start: Tensor) -> Tensor:
-    """Every flying bullet's move (bullet_motion); inactive bullets are frozen. start: the bullet
-    block after the fire stage; returns the block after the move."""
+    """Every bullet's move (bullet_motion), whatever its state. start: the bullet block after the
+    fire stage; returns the block after the move."""
     x, y, direction_x, direction_y, speed = start[:, :BULLET_LOG_INDEX].unbind(1)
     moved = bullet_motion(
         state.fields,
@@ -1783,13 +1778,14 @@ def _hit_test(
     flown: SimpleNamespace,
     start_bullets: Tensor,
     bullets: Tensor,
-    flying: Tensor,
+    contactable: Tensor,
     index: SimpleNamespace,
 ) -> Contact:
     """The swept test between the two straight motions, every bullet against every ship
     ((E, 2, N K, N), x and y on the second axis), in the relative frame (bullet minus ship). A
     contact is a closest approach within the hit radius of a ship alive at tick start (a dead
-    ship is no target) that is not the bullet's owner, by a flying bullet. First contact: the
+    ship is no target) that is not the bullet's owner, by a `contactable` bullet (a ghost or a
+    real bullet not yet contacted: a contacted one flies on without contact). First contact: the
     smallest tau, ties within 1e-6 to the closer pass.
 
     The deflector (proposal 2026-11-27, `egg_entry`, `egg_turn`): a bullet whose straight path
@@ -1812,7 +1808,7 @@ def _hit_test(
     miss = start + tau[:, None] * relative
     miss_squared = (miss * miss).sum(1)
     radius = c["hit_radius"]
-    candidate = index.other & flying.reshape(E, N * K, 1) & state.alive[:, None, :]
+    candidate = index.other & contactable.reshape(E, N * K, 1) & state.alive[:, None, :]
     reach = _per_ship(radius * radius)
     contact = (miss_squared < reach) & candidate
     if config.deflector == "off":
@@ -2488,19 +2484,27 @@ def _end_check(
     return tick, done, torch.where(done, torch.where(wiped, wipe_result, clock_result), -1)
 
 
+def bullet_ages(tick: Tensor, slots: int = BULLET_SLOTS) -> Tensor:
+    """(E, K) long: each ring slot's bullet age on the tick `tick` (E,), the bullet written on
+    that tick 0, K - 1 on its last tick; it left the gun on tick - age. A step passes its
+    tick-start count; a state between ticks wrote its newest bullets on state.tick - 1."""
+    return (tick[:, None] - torch.arange(slots, device=tick.device)) % slots
+
+
 def _bullet_ends(
-    counts: Tensor, flying: Tensor, hit: Tensor, enemy: Tensor
+    bullet_state: Tensor, contactable: Tensor, age: Tensor, hit: Tensor, enemy: Tensor
 ) -> tuple[Tensor, Tensor]:
-    """Each bullet's moves left after this tick (0 once it hits), and the outcome of every bullet
-    whose flight ends this tick (its first contact, or its last move without one), (E, N, K):
-    -1 none ended, 0 missed, 1 hit an enemy, 2 hit a team-mate. hit, enemy: (E, N K) bool."""
-    shape = flying.shape
+    """Each bullet's state after this tick (CONTACTED once it touches a ship) and its outcome,
+    reported once, (E, N, K): at its first contact (1 hit an enemy, 2 hit a team-mate) or on
+    its last tick (age K - 1) without one (0 missed); -1 otherwise. A contacted bullet (and
+    every slot of a fresh deal) never reports. bullet_state, contactable (E, N, K); age (E, K);
+    hit, enemy (E, N K) bool."""
+    shape = bullet_state.shape
     hit = hit.reshape(shape)
-    moves_left0 = counts[:, MOVES_LEFT]
-    moves_left = torch.where(hit, 0, torch.where(flying, moves_left0 - 1, moves_left0))
-    ended = hit | (flying & (moves_left == 0))
+    last = (age == shape[-1] - 1)[:, None]
+    ended = hit | (last & contactable)
     outcome = torch.where(hit, torch.where(enemy.reshape(shape), 1, 2), 0)
-    return moves_left, torch.where(ended, outcome, -1)
+    return torch.where(hit, CONTACTED, bullet_state), torch.where(ended, outcome, -1)
 
 
 # --------------------------------------------------------------------------- reset
@@ -2627,16 +2631,9 @@ def _lineup_types(lineup: tuple[str, ...], device: torch.device) -> Tensor:
 
 
 @built_once
-def _parked_bullets(envs, slots, x, y, device) -> Tensor:
-    """Ghost-only prototype: a fresh deal's bullets are ghosts parked on their owner (speed 0)."""
-    bullets = _no_bullets(envs, slots, device)
-    bullets[:, BULLET_X] = x[..., None]
-    bullets[:, BULLET_Y] = y[..., None]
-    return bullets
-
-
 def _no_bullets(envs: int, slots: int, device: torch.device) -> Tensor:
-    """The bullet block of a fresh deal: every bullet inactive, at the origin, pointing along x."""
+    """The bullet block of a fresh deal: every bullet at the origin, still, pointing along x (its
+    state CONTACTED: it never touches a ship or reports, and is overwritten in its slot's tick)."""
     bullets = torch.zeros((envs, len(BULLET_COLUMNS), slots, BULLET_SLOTS), device=device)
     bullets[:, BULLET_DIR_X] = 1.0
     return bullets
@@ -2696,7 +2693,6 @@ def _spawned(
         "log_index": log_index,
         "gradient_x": gradient_x,
         "gradient_y": gradient_y,
-        "next_slot": zeros,
     }
     # At zero angle of attack the flight path is the nose.
     named["velocity_x"], named["velocity_y"] = speed * heading_cos, speed * heading_sin
@@ -2764,11 +2760,8 @@ def deal(config: GameConfig, envs: int, slots: int, team_sizes: Tensor, generato
         flags=torch.stack([exists, exists, filled((envs, slots), False, torch.bool, device)], 1),
         identity=torch.stack([team, ship_type], 1),
         constants=constants,
-        bullets=_parked_bullets(envs, slots, named["x"], named["y"], device),
-        bullet_counts=filled(
-            (envs, len(BULLET_COUNT_COLUMNS), slots, BULLET_SLOTS), 0, torch.long, device
-        ),
-        bullet_real=filled(bullet_shape, GHOST, torch.uint8, device),
+        bullets=_no_bullets(envs, slots, device),
+        bullet_state=filled(bullet_shape, CONTACTED, torch.uint8, device),
         tick=filled((envs,), 0, torch.long, device),
         fields=fields,
         # The neutral action (straight, coast, no fire) is every ship's first pending action.
@@ -2794,7 +2787,7 @@ def reset(
     slots = int(team_sizes.sum(-1).max())
     state = deal(config, envs, slots, team_sizes, generator, device)
     # The state is the caller's: its own copies of the deal's shared fixed rows.
-    shared = ("bullets", "bullet_counts", "bullet_real", "tick", "pending")
+    shared = ("bullets", "bullet_state", "tick", "pending")
     return dataclasses.replace(state, **{name: getattr(state, name).clone() for name in shared})
 
 
@@ -2931,7 +2924,7 @@ def _snapshot(state: State) -> Tensor:
     """(E, SEEN_COLUMNS, N) float32: each ship's raw values now, as a sighting records them.
     Columns on the middle axis, so each column read back is an (E, N) slice with unit stride
     along N."""
-    bullet_share = (state.bullet_real == REAL).to(torch.float32).mean(-1)
+    bullet_share = (state.bullet_state == REAL).to(torch.float32).mean(-1)
     alive = state.alive.to(torch.float32)
     return torch.cat(
         [state.ships, torch.stack([bullet_share, alive, torch.ones_like(alive)], 1)], 1
@@ -2967,8 +2960,7 @@ def enemy_view(state: State) -> State:
         ships=state.seen[:, : len(SHIP_COLUMNS)],
         flags=torch.stack([alive, state.exists, state.fired], 1),
         bullets=None,
-        bullet_counts=None,
-        bullet_real=None,
+        bullet_state=None,
         seen=None,
         ticks_since_seen=None,
     )
@@ -3018,9 +3010,9 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
     clipped to [-1, 1]; the outward unit direction x, y; heading cos, sin; the share of bullet
     slots in flight], then flags [same team as the viewer, alive, exists, fired last tick], then
     the ship-type one-hot. Rows of slots that do not exist are zero. Fired last tick is the
-    step's stored flag; the share of bullet slots in flight counts real bullets only (ghosts
-    are not observed). Position is not a scalar (Obs.pos carries it, for the position code
-    and the rotary angles).
+    step's stored flag; the share of bullet slots in flight counts real bullets not yet
+    contacted (ghosts and contacted bullets are not observed). Position is not a scalar (Obs.pos
+    carries it, for the position code and the rotary angles).
 
     pending (E, N) long: the joint pending action (the one the next tick applies) of the
     team's own living ships, NO_PENDING for every other row.
@@ -3041,14 +3033,14 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
         # Own rows: the live share; enemy rows: as last seen.
         bullet_share = torch.where(
             same_team,
-            (state.bullet_real == REAL).to(torch.float32).mean(-1),
+            (state.bullet_state == REAL).to(torch.float32).mean(-1),
             enemy_seen[:, 0],
         )
         # For the globals: own ships alive, enemies not seen dead (never-seen count as alive).
         counted = torch.where(same_team, state.alive, enemy_seen[:, SEEN_ALIVE - SEEN_SHARE] > 0.5)
     else:
         view = state
-        in_flight = state.bullet_real == REAL
+        in_flight = state.bullet_state == REAL
         bullet_share = in_flight.to(torch.float32).mean(-1)
     exists, alive = state.exists, view.alive
     # World-frame motion, as v2 observes it: the proper speed over the refractive index, so a

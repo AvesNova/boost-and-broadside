@@ -13,6 +13,7 @@ from collections import deque
 import torch
 
 from lean import scripted
+from lean.contract import CONTACTED
 from lean.game import card, core
 
 TRAIL_SECONDS = 5.0
@@ -140,7 +141,7 @@ class World:
             self._place_opponent()
         else:
             self.state.alive[0, 1] = False
-            self.state.bullet_moves_left[0, 1] = 0
+            self.state.bullet_state[0, 1] = CONTACTED  # its bullets never touch a ship
         self.opponent_respawn = -1
 
     # ------------------------------------------------------------------ stepping

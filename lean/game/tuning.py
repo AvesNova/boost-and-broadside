@@ -1242,19 +1242,12 @@ def load_card() -> dict[str, tuple[float, ...]]:
             rows = [cached_real_row(name) for name in card.TYPE_NAMES]
         finally:
             _DERIVING.active = False
-        from lean.contract import BULLET_SLOTS
-
+        # (The bullet life must be contract.BULLET_SLOTS ticks: lean.game.core checks it when it
+        # builds the constants.)
         for name, row in zip(card.TYPE_NAMES, rows):
             if set(row) != set(card.CARD_FIELDS):
                 off = sorted(set(row) ^ set(card.CARD_FIELDS))
                 raise ValueError(f"{name}'s derived row differs from the card's fields: {off}")
-            interval = max(1, round(30.0 / row["fire_rate"]))  # ticks between shots
-            slots = math.ceil(row["bullet_life"] * 30.0 / interval - LIFE_TOLERANCE)
-            if slots > BULLET_SLOTS:
-                raise ValueError(
-                    f"{name}'s bullet life needs {slots} bullet slots; the contract has "
-                    f"{BULLET_SLOTS}"
-                )
         card.CARD = {field: tuple(float(row[field]) for row in rows) for field in card.CARD_FIELDS}
         return card.CARD
 
@@ -1879,9 +1872,9 @@ assert set(CARD_TIME_POWERS) == set(card.CARD_FIELDS)
 def time_scaled(factor: float, tick_length: float = 1.0 / 30.0):
     """The card and the rule constants at `factor` times real time (the game's are TIME_FACTOR):
     each value converted to real time and back at the new factor, so gravity is factor^2 x 9.81.
-    The tick stays tick_length of game time. Guns too; a bullet's life is capped at what
-    contract.BULLET_SLOTS holds at the fire interval (whole ticks): at 1.5x it is 12 ticks, not
-    15. Returns (card dict, {rule constant: value})."""
+    The tick stays tick_length of game time. Guns too, but a bullet's life stays
+    contract.BULLET_SLOTS ticks (the ring is its clock), so the gun range changes with the
+    factor. Returns (card dict, {rule constant: value})."""
     from lean.contract import BULLET_SLOTS
 
     ratio = TIME_FACTOR / factor
@@ -1893,11 +1886,7 @@ def time_scaled(factor: float, tick_length: float = 1.0 / 30.0):
         name: tuple(scaled(v, CARD_TIME_POWERS[name]) for v in values)
         for name, values in card.CARD.items()
     }
-    lives = []
-    for rate, life in zip(table["fire_rate"], table["bullet_life"]):
-        interval = max(1, round(1.0 / (tick_length * rate)))
-        lives.append(min(life, BULLET_SLOTS * interval * tick_length))
-    table["bullet_life"] = tuple(lives)
+    table["bullet_life"] = (BULLET_SLOTS * tick_length,) * len(table["bullet_life"])
     rules = {name: scaled(getattr(card, name), power) for name, power in RULE_TIME_POWERS.items()}
     return table, rules
 
