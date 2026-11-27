@@ -1,19 +1,19 @@
 {
- "cold_s": 141.6,
+ "cold_s": 164.3,
  "graphs": 5,
  "graph_breaks": 0,
- "operations": 10295,
+ "operations": 11470,
  "functions": {
   "act": {
    "graphs": 1,
-   "operations": 4613,
+   "operations": 5788,
    "aot": [
     [
      "forward",
-     5333
+     6168
     ]
    ],
-   "backend_s": 35.9
+   "backend_s": 47.7
   },
   "advance": {
    "graphs": 1,
@@ -24,7 +24,7 @@
      3537
     ]
    ],
-   "backend_s": 19.3
+   "backend_s": 20.2
   },
   "minibatch_loss": {
    "graphs": 1,
@@ -39,7 +39,7 @@
      2215
     ]
    ],
-   "backend_s": 21.7
+   "backend_s": 23.9
   },
   "slot_actions": {
    "graphs": 1,
@@ -50,7 +50,7 @@
      1114
     ]
    ],
-   "backend_s": 8.6
+   "backend_s": 11.2
   },
   "merge_league": {
    "graphs": 1,
@@ -61,7 +61,7 @@
      44
     ]
    ],
-   "backend_s": 0.5
+   "backend_s": 0.6
   }
  },
  "gpu": "NVIDIA GeForce RTX 4070 Laptop GPU",
