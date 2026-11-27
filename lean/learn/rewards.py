@@ -55,7 +55,8 @@ class TickEvents:
     raw (E, N, N) [attacker, target]: raw hit damage of real bullets. boundary (E, N): raw
     boundary damage. shield_lost, shield_restored (E, N): what the shield lost and regained.
     died (E, N) bool, done (E,) bool, win_loss (E, 2) team 0's win and loss weights (a
-    result one-hot, a draw neither). present (E, N) bool: the slot is in the match.
+    result one-hot, a draw neither). present (E, N) bool: the slot is in the match. living
+    (E, N) bool: the ship is alive at the tick's start (the rows that train on the tick).
     """
 
     raw: Tensor
@@ -66,6 +67,7 @@ class TickEvents:
     done: Tensor
     win_loss: Tensor
     present: Tensor
+    living: Tensor
 
 
 def tick_events(step_out, state) -> TickEvents:
@@ -87,6 +89,7 @@ def tick_events(step_out, state) -> TickEvents:
         done=step_out.done,
         win_loss=win_loss,
         present=state.exists,
+        living=state.alive,
     )
 
 
@@ -120,13 +123,19 @@ def attribute_recharge(
     return attributed, recharge - _column_total(attributed)[..., 0, :], ledger - attributed
 
 
-def enemy_team_share(value: Tensor, team: Tensor, present: Tensor) -> Tensor:
-    """Each ship's value (..., N) paid to the opposing team: every present ship receives the
-    other team's total over its own team's present count; a slot out of the match none."""
+def enemy_team_share(value: Tensor, team: Tensor, present: Tensor, living: Tensor) -> Tensor:
+    """Each ship's value (..., N) paid to the opposing team, split over that team's living
+    ships (`living`, alive at the tick's start; a dead ship's share would never train): each
+    receives the other team's total over its team's living count. A team with no living
+    ship (not reached in play: its elimination ended the match) splits over its present
+    ships, so the sums stay zero; a slot out of the match receives none."""
     enemies = _enemies(team)
     total = torch.where(enemies, value[..., None, :], 0.0).sum(-1)
-    own_size = (~enemies & present[..., None, :]).sum(-1).clamp_min(1)
-    return torch.where(present, total / own_size, 0.0)
+    living = living & present
+    living_size = (~enemies & living[..., None, :]).sum(-1)
+    receives = torch.where(living_size > 0, living, present)
+    size = (~enemies & receives[..., None, :]).sum(-1).clamp_min(1)
+    return torch.where(receives, total / size, 0.0)
 
 
 def outcome_reward(team: Tensor, win_loss: Tensor, done: Tensor) -> Tensor:
@@ -138,7 +147,7 @@ def outcome_reward(team: Tensor, win_loss: Tensor, done: Tensor) -> Tensor:
     return torch.where(on_team0, win, loss) - torch.where(on_team0, loss, win)
 
 
-def kill_death_reward(team, combat_death, boundary_death, raw, ledger, present) -> Tensor:
+def kill_death_reward(team, combat_death, boundary_death, raw, ledger, present, living) -> Tensor:
     """(..., N): v2's death, kill, ally kill and unforced events summed.
 
     Death -1 (in combat or at the boundary). A dead ship's kill is shared half by the final
@@ -154,7 +163,7 @@ def kill_death_reward(team, combat_death, boundary_death, raw, ledger, present) 
     enemies = _enemies(team)
     ally_share = torch.where(enemies, 0.0, share)
     kill = torch.where(enemies, share, 0.0).sum(-1)
-    unforced = enemy_team_share(boundary_death + 2.0 * ally_share.sum(-2), team, present)
+    unforced = enemy_team_share(boundary_death + 2.0 * ally_share.sum(-2), team, present, living)
     death = (combat_death | boundary_death).to(share.dtype)
     return kill - death - ally_share.sum(-1) + unforced
 
@@ -168,6 +177,7 @@ def damage_reward(
     recharge_attributed,
     unattributed,
     present,
+    living,
 ) -> Tensor:
     """(..., N) in damage points: v2's taken, dealt, friendly fire, recharge, charge-back,
     refund and unforced events summed.
@@ -191,7 +201,7 @@ def damage_reward(
         + recharge
         - enemy_attributed
         + ally_attributed
-        + enemy_team_share(unforced, team, present)
+        + enemy_team_share(unforced, team, present, living)
     )
 
 
@@ -212,7 +222,9 @@ def reward_step(
 
     died = events.died
     combat_death = died & (hit > 0.0)
-    kill_death = kill_death_reward(team, combat_death, died & ~combat_death, raw, ships, present)
+    kill_death = kill_death_reward(
+        team, combat_death, died & ~combat_death, raw, ships, present, events.living
+    )
 
     restored = events.shield_restored
     deficit = (_column_total(ships) + boundary_row)[..., 0, :]
@@ -227,6 +239,7 @@ def reward_step(
         ship_attributed,
         unattributed,
         present,
+        events.living,
     )
     outcome = outcome_reward(team, events.win_loss, events.done)
 
