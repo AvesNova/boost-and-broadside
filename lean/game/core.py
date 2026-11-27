@@ -409,7 +409,7 @@ def _derived_characteristics(config: GameConfig, values: dict[str, Tensor]) -> d
         # the damage's reference speed: a bullet fired at cruise, DAMAGE_REFERENCE_DISTANCE out
         "inverse_reference_bullet_speed": torch.exp(c.bullet_drag * card.DAMAGE_REFERENCE_DISTANCE)
         / launch,
-        "gun_range": torch.log1p(c.bullet_drag * launch * life) / c.bullet_drag,
+        "gun_range": bullet_reach(c.bullet_drag, launch, life),
         "sustained_speed": sustained_speed,
         "sustained_rate": sustained_rate,
         "sustained_radius": sustained_speed / sustained_rate,
@@ -913,7 +913,9 @@ def medium(fields: Tensor, x: Tensor, y: Tensor) -> tuple[Tensor, Tensor, Tensor
     field_x, field_y, radius, band, target = (fields[:, row].reshape(shape) for row in range(5))
     offset_x, offset_y = x[..., None] - field_x, y[..., None] - field_y
     distance = torch.sqrt(offset_x * offset_x + offset_y * offset_y)
-    depth = 0.5 - (distance - radius) / band
+    # The band is centred on the field's edge (`field_edge_distance` 0, where ln n is half
+    # the field's level).
+    depth = 0.5 - field_edge_distance(field_x, field_y, radius, x[..., None], y[..., None]) / band
     inward = depth.clamp(0.0, 1.0)
     outward = 1.0 - inward
     profile = smootherstep(inward)
@@ -1659,16 +1661,9 @@ def _fire(
         state.energy <= 0.0
     )
     fired = alive & shoot & (state.cooldown == 0) & ~blocked
-    launch_x = (
-        state.velocity_x
-        + c["muzzle_speed"] * state.heading_cos
-        + c["spread_speed"] * spread[..., 0]
-    )
-    launch_y = (
-        state.velocity_y
-        + c["muzzle_speed"] * state.heading_sin
-        + c["spread_speed"] * spread[..., 1]
-    )
+    aim_x, aim_y = launch_velocity(state)
+    launch_x = aim_x + c["spread_speed"] * spread[..., 0]
+    launch_y = aim_y + c["spread_speed"] * spread[..., 1]
     launch_speed = torch.sqrt(launch_x * launch_x + launch_y * launch_y)
     written = (index.bullet_slot == (state.tick % K)[:, None])[:, None]  # (E, 1, K)
     launched = torch.cat(
@@ -2428,7 +2423,7 @@ def _pair_sum(values: Tensor | float) -> Tensor | float:
 def _boundary_damage(config: GameConfig, flown: SimpleNamespace, alive: Tensor) -> Tensor:
     """(E, N): damage from the arena boundary after the move, rising by a smootherstep over the
     ramp width beyond the arena radius to its maximum (per second); none for a dead ship."""
-    depth = torch.sqrt(flown.x * flown.x + flown.y * flown.y) - config.arena_radius
+    depth = boundary_distance(config, flown.x, flown.y)
     ramp = smootherstep((depth / config.boundary_ramp_width).clamp(0.0, 1.0))
     return torch.where(alive, card.BOUNDARY_MAX_DAMAGE * ramp * config.tick_length, 0.0)
 
@@ -2981,6 +2976,151 @@ def team_view(state: State, team: int) -> State:
     )
 
 
+# --------------------------------------------------------------------------- relative geometry
+
+# The learner's geometry heads read the game through these (lean.model's pairwise head, the
+# map-edge column; one source of truth for their targets). Per-ship columns of
+# `geometry_record`, besides the position and heading the observation carries.
+GEOMETRY_COLUMNS = (
+    "velocity_x",  # world velocity, m/s (the stored velocity over the refractive index)
+    "velocity_y",
+    "launch_x",  # a shot's launch velocity over the map without the spread, m/s
+    "launch_y",
+    "energy",  # the store
+    "edge",  # signed distance beyond the arena's edge, m (negative inside: `boundary_distance`)
+    "bullet_drag",  # the ship's bullet drag, 1/m
+)
+# How many fixed-point passes `pair_geometry` makes for the lead point's time of flight.
+LEAD_PASSES = 3
+
+
+def boundary_distance(config: GameConfig, x: Tensor, y: Tensor) -> Tensor:
+    """The signed distance beyond the arena's edge, metres (negative inside): boundary damage
+    rises over the ramp from 0 (`_boundary_damage`); the observation's boundary scalar is its
+    negative."""
+    return torch.sqrt(x * x + y * y) - config.arena_radius
+
+
+def field_edge_distance(
+    centre_x: Tensor, centre_y: Tensor, radius: Tensor, x: Tensor, y: Tensor
+) -> Tensor:
+    """The signed distance of points (x, y) to a field's edge, metres (negative inside): the
+    distance to its centre less its radius, the middle of its band (`medium`). Any shapes that
+    broadcast."""
+    offset_x, offset_y = x - centre_x, y - centre_y
+    return torch.sqrt(offset_x * offset_x + offset_y * offset_y) - radius
+
+
+def world_velocity(ships) -> tuple[Tensor, Tensor]:
+    """The world (map) velocity of ships with stored velocity and log index (a State or any
+    view of it): the stored velocity, at proper speed, over the refractive index."""
+    inverse_index = torch.exp(-ships.log_index)
+    return ships.velocity_x * inverse_index, ships.velocity_y * inverse_index
+
+
+def launch_velocity(state: State) -> tuple[Tensor, Tensor]:
+    """A shot's launch velocity (proper speed) before the spread (`_fire`): the ship's stored
+    velocity plus the muzzle speed along the nose."""
+    c = state.constants
+    return (
+        state.velocity_x + c["muzzle_speed"] * state.heading_cos,
+        state.velocity_y + c["muzzle_speed"] * state.heading_sin,
+    )
+
+
+def bullet_reach(drag, speed, time):
+    """How far a bullet launched at `speed` (map speed) travels in `time` under the drag law
+    (speed e^(-drag s) after distance s, as `bullet_motion`'s half-drag steps give): ln(1 + drag
+    speed time) / drag."""
+    return torch.log1p(drag * speed * time) / drag
+
+
+def bullet_flight_time(drag, speed, distance):
+    """The inverse of `bullet_reach`: the time a bullet launched at `speed` takes to travel
+    `distance`, (e^(drag distance) - 1) / (drag speed)."""
+    return torch.expm1(drag * distance) / (drag * speed)
+
+
+def visible_rows(config: GameConfig, state: State, team) -> Tensor:
+    """(E, N) bool, Obs.visible of team `team`'s view (an int, or (E, 1) long): its own rows and
+    the enemies it sees this tick (seen on this tick and known); every row with fog off."""
+    if not config.fog:
+        return torch.ones_like(state.exists)
+    same_team = state.team == team
+    return same_team | ((state.ticks_since_seen == 0) & (state.seen[:, SEEN_KNOWN] > 0.5))
+
+
+def geometry_record(config: GameConfig, state: State) -> Tensor:
+    """(E, N, GEOMETRY_COLUMNS) float32: each ship's per-ship geometry now (its true state; the
+    learner keeps only the rows a team sees). With the position and heading (Obs.pos,
+    Obs.heading) it is what `pair_geometry` and the map-edge target read."""
+    velocity_x, velocity_y = world_velocity(state)
+    launch_x, launch_y = launch_velocity(state)
+    inverse_index = torch.exp(-state.log_index)
+    drag = state.constants["bullet_drag"]
+    columns = {
+        "velocity_x": velocity_x,
+        "velocity_y": velocity_y,
+        "launch_x": launch_x * inverse_index,
+        "launch_y": launch_y * inverse_index,
+        "energy": state.energy,
+        "edge": boundary_distance(config, state.x, state.y),
+        "bullet_drag": drag if isinstance(drag, Tensor) else torch.full_like(state.x, drag),
+    }
+    return torch.stack([columns[name].expand_as(state.x) for name in GEOMETRY_COLUMNS], -1)
+
+
+def pair_geometry(first_position, first_heading, first, second_position, second):
+    """The relative geometry of ship pairs, first on second, each (...) float32: positions
+    (..., 2), headings (...) radians, `first` / `second` (..., GEOMETRY_COLUMNS) rows of
+    `geometry_record` (second's heading is not needed).
+
+    range: |d|, d = second's position - first's (m). range_rate: d . w / |d|, w = second's
+    world velocity - first's (m/s, negative closing). line_of_sight_rate: (d x w) / |d|^2
+    (rad/s, counter-clockwise positive). The three are symmetric in the order.
+    energy_difference: first's store - second's (antisymmetric).
+    train_angle: the antenna train angle, from first's nose to the line of sight to second
+    (radians in (-pi, pi], counter-clockwise positive). gun_error: from the launch direction
+    of a shot by first now (`launch_velocity` over the map, no spread) to the lead point,
+    second's position after the bullet's time of flight to it at second's world velocity
+    (`bullet_flight_time` at first's launch speed and drag, LEAD_PASSES fixed-point passes
+    from the range), radians in (-pi, pi]. Both depend on the order. The aspect angle and the
+    heading crossing angle follow from the train angles in both orders."""
+    column = {name: index for index, name in enumerate(GEOMETRY_COLUMNS)}
+
+    def read(rows, name):
+        return rows[..., column[name]]
+
+    line_x = second_position[..., 0] - first_position[..., 0]
+    line_y = second_position[..., 1] - first_position[..., 1]
+    squared = (line_x * line_x + line_y * line_y).clamp_min(1e-6)
+    distance = torch.sqrt(squared)
+    relative_x = read(second, "velocity_x") - read(first, "velocity_x")
+    relative_y = read(second, "velocity_y") - read(first, "velocity_y")
+    nose_x, nose_y = torch.cos(first_heading), torch.sin(first_heading)
+    launch_x, launch_y = read(first, "launch_x"), read(first, "launch_y")
+    launch_speed = torch.sqrt(launch_x * launch_x + launch_y * launch_y).clamp_min(1e-6)
+    drag = read(first, "bullet_drag")
+    lead_x, lead_y, reach = line_x, line_y, distance
+    for _ in range(LEAD_PASSES):
+        flight = bullet_flight_time(drag, launch_speed, reach)
+        lead_x = line_x + read(second, "velocity_x") * flight
+        lead_y = line_y + read(second, "velocity_y") * flight
+        reach = torch.sqrt(lead_x * lead_x + lead_y * lead_y)
+    return {
+        "range": distance,
+        "range_rate": (line_x * relative_x + line_y * relative_y) / distance,
+        "line_of_sight_rate": (line_x * relative_y - line_y * relative_x) / squared,
+        "energy_difference": read(first, "energy") - read(second, "energy"),
+        "train_angle": torch.atan2(
+            nose_x * line_y - nose_y * line_x, nose_x * line_x + nose_y * line_y
+        ),
+        "gun_error": torch.atan2(
+            launch_x * lead_y - launch_y * lead_x, launch_x * lead_x + launch_y * lead_y
+        ),
+    }
+
+
 # --------------------------------------------------------------------------- observation
 
 # The ship scalars' fixed scales, the same for every ship type, set from their ranges in scripted
@@ -3049,12 +3189,8 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
     if state.fields.shape[-1] == 0:  # no medium (n = 1)
         speed, velocity_x, velocity_y = view.speed, view.velocity_x, view.velocity_y
     else:
-        inverse_index = torch.exp(-view.log_index)
-        speed = view.speed * inverse_index
-        velocity_x, velocity_y = (
-            view.velocity_x * inverse_index,
-            view.velocity_y * inverse_index,
-        )  # stored
+        speed = view.speed * torch.exp(-view.log_index)
+        velocity_x, velocity_y = world_velocity(view)  # stored
     distance = torch.sqrt(view.x * view.x + view.y * view.y)
     inverse_distance = 1.0 / distance.clamp_min(1.0)
     fired_last = state.fired  # stored by the step (agreed fix 12), not inferred from the ring
@@ -3078,7 +3214,7 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
         view.shield / SHIELD_SCALE,
         (view.shield_wait / SHIELD_WAIT_SCALE).clamp(0.0, 1.0),
         view.cooldown,
-        ((config.arena_radius - distance) / BOUNDARY_CLIP).clamp(-1.0, 1.0),
+        (-boundary_distance(config, view.x, view.y) / BOUNDARY_CLIP).clamp(-1.0, 1.0),
         view.x * inverse_distance,
         view.y * inverse_distance,
         view.heading_cos,
@@ -3126,12 +3262,11 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
         -1,
     )
     assert field.shape[-1] == FIELD_FEATURES
+    visible = visible_rows(config, state, team)
     if config.fog:
         hidden_ticks = torch.where(same_team, 0, state.ticks_since_seen)
-        visible = known & (hidden_ticks == 0)
         since_seen = torch.log1p(hidden_ticks.to(torch.float32) * h)
     else:
-        visible = torch.ones_like(exists)
         since_seen = torch.zeros_like(state.x)
     return Obs(
         ship=ship,
