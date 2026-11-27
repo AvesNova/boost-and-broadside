@@ -591,7 +591,7 @@ def test_hit_range_mode_streams_range_readouts_and_damage():
     with client.websocket_connect("/api/sandbox") as socket:
         socket.send_json({"preset": "p51d", "mode": "hit_range", "ticks": 150})
         socket.receive_json()  # setup
-        socket.send_json({"fire": True, "shooter": [-200.0, 0.0], "target_heading": 0.0})
+        socket.send_json({"shooter": [-200.0, 0.0], "target_heading": 0.0})
         frames = [socket.receive_json() for _ in range(150)]
     frames = [f for f in frames if f["type"] == "frame"]
     last = frames[-1]
@@ -600,4 +600,7 @@ def test_hit_range_mode_streams_range_readouts_and_damage():
     assert last["egg"]["egg_front"] > last["egg"]["egg_rear"] > 0
     assert last["range"]["hits"] > 0 and last["range"]["damage_per_second"] > 0
     assert last["range"]["implied_time_to_kill"] > 0
+    assert last["range"]["spreads"]["straight"]["metres"] > 0
+    assert last["range"]["spreads"]["width"]["metres"] > 0
+    assert any(f["finished"] for f in frames)
     assert last["ships"][1]["x"] == 0.0 and last["ships"][1]["speed"] == 0.0

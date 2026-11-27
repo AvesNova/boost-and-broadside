@@ -53,7 +53,7 @@ def frame(world: World) -> dict:
                 )
     extra = {}
     if isinstance(world, HitRange):
-        extra = dict(range=_finite(world.range_readout()), egg=world.egg())
+        extra = dict(range=world.range_readout(), egg=world.egg(), finished=world.finished)
     return dict(
         type="frame",
         tick=world.tick,

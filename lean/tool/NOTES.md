@@ -127,10 +127,16 @@ process and why chart requests are serialised; `design.PRESET_ROWS` holds the pr
 imported, since `tuning.row_of` inside `flying` reads the design. Tests: `lean/tool/tests`.
 
 - **Hit range tab** (rough, 2026-11-27). `lean.sandbox.world.HitRange`: the target (slot 1) is
-  pinned at the origin with zero velocity, the shooter (slot 0) at the point you drag it to,
-  always facing the target; both poses are re-pinned each tick, the step is the real one
-  (guns, spread, drag, egg, damage; no refractive fields). Click-drag moves the shooter, A / D
-  turn the target, Space fires, R resets; the hit-model sliders work. Readouts over a rolling 1 s:
-  DPS, hits / shots, implied time to kill (full shield / DPS), actual time to kill (from first
-  damage; the target is refilled on death), range, aspect (0 = dead astern). "True size" box
-  draws the hit and core circles (the game's rows) with a heading triangle, in the sandbox too.
+  pinned at the origin with zero velocity, the shooter (slot 0) at the point you put it, facing
+  due east and always firing; both poses are re-pinned each tick, the step is the real one
+  (guns, spread, drag, egg, damage; no refractive fields). WASD / arrows (shift fast) or
+  click-drag move the shooter, Q / E turn the target, R resets; the hit-model sliders work. 10 s
+  rolling readouts: DPS, hits / shots, implied time to kill (full shield / DPS), actual time to
+  kill (last, and mean over the window; from first damage; the target refills on death), range,
+  aspect (0 = dead astern). 2-sigma (about 95 %) miss at the target, straight (the impact
+  parameter of each bullet's launch line, before the egg) and true (closest approach of the
+  actual path, tick-end chords); the target's half-width from the shooter (half of
+  `core.hit_width` on the constants' `hit_widths`, at the bullets' path off the nose) and the
+  hit radius. Bullets are drawn when their flight ends (the game's `shot_outcome`): red hit,
+  orange miss; the game's ghosts end at first contact like real bullets, so nothing continues
+  past a hit. "True size" draws the hit and core circles with a heading triangle (sandbox too).
