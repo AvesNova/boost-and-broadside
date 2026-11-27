@@ -44,6 +44,13 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
 - **Update:** 2,048 environments x 4 segments x 128 ticks (1,048,576 environment ticks), returns
   chained over the 512 ticks of each seat and bootstrapped only at the end, 4 epochs, 32
   minibatches, micro-batches of 64 views with gradient accumulation, targets once per update.
+- **Dead ships** (author 2026-11-28, option C): a fallen ship's value in the returns (its
+  post-death ticks and the update's bootstrap) is its living team-mates' mean value at that tick
+  and level (`returns.fallen_team_values`, the store's `fallen` record), so the outcome reaches
+  its earlier ticks at gamma^k; its death penalty stays. Team-shared payments (boundary deaths,
+  friendly-fire compensation, unattributed boundary healing) go to the living ships only.
+- **Seeds:** the explicit generator takes `--seed` + 1,000,003, torch's default generators
+  (initial weights, the compiled rollout's draws) `--seed`.
 - **BC stage** (`update(..., cloning=True)`): the student plays its own games (half self-play,
   half against the scripted agent). Loss: cross-entropy of the 42-way policy against the scripted
   teacher's full distribution (its joint over the 42 actions, `lean.scripted.Choice.joint`) at 1.0, plus value, next-state and hit; no
@@ -64,8 +71,9 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
   +-5.4, kill_death +-7.5, outcome +-10, objective levels +-1 (placeholders), each 57 bins
   across the range plus 3 buffer columns of the same width beyond both ends (63 bins;
   lean/model/NOTES.md). Damage and kill_death are symlog (`value_knee`, the event rule: one
-  event x e^-3, 0.0286 and 0.141; innermost bins 0.0056 and 0.021, outermost 1.79 and 1.67,
-  outermost centres +-9.5 and +-11.6); outcome (bimodal) and the objectives linear (bins
+  event x e^-3: a hit of 8 points 0.0109 (0.0286 until 2026-11-28, from 21-point hits) and a
+  kill 0.141; innermost bins 0.0027 and 0.022, outermost 2.09 and 1.56, outermost centres
+  +-10.5 and +-11.6); outcome (bimodal) and the objectives linear (bins
   0.357 and 0.0357). The range monitoring counts bins in bin space (`usage_counts` takes the
   knees); its thresholds (`range_narrow_bins` 8, `range_bin_share`) are unchanged.
 - **Store:** positions and PPO numbers float32, other floats float16, actions int8.

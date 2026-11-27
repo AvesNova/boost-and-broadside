@@ -46,9 +46,11 @@ class NextStateColumn:
 # ships, scripted against scripted under the training game (42.7M rows, 2026-11-25;
 # lean/model/NOTES.md; docs/rewrite/sections/scoreboard/target_ranges.py): each range is
 # symmetric, +-the larger measured extreme; each knee from the flat-core data rule
-# (docs/rewrite/sections/scoreboard/symlog-preview.md). The shield's low end is four hits of
-# about 21 in one tick (a crossfire of four ships; the largest measured was 61), its high end
-# 0, knee 1 (pending its bug check). The buffer columns lie beyond both ends.
+# (docs/rewrite/sections/scoreboard/symlog-preview.md). The shield's low end, -90, was set when
+# a hit dealt about 21 (four in one tick); a hit now deals 8, so bullets take at most 32 per
+# tick at 4v4 and only a collision (up to the shield held) reaches -90, rare, clamping into the
+# buffer columns. Kept until the ranges are re-measured (NOTES "Open"). High end 0, knee 1. The
+# buffer columns lie beyond both ends.
 NEXT_STATE_COLUMNS = (
     NextStateColumn("along", 2.4e-3, -1.89, 1.89),  # metres
     NextStateColumn("across", 0.0244, -1.82, 1.82),  # metres
@@ -99,9 +101,10 @@ class ModelConfig:
     head_hidden: int = 256
     bins: int = COLUMNS  # 57 across the measured range, 3 buffer columns each end
     hit_classes: int = 3  # the hit head: miss, enemy, team-mate
-    # Shares of the outcomes of every bullet that ended (ghosts included), 42.5M bullets of
-    # scripted 4v4 elimination under the training game (2026-11-25; lean/model/NOTES.md).
-    hit_class_frequencies: tuple[float, ...] = (0.9374, 0.0547, 0.0080)
+    # Shares of the outcomes of every bullet that ended (ghosts included), 1.6M bullets of
+    # the scripted yardstick against itself, 4v4 under the training game, 48 environments x
+    # 4,200 ticks re-dealt (2026-11-28, hit damage 8, the egg; lean/model/NOTES.md).
+    hit_class_frequencies: tuple[float, ...] = (0.9865, 0.0110, 0.0025)
     recurrence_exponent: float = 8.0
     retention_low: float = 0.9
     retention_high: float = 0.999
