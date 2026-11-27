@@ -2,7 +2,7 @@
 under torch.compile mode MODE (static shapes), the update as heads-8c/cost.py (128
 environments, one epoch, one minibatch of three micro-batches of 64 views x 128 ticks).
 
-    PYTHONPATH=. python docs/rewrite/sections/training-review-2/grid_loss.py MODE cold|warm
+    PYTHONPATH=. python docs/rewrite/sections/training-review-2/grid_loss.py MODE cold|warm [--one-micro]
 
 The cache is this mode's own (DATA/cache/loss-MODE): "cold" empties it first, "warm" reuses
 what the cold run left. Prints one JSON line (appended to DATA/grid.jsonl): the first update's
@@ -46,7 +46,9 @@ def main() -> None:
     device = torch.device("cuda")
     torch.manual_seed(0)
     generator = torch.Generator(device=device).manual_seed(0)
-    config = dataclasses.replace(LearnConfig(), epochs=1, minibatches=1)
+    one_micro = "--one-micro" in sys.argv  # 3 minibatches of one micro-batch: no gradient accumulation
+    record["one_micro_batch_per_minibatch"] = one_micro
+    config = dataclasses.replace(LearnConfig(), epochs=1, minibatches=3 if one_micro else 1)
     game_config = game.GameConfig(training_spawn=True)
     policy = model.Policy(model.ModelConfig.for_arena(game_config.arena_radius)).to(device)
     opponent = Opponent(scripted.ScriptedConfig(), None)

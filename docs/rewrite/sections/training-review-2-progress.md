@@ -24,3 +24,11 @@ power profile and load recorded per job in the raw output.
   playing) 27.7 ms (97.3%). Host floor (same graphs at tiny sizes): update 6.0 ms per
   micro-batch at 1 view, BC tick 2.94 ms, RL tick 5.23 ms at 16 environments.
 - 05:36 grid and memory curve queued (jobs2.txt, one unit at a time): ETA 07:00 (worst 07:30).
+- 05:40-05:53 grid, first half: loss default cold 49.6 s / warm 3.4 s, 165.9 ms per micro-batch;
+  max-autotune-no-cudagraphs cold 498.8 s / warm 3.8 s, 163.4-163.8 ms (-1.3%; "Not enough SMs
+  to use max_autotune_gemm mode": the 4070 laptop's 36 SMs, so no GEMM autotuning here);
+  reduce-overhead FAILS on both graphs as the code stands: the loss ("accessing gradient
+  tensor output of CUDAGraphs that has been overwritten": gradient accumulation over
+  micro-batches), act ("accessing tensor output of CUDAGraphs that has been overwritten",
+  rollout.py:616, in the first segment). Re-queued the loss with one micro-batch per
+  minibatch (no accumulation) to get a number. BC collect warm first segment 14.9 s (cold 94.3).
