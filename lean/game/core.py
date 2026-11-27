@@ -1830,39 +1830,65 @@ def _hit_test(
     # (Excluding every entered pair, not only the bend ship's, keeps the two reductions over
     # the pairs independent, so they run as one pass.)
     target, hit, first_tau = _first_contact(contact & (entry == torch.inf), tau, miss_squared)
-    # The turned remainder against the bend ship.
-    pass_start, pass_move, _ = _pass_against(state, flown, start_bullets, bullets, bend_ship)
-    entry_tau = torch.where(bent, entry_tau, 0.0)
+    # The turned remainder against the bend ship: the turn of every pair's pass (cheap
+    # arithmetic in registers), read at the bend ship (`_at`), so no per-bullet gathers.
+    pair_entry = torch.where(entry < torch.inf, entry, 0.0)
     turn = egg_turn(
-        pass_start[:, 0],
-        pass_start[:, 1],
-        pass_move[:, 0],
-        pass_move[:, 1],
-        entry_tau,
-        _on_target(c["egg_half_width"], bend_ship),
-        _on_target(c["deflector_turn"], bend_ship),
+        start[:, 0],
+        start[:, 1],
+        relative[:, 0],
+        relative[:, 1],
+        pair_entry,
+        _per_ship(c["egg_half_width"]),
+        _per_ship(c["deflector_turn"]),
     )
-    bend_radius = _on_target(radius, bend_ship)
-    bent_hit = bent & (turn.miss_squared < bend_radius * bend_radius)
-    bent_tau = entry_tau + (1.0 - entry_tau) * turn.tau
-    bent_hit = bent_hit & (bent_tau < first_tau)
-    target = torch.where(bent_hit, bend_ship, target)
-    straight_impact = _impact(state, flown, start_bullets, bullets, target)
+    bend = index.ship == bend_ship[..., None]
+    entry_tau = torch.where(bent, entry_tau, 0.0)
     rest = 1.0 - entry_tau
-    move_x, move_y = pass_move.unbind(1)
-    return Contact(
-        target,
-        hit | bent_hit,
-        torch.where(bent_hit, turn.impact, straight_impact),
-        bent,
-        turn.cos,
-        turn.sin,
-        rest * (move_x * (turn.cos - 1.0) - move_y * turn.sin),
-        rest * (move_x * turn.sin + move_y * (turn.cos - 1.0)),
-        bent_hit,
-        moved[:, 0].gather(1, bend_ship) / config.tick_length,
-        moved[:, 1].gather(1, bend_ship) / config.tick_length,
+    move_x, move_y = _at(relative[:, 0], bend), _at(relative[:, 1], bend)
+    turn_cos, turn_sin = _at(turn.cos, bend), _at(turn.sin, bend)
+    bent_hit = bent & _at_bool(turn.miss_squared < reach, bend)
+    bent_tau = entry_tau + rest * _at(turn.tau, bend)
+    bent_hit = bent_hit & (bent_tau < first_tau)
+    straight = target[..., None] == index.ship
+    impact = torch.where(
+        bent_hit, _at(turn.impact, bend), _at(_line_impact(start, relative), straight)
     )
+    return Contact(
+        torch.where(bent_hit, bend_ship, target),
+        hit | bent_hit,
+        impact,
+        bent,
+        turn_cos,
+        turn_sin,
+        rest * (move_x * (turn_cos - 1.0) - move_y * turn_sin),
+        rest * (move_x * turn_sin + move_y * (turn_cos - 1.0)),
+        bent_hit,
+        _at(moved[:, 0, None, :], bend) / config.tick_length,
+        _at(moved[:, 1, None, :], bend) / config.tick_length,
+    )
+
+
+def _at(values: Tensor, chosen: Tensor) -> Tensor:
+    """Per bullet the value of its one chosen pair: values (E, N K, N) (or broadcasting to it),
+    chosen (E, N K, N) bool with one True per bullet; a masked sum over the ships, which stays in
+    the pair reduction's registers (a gather after it would be its own kernel)."""
+    return torch.where(chosen, values, 0.0).sum(-1)
+
+
+def _at_bool(values: Tensor, chosen: Tensor) -> Tensor:
+    """`_at` for a bool pair tensor."""
+    return (values & chosen).any(-1)
+
+
+def _line_impact(start: Tensor, relative: Tensor) -> Tensor:
+    """Every pair's impact parameter on its straight pass (the distance of the relative line
+    from the ship's centre, at most the start's distance): start, relative (E, 2, ...)."""
+    start_x, start_y = start[:, 0], start[:, 1]
+    cross = start_x * relative[:, 1] - start_y * relative[:, 0]
+    relative_squared = (relative * relative).sum(1).clamp_min(1e-12)
+    line = cross * cross / relative_squared
+    return torch.minimum(line, start_x * start_x + start_y * start_y).sqrt()
 
 
 def _first_contact(contact: Tensor, tau: Tensor, miss_squared: Tensor):
