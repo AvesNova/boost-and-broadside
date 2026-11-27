@@ -65,7 +65,6 @@ AIR_DENSITY = 1.225  # kg/m^3, sea level
 HORSEPOWER = 745.7  # W
 FIGURE_OF_MERIT = 0.75  # a propeller's static figure of merit (planes.py)
 SPEED_OF_SOUND = 340.3  # m/s, ISA sea level
-LIFE_TOLERANCE = 1e-4  # v2 weapons.LIFE_TOLERANCE
 MPH, FEET_PER_MINUTE, POUND = 0.44704, 0.00508, 0.45359237  # m/s, m/s, kg
 # The dive and zoom trade's flight-path angle: the exchange is gravity's along-path share on a
 # 45 deg dive or zoom, g sin(45 deg), not a vertical one (author 2026-11-25; the comparison:
@@ -222,7 +221,8 @@ class DesignInput:
     - `source`: the reference's provenance (the P-51D's).
     - `kind`: the quantity's kind in the web tool's units (lean.tool.units.KINDS; game units
       here), None for a number shown as it is with `unit`.
-    - the slider: `low` to `high`, multiples of the reference's value if `relative`."""
+    - the slider: `low` to `high`, multiples of the reference's value if `relative`; a `readout`
+      is shown but not moved (the web tool disables it, design.solve rejects it)."""
 
     name: str
     label: str
@@ -237,6 +237,7 @@ class DesignInput:
     low: float = 0.5
     high: float = 2.0
     relative: bool = True
+    readout: bool = False  # shown, not a slider: the design cannot move it (the gun range)
 
     @property
     def method(self) -> str:
@@ -271,12 +272,13 @@ def _launch_speed() -> float:
     return P51D_VALUES["top_speed"]
 
 
-def _bullet_life(gun_range: float, design: dict, tick_length: float = 1.0 / 30.0) -> float:
-    """The bullet's life in whole ticks: long enough to fly the gun range when fired at the
-    launch speed (_launch_speed) against the bullet drag (v2's weapons.combat_card)."""
-    drag = design["bullet_drag"]
-    flight = math.expm1(drag * gun_range) / (drag * (_launch_speed() + design["muzzle_speed"]))
-    return math.ceil(flight / tick_length - LIFE_TOLERANCE) * tick_length
+def _ring_life(gun_range: float, design: dict, tick_length: float = 1.0 / 30.0) -> float:
+    """The bullet's life, whatever the gun range asked: always contract.BULLET_SLOTS ticks (the
+    ring's slot count; author 2026-11-27: nothing can ask for another life). The gun range is a
+    read-out (ring_gun_range), so the value passed in is ignored."""
+    from lean.contract import BULLET_SLOTS
+
+    return BULLET_SLOTS * tick_length
 
 
 def ring_gun_range(design: dict, tick_length: float = 1.0 / 30.0) -> float:
@@ -528,14 +530,15 @@ DESIGN_INPUTS = (
     ),
     DesignInput(
         "gun_range",
-        "gun range (fired at 375 mph)",
+        "gun range (read-out: a 12-tick bullet fired at 375 mph)",
         G,
         "bullet_life",
         _gun_range,
-        _bullet_life,
+        _ring_life,
         kind="length",
         low=0.3,
         high=2.5,
+        readout=True,
     ),
     scaled("hit_radius", "hit radius", G, kind="length", low=0.3, high=3.0),
     scaled("core_radius", "core radius", G, kind="length", low=0.3, high=3.0),
@@ -749,13 +752,15 @@ P51D_VALUES = dict(
     deep_stall_band=0.30,
     post_stall_drag_ratio=6.0,
     corner_nose_frequency=11.23144817352295,
-    hit_damage=10.5,  # halved 2026-11-26 (author): ~11 typical hits to kill
+    hit_damage=8.0,  # author 2026-11-27 (was 10.5, halved 2026-11-26)
     explosive_share=0.0,
     fire_rate=30.0,
     muzzle_speed=1712.0,
-    bullet_spread=3.084482431411743,
+    # Author 2026-11-27: 5 mrad sigma per axis in the bullet's launch direction (world frame, as
+    # lean.tool.hitbench reads it: spread over the launch speed, cruise 372.05 + muzzle 1712 =
+    # 2084.05 m/s): 0.005 x 2084.05 = 10.42 m/s. A new muzzle or cruise speed moves the angle.
+    bullet_spread=10.42,
     bullet_drag=0.0005,
-    gun_range=686.0,  # the full range of a 12-tick bullet fired at 375 mph (author 2026-11-25)
     hit_radius=12.0,
     core_radius=10.0,  # author 2026-11-27: the taper 10 -> 12 m, a soft edge for the networks
     max_shield=100.0,
@@ -800,15 +805,20 @@ def reference_of(aircraft: RealAircraft, inputs: tuple = DESIGN_INPUTS) -> Refer
     names = {spec.name for spec in inputs}
     values = {name: value for name, value in aircraft.values.items() if name in names}
     base = {
-        spec.sets: spec.apply(values[spec.name], values)
+        spec.sets: spec.apply(values.get(spec.name, 0.0), values)
         for spec in inputs
-        if spec.apply and spec.name in values
+        if spec.apply and (spec.name in values or spec.readout)  # a read-out ignores its value
     }
     base = {name: base.get(name, 1.0) for name in card.CARD_FIELDS}  # what the airframe sets
     fitted = fit_point_mass(aircraft.airframe, aircraft.top_speed, aircraft.best_climb, base)
     row = airframe_row(fitted, base)
     numbers = performance(row)
-    design = {spec.name: values.get(spec.name, spec.measure(row, numbers)) for spec in inputs}
+    design = {
+        spec.name: spec.measure(row, numbers)
+        if spec.readout
+        else values.get(spec.name, spec.measure(row, numbers))
+        for spec in inputs
+    }
     return Reference(inputs, fitted, row, numbers, design)
 
 

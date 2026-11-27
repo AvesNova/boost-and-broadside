@@ -1062,3 +1062,18 @@ Bullet deflector and the runtime hit model (PROPOSAL, branch `bullet-deflector`,
   old trainer path (compile_dynamic) -> 0.766 ms static (off 1.713 -> 0.572); the training
   tick at E 2048 31.8 -> 25.2 ms (collect 64.4k -> 81.4k steps/s), advance 3.67 -> 1.84 ms.
   The update at E 2048: 141.0 -> 129.8 s (183.6 -> 169.0 ms per micro-batch).
+
+## Author decisions 2026-11-27: hit damage 8, spread 5 mrad, store_crowd default, fixed 12-tick bullet life (branch `defaults-1127`, off `tick-audit`)
+
+- **Hit damage 8** (was 10.5): the card's `hit_damage` (`tuning.REAL_AIRCRAFT`).
+- **Bullet spread 5 mrad sigma per axis** (was about 1.6 mrad): the angle as `lean.tool.hitbench`
+  reads it, spread over the launch speed (cruise 372.05 + muzzle 1712 = 2084.05 m/s), so the
+  setting is `bullet_spread` 10.42 m/s (was 3.084); the card carries the speed, the angle is
+  documented beside it and moves with the muzzle or cruise speed. Measured check in the report
+  of the branch (2-sigma lateral spread at 250 m about 2.5 m).
+- **`store_crowd` is the default** in the scripted agent: `store_weight` 0.5 and `store_crowd` 1
+  (the store weight x (1 + k) / (1 + k x enemies within 2 gun ranges), egg-experiments.md),
+  instead of the fixed 0.25.
+- **Fixed 12-tick bullet life**: the design inputs no longer take a life: `gun_range` stays in the
+  table only as a read-out (`DesignInput.readout`; the web tool disables it, `design.solve`
+  rejects it), always `tuning.ring_gun_range`; `_bullet_life` is gone.

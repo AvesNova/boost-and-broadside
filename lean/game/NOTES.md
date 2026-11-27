@@ -149,7 +149,11 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
   before, so every bullet lives exactly `contract.BULLET_SLOTS` (12) ticks and moves on each of
   them (`_move_bullets`: no countdown, no frozen bullets). The card's `bullet_life` must round to
   12 ticks (checked when the constants are built, `_per_type`; `tuning.time_scaled` keeps it;
-  a design moving muzzle speed or drag sets its gun range to `tuning.ring_gun_range`).
+  a design moving muzzle speed or drag moves its gun range to `tuning.ring_gun_range`, a
+  read-out: nothing in the design inputs can ask for another life, author 2026-11-27).
+  Hit damage 8 and bullet spread 10.42 m/s per axis (5 mrad sigma per axis over the launch speed
+  cruise + muzzle = 2084 m/s, as `lean.tool.hitbench` reads it; the number is the setting, the
+  angle moves with the muzzle or cruise speed), author 2026-11-27: `tuning` REAL_AIRCRAFT values.
   One uint8 state per bullet (`State.bullet_state`, `contract.GHOST / REAL / CONTACTED`): a
   real bullet if the ship fired that tick, else a ghost (a dead or absent ship's bullets are
   ghosts). Only a ghost or a real bullet can touch a ship, only a real one damages; a contact

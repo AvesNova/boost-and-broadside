@@ -181,6 +181,7 @@ function choosePreset(keepProfile = false) {
     label.innerHTML = `<span class="name"></span> <span class="badge"></span><span class="value"></span>` +
       `<span class="source"></span>`;
     const out = label.querySelector(".value");
+    input.disabled = !!s.readout;                         // a read-out (the gun range) cannot be moved
     const control = { spec: s, input, out, name: label.querySelector(".name"), badge: label.querySelector(".badge"),
                       source: label.querySelector(".source"), game: s.value };
     input.oninput = () => {                               // shown units back to the game's
