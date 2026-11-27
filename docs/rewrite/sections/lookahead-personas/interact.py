@@ -118,7 +118,8 @@ def main():
         }
         print(f"## {setup}: skill surface (points {len(y)})\n")
         print(
-            f"Additive (linear + square): R^2 {history[0][1]:.2f}, leave-one-out {history[0][2]:.2f}; "
+            f"Additive (linear + square): R^2 {history[0][1]:.2f}, "
+            f"leave-one-out {history[0][2]:.2f}; "
             f"with {len(pairs)} interactions: R^2 {r2:.2f}, leave-one-out {q2:.2f}; "
             f"model Elo sd over the box {sd:.0f}.\n"
         )
