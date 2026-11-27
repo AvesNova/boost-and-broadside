@@ -327,3 +327,39 @@ def test_a_segment_uses_deals_again_only_past_one_per_environment():
             12 // clock
         )  # seats 0..3 are the environments
         assert int(rollout.carry.next_episodes.taken) == 4 * (12 // clock)
+
+
+@pytest.mark.parametrize("chunks", [2, 5])
+def test_the_chunked_policy_step_equals_one_call(chunks):
+    """rollout.chunked_step (the live policy's seats in chunks, LearnConfig.policy_step_chunks):
+    the rows are independent, so the joined outputs equal one call's to float32 rounding, also
+    when the chunks do not divide the rows (12 rows into 5: 3, 3, 3, 3)."""
+    torch.manual_seed(0)
+    game_config = game.GameConfig(training_spawn=True)
+    envs = 12
+    state = game.reset(
+        game_config, envs, torch.full((envs, 2), 4), torch.Generator().manual_seed(0), "cpu"
+    )
+    view = game.observe(game_config, state, 0)
+    policy = model.Policy(model.ModelConfig.for_arena(game_config.arena_radius))
+    carry = torch.randn(policy.initial_carry(envs, state.exists.shape[1], "cpu").shape)
+    offset = torch.randn(envs, 2) * 100
+    reset = torch.rand(envs) < 0.3
+    whole = policy.step(view, carry, offset, reset)
+    parts = rollout_module.chunked_step(policy, chunks)(view, carry, offset, reset)
+    for joined, one in zip(parts, whole, strict=True):
+        assert joined.shape == one.shape
+        torch.testing.assert_close(joined, one, rtol=1e-5, atol=1e-5 * one.abs().max().item())
+
+
+def test_the_critics_support_is_built_once_per_device_and_bins():
+    """returns.value_support: built once and reused (no copy per collect or update), equal to
+    the support built from value_centres and value_knees."""
+    from lean.learn.returns import value_centres, value_knees, value_support
+
+    config = LearnConfig()
+    first, again = value_support(config, 63), value_support(config, 63, "cpu")
+    assert first is again
+    assert torch.equal(first.centres, value_centres(config, 63))
+    assert torch.equal(first.knees, value_knees(config))
+    assert value_support(config, 31).centres.shape[-1] == 31

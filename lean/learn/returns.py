@@ -1,6 +1,7 @@
 """Returns: categorical value helpers, GAE per reward level, advantage normalisation and the
 supports' range monitoring."""
 
+import functools
 from typing import NamedTuple
 
 import torch
@@ -37,8 +38,24 @@ class ValueSupport(NamedTuple):
 
 
 def value_support(config: LearnConfig, bins: int, device=None) -> ValueSupport:
-    """The critic's support (ValueSupport), built on the host and copied to `device` once."""
-    return ValueSupport(value_centres(config, bins, device), value_knees(config, device))
+    """The critic's support (ValueSupport) on `device`: built on the host and copied once per
+    process for each support (the measured ranges, knees, bins and device), then reused, so a
+    collect or an update makes no pageable copy for it. Read-only: callers never write into
+    it."""
+    return _support(
+        tuple(config.value_low),
+        tuple(config.value_high),
+        tuple(config.value_knee),
+        bins,
+        torch.device("cpu" if device is None else device),
+    )
+
+
+@functools.cache
+def _support(low: tuple, high: tuple, knee: tuple, bins: int, device: torch.device):
+    knees = torch.tensor(knee, dtype=torch.float32)
+    centres = buffered_centres(torch.tensor(low), torch.tensor(high), knees, bins)
+    return ValueSupport(centres.to(device), knees.to(device))
 
 
 def generalised_advantages(
