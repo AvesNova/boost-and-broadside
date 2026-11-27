@@ -231,13 +231,15 @@ def field_list(state) -> list[tuple[float, float, float, float, float]]:
 
 class HitRange(World):
     """The hit-range mode: slot 1 is a target pinned at the origin (zero velocity, heading set by
-    the page), slot 0 the shooter pinned to a point, facing the target. Each tick both poses are
+    the page), slot 0 the shooter pinned to a point, facing due east (+x), always firing. Each
+    tick both poses are
     overwritten (before and after the step, so bullets leave the pinned muzzle and the frame
     shows the pinned poses); everything else is the real step: the guns, bullet flight, the hit
     test, the egg, damage. The target is refilled when it dies. Statistics over a rolling window
     of ticks: damage, real shots fired and hits."""
 
-    WINDOW_SECONDS = 1.0
+    WINDOW_SECONDS = 10.0
+    SIGMAS = 2.0  # the spreads are reported as 2 sigma (about 95 %)
 
     def __init__(
         self, config: core.GameConfig, player_type: int = 0, opponent_type: int = 0, seed: int = 0
@@ -247,6 +249,10 @@ class HitRange(World):
     def reset(self) -> None:
         super().reset()
         self.window = deque(maxlen=max(1, round(self.WINDOW_SECONDS / self.h)))
+        self.paths: dict = {}  # live real bullets: id -> dict(points, a, range)
+        self.finished: list = []  # this tick's ended flights: [points, hit]
+        self.spreads = deque()  # (end tick, straight miss a, turned miss b, range at fire)
+        self.kill_log = deque()  # (tick, time to kill)
         # no refractive-index fields: a clean range (they are moved far off the map)
         self.state.fields[:, 0] = 1e7
         self.state.fields[:, 1] = 1e7
@@ -263,7 +269,7 @@ class HitRange(World):
     def _pin(self) -> None:
         s = self.state
         sx, sy = self.shooter_xy
-        face = math.atan2(-sy, -sx)
+        face = 0.0  # due east
         for slot, (x, y, heading, speed, ground) in enumerate(
             [
                 (sx, sy, face, self.shooter_speed, self.shooter_ground),
@@ -298,6 +304,7 @@ class HitRange(World):
         self._pin()
         before = self._real_ids()
         self.previous = self.poses()
+        fire = True  # always firing in this mode
         action = torch.zeros(1, 2, 3, dtype=torch.long)
         action[0, 0, 2] = int(fire)
         self.state, out = core.tick(self.config, self.state, action, self.generator)
@@ -307,15 +314,93 @@ class HitRange(World):
         hits = int((out.shot_outcome[0, 0] == 1).sum())
         damage = float(out.hit_damage[0, 0, 1])
         self.window.append((damage, shots, hits))
+        self._follow_bullets(out)
         if damage > 0.0 or self.alive_ticks:
             self.alive_ticks += 1  # the kill clock starts at the first damage
         if bool(out.died[0, 1]):
             self.target_kills += 1
             self.kill_times.append(self.alive_ticks * self.h)
+            self.kill_log.append((self.tick, self.alive_ticks * self.h))
             self.alive_ticks = 0
             s.shield[0, 1] = self.constant("max_shield", 1)
         s.shield[0, 0] = self.constant("max_shield", 0)
         self._pin()
+
+    def _follow_bullets(self, out) -> None:
+        """Follow every real bullet of the shooter: its path (tick-end points), the straight
+        line's miss distance at the target (a: the impact parameter of the line along the bullet's
+        launch direction, before any egg turn, signed by the side it passes) and the closest
+        approach of the actual path (b: segments between tick ends, signed the same way; a turn
+        inside one tick is cut by its chord). A flight that ends this tick (the game's
+        shot_outcome: 1 hit, 0 missed) is moved to `finished` and its numbers to `spreads`."""
+        s = self.state
+        self.finished = []
+        sx, sy = self.shooter_xy
+        for k in range(s.bullet_x.shape[2]):
+            if not bool(s.bullet_real[0, 0, k]):
+                continue
+            ended = int(out.shot_outcome[0, 0, k])
+            if int(s.bullet_moves_left[0, 0, k]) <= 0 and ended < 0:
+                continue
+            ident = (k, int(s.bullet_fired_tick[0, 0, k]))
+            x, y = float(s.bullet_x[0, 0, k]), float(s.bullet_y[0, 0, k])
+            path = self.paths.get(ident)
+            if path is None:
+                dx, dy = float(s.bullet_dir_x[0, 0, k]), float(s.bullet_dir_y[0, 0, k])
+                # the straight line from the muzzle: signed distance of the target (origin) from it
+                a = dx * (-y) - dy * (-x)
+                path = dict(points=[[sx, sy]], a=a, b=None, range=math.hypot(sx, sy))
+                self.paths[ident] = path
+            (px, py) = path["points"][-1]
+            path["points"].append([x, y])
+            # closest approach of the segment (p -> q) to the origin, signed by the cross product
+            mx, my = x - px, y - py
+            length = max(mx * mx + my * my, 1e-12)
+            t = min(max(-(px * mx + py * my) / length, 0.0), 1.0)
+            cx, cy = px + t * mx, py + t * my
+            distance = math.hypot(cx, cy)
+            if path["b"] is None or distance < abs(path["b"]):
+                side = mx * (-cy) - my * (-cx)
+                path["b"] = distance if side >= 0 else -distance
+            if ended >= 0:
+                self.finished.append([path["points"], ended == 1])
+                self.spreads.append((self.tick, path["a"], path["b"], path["range"]))
+                del self.paths[ident]
+        horizon = self.tick - round(self.WINDOW_SECONDS / self.h)
+        while self.spreads and self.spreads[0][0] <= horizon:
+            self.spreads.popleft()
+        while self.kill_log and self.kill_log[0][0] <= horizon:
+            self.kill_log.popleft()
+
+    def _sigma(self, values: list[float]) -> float | None:
+        if len(values) < 5:
+            return None
+        mean = sum(values) / len(values)
+        return math.sqrt(sum((v - mean) ** 2 for v in values) / len(values))
+
+    def spread_readout(self) -> dict:
+        """2 sigma (SIGMAS) of the signed miss distance at the target over the window, in metres
+        and in milliradians (each miss over its own range at the shot): `straight` the line before
+        any egg turn, `turned` the closest approach of the actual path. `width` the target's
+        apparent half-width from the shooter: half the game's hit width (core.hit_width over the
+        constants' hit_widths row, the agent's own) at the cosine of the bullets' path (due
+        east) off the target's nose; `radius` the hit radius with no egg."""
+        out = {}
+        n = self.SIGMAS
+        for name, index in (("straight", 1), ("turned", 2)):
+            rows = [(r[index], r[3]) for r in self.spreads if r[index] is not None]
+            sigma = self._sigma([m for m, _ in rows])
+            angle = self._sigma([m / max(d, 1.0) for m, d in rows])
+            out[name] = None if sigma is None else dict(metres=n * sigma, mrad=n * angle * 1000.0)
+        widths = torch.as_tensor(self.state.constants["hit_widths"])[0, :, 1]
+        hit_cos = torch.tensor(-math.cos(self.target_heading))
+        half = 0.5 * float(core.hit_width(widths, hit_cos))
+        distance = max(math.hypot(*self.shooter_xy), 1.0)
+        out["width"] = dict(metres=half, mrad=1000.0 * half / distance)
+        radius = self.constant("hit_radius", 1)
+        out["radius"] = dict(metres=radius, mrad=1000.0 * radius / distance)
+        out["samples"] = len(self.spreads)
+        return out
 
     def range_readout(self) -> dict:
         window = max(len(self.window), 1) * self.h
@@ -336,6 +421,10 @@ class HitRange(World):
             implied_time_to_kill=full / damage if damage > 0 else None,
             kills=self.target_kills,
             last_kill_time=self.kill_times[-1] if self.kill_times else None,
+            mean_kill_time=(
+                sum(t for _, t in self.kill_log) / len(self.kill_log) if self.kill_log else None
+            ),
+            spreads=self.spread_readout(),
         )
 
     def egg(self) -> dict:
