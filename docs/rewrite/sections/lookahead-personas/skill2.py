@@ -28,7 +28,7 @@ from lean.eval import Evaluator, Store  # noqa: E402
 from lean.scripted.parameters import SAMPLED  # noqa: E402
 
 # The study clock per team size (ticks at 30 Hz; step 1, progress-2.md).
-CLOCKS = {1: 12000, 2: 2700, 4: 2700, 8: 2400, 16: 2400}  # 2v2, 8v8: provisional
+CLOCKS = {1: 12000, 2: 4200, 4: 2700, 8: 2400, 16: 2400}
 SIZES = (1, 4, 16)
 
 

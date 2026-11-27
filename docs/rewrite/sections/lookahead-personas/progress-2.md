@@ -27,3 +27,14 @@ performance profile. Data: ~/avesnova/boost-and-broadside/data/lookahead-persona
 - Didn't: 1v1 mirror reach 90% (see above).
 - Next: step 2 skill at the study clocks (106 agents x 3 sizes, target SE 0.015); ETA 22:00
   (worst 23:00).
+
+### 21:31 step 2 at 1v1 and 4v4 done; 2v2, 8v8 clocks
+- Measured: 2v2 p50 / p90 60 / 131 s (wiped before 60 s 50.1%), 8v8 48 / 71 s (79.0%).
+  Study clocks 2v2 140 s (4,200 ticks), 8v8 80 s (2,400).
+- Skill (131,072 games per size, every pairing SE <= 0.015): population sd 71 Elo (1v1),
+  57 (4v4); 1v1 against 4v4 r = +0.08. Sign flips 1v1 -> 4v4 (z > 6): angles weight +138 ->
+  -39, aggression +86 -> -55, energy weight -37 -> +62; large shifts: speed weight +17 ->
+  +101, horizon +12 -> -69, fire tolerance 0 -> +71, reply temperature -67 -> -2.
+- Re-check of inert rows: boundary and seek inert at both sizes; disengaged energy weight is
+  not inert in 1v1 with fog (-43 +- 11 per box), 0 in 4v4.
+- Next: 16v16 skill (ETA 22:10, worst 22:40), crowd measures job.
