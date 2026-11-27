@@ -22,7 +22,6 @@ agent. Every command writes its results per chunk under DATA and skips chunks al
 
 import argparse
 import dataclasses
-import math
 import sys
 import time
 from pathlib import Path
@@ -33,7 +32,7 @@ import torch
 from lean import game, scripted
 from lean.contract import State
 from lean.scripted import ScriptedConfig
-from lean.scripted.parameters import PARAMETERS, SAMPLED, box_point, rows_of, vector
+from lean.scripted.parameters import SAMPLED, box_point, rows_of, vector
 
 SETUPS = {
     "1v1": dict(size=1, changes=dict(fog=False, field_count=0), envs=4096, snapshots=20000),
@@ -77,8 +76,8 @@ def select_envs(state: State, index: torch.Tensor, drop_bullets: bool = True) ->
         elif drop_bullets and item.name == "bullets":
             values[item.name] = value.index_select(0, index)[..., :1].clone().zero_()
         elif drop_bullets and item.name == "bullet_state":
-            values[item.name] = value.index_select(0, index)[..., :1].clone().fill_(
-                int(value.max())
+            values[item.name] = (
+                value.index_select(0, index)[..., :1].clone().fill_(int(value.max()))
             )
         else:
             values[item.name] = value.index_select(0, index)
@@ -184,7 +183,9 @@ def collect(setup: str, seed: int) -> dict:
                 name: torch.where(done[:, None], fresh[name], persona[name]) for name in SAMPLED
             }
             is_yard = torch.where(done[:, None], fresh_yard, is_yard)
-            state = game.take_deal(state, done, game.deal(config, envs, slots, sizes, generator, here))
+            state = game.take_deal(
+                state, done, game.deal(config, envs, slots, sizes, generator, here)
+            )
             next_snap = torch.where(
                 done, (FIRST_LOW + uniform(envs) * (FIRST_HIGH - FIRST_LOW)).long(), next_snap
             )
@@ -226,7 +227,9 @@ class StateSet:
         self.counts = {setup: int(group["mask"].sum()) for setup, group in self.groups.items()}
 
     @torch.no_grad()
-    def joint(self, setup: str, values: dict[str, float] | tuple, chunk: int = 4096) -> torch.Tensor:
+    def joint(
+        self, setup: str, values: dict[str, float] | tuple, chunk: int = 4096
+    ) -> torch.Tensor:
         """(S, 42) float32: the agent `values` (a full vector or its rows) on the setup's
         ship-states, every row a per-ship tensor (as the evaluation runner passes them)."""
         group = self.groups[setup]
@@ -313,19 +316,26 @@ def probe(data: Path) -> None:
         table = torch.tensor([vector(ScriptedConfig())], device=here)
         agent = torch.zeros(full.x.shape, dtype=torch.long, device=here)
         c = scripted.explain(ScriptedConfig(), full, None, rows_of(table, agent)).joint
-        print(f"{setup}: {states.counts[setup]} ship-states; bullets dropped max |diff| "
-              f"{float((a - b).abs().max()):.3g}; rows as tensors vs numbers {float((a - c).abs().max()):.3g}")
+        print(
+            f"{setup}: {states.counts[setup]} ship-states; bullets dropped max |diff| "
+            f"{float((a - b).abs().max()):.3g}; rows as tensors vs numbers "
+            f"{float((a - c).abs().max()):.3g}"
+        )
         states.joint(setup, ScriptedConfig().values)
         torch.cuda.synchronize()
         started = time.perf_counter()
         for _ in range(3):
             states.joint(setup, ScriptedConfig().values)
         torch.cuda.synchronize()
-        print(f"  one configuration on all ship-states: {(time.perf_counter() - started) / 3 * 1000:.0f} ms")
+        print(
+            "  one configuration on all ship-states: "
+            f"{(time.perf_counter() - started) / 3 * 1000:.0f} ms"
+        )
 
 
-def run_configs(data: Path, name: str, units: np.ndarray, spreads: np.ndarray, minutes: float,
-                chunk: int = 64) -> bool:
+def run_configs(
+    data: Path, name: str, units: np.ndarray, spreads: np.ndarray, minutes: float, chunk: int = 64
+) -> bool:
     """JS from the yardstick (joint, heads) and action shares for every configuration, both
     setups; DATA/name.parts/ chunk files; returns True when complete."""
     states = StateSet(data)
@@ -348,14 +358,21 @@ def run_configs(data: Path, name: str, units: np.ndarray, spreads: np.ndarray, m
                 for key, value in {**js_all(p, yard[setup]), **shares(p)}.items():
                     rows.setdefault(f"{setup}_{key}", []).append(value)
         save_npz(part, **{key: np.array(value) for key, value in rows.items()})
-        log(f"  {name}: {min(first + chunk, len(units))}/{len(units)}, {time.perf_counter() - started:.0f} s")
+        log(
+            f"  {name}: {min(first + chunk, len(units))}/{len(units)}, "
+            f"{time.perf_counter() - started:.0f} s"
+        )
     merged = {}
     for part in sorted(parts.glob("*.npz")):
         with np.load(part) as item:
             for key in item.files:
                 merged.setdefault(key, []).append(item[key])
-    save_npz(data / f"{name}.npz", units=units, spreads=spreads,
-             **{key: np.concatenate(value) for key, value in merged.items()})
+    save_npz(
+        data / f"{name}.npz",
+        units=units,
+        spreads=spreads,
+        **{key: np.concatenate(value) for key, value in merged.items()},
+    )
     log(f"wrote {data / f'{name}.npz'}")
     return True
 
@@ -399,24 +416,33 @@ def saltelli(data: Path, base: int, minutes: float) -> None:
             return
         out = {}
         for row in range(first, min(first + rows_per_chunk, base)):
-            group = units[row * width:(row + 1) * width]
+            group = units[row * width : (row + 1) * width]
             for setup in SETUPS:
                 joints = [states.joint(setup, unit_rows(item)) for item in group]
                 from_yard = [js_all(p, yard[setup]) for p in joints]
                 redraw = [js_all(joints[k], joints[0]) for k in range(1, width)]
                 for key in ("joint", "stick", "power", "fire"):
-                    out.setdefault(f"{setup}_yard_{key}", []).append([item[key] for item in from_yard])
-                    out.setdefault(f"{setup}_redraw_{key}", []).append([item[key] for item in redraw])
+                    out.setdefault(f"{setup}_yard_{key}", []).append(
+                        [item[key] for item in from_yard]
+                    )
+                    out.setdefault(f"{setup}_redraw_{key}", []).append(
+                        [item[key] for item in redraw]
+                    )
         save_npz(part, **{key: np.array(value) for key, value in out.items()})
-        log(f"  saltelli{base}: base rows {min(first + rows_per_chunk, base)}/{base}, "
-            f"{time.perf_counter() - started:.0f} s")
+        log(
+            f"  saltelli{base}: base rows {min(first + rows_per_chunk, base)}/{base}, "
+            f"{time.perf_counter() - started:.0f} s"
+        )
     merged = {}
     for part in sorted(parts.glob("*.npz")):
         with np.load(part) as item:
             for key in item.files:
                 merged.setdefault(key, []).append(item[key])
-    save_npz(data / f"saltelli{base}.npz", units=units,
-             **{key: np.concatenate(value) for key, value in merged.items()})
+    save_npz(
+        data / f"saltelli{base}.npz",
+        units=units,
+        **{key: np.concatenate(value) for key, value in merged.items()},
+    )
     log(f"wrote {data / f'saltelli{base}.npz'}")
 
 
@@ -468,7 +494,9 @@ def population(data: Path, minutes: float) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("data")
     parser.add_argument("command", choices=("states", "probe", "oat", "saltelli", "population"))
     parser.add_argument("--base", type=int, default=256)

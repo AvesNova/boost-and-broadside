@@ -47,14 +47,29 @@ def oat(data: Path, result: dict) -> str:
     for column, name in enumerate(SAMPLED):
         m = labels[:, 0] == column
         row = PARAMETERS[name]
-        low, high = (row.default * math.exp(-row.width), row.default * math.exp(row.width)) \
-            if row.law == "log" else (row.default - row.width, row.default + row.width)
+        low, high = (
+            (row.default * math.exp(-row.width), row.default * math.exp(row.width))
+            if row.law == "log"
+            else (row.default - row.width, row.default + row.width)
+        )
         entry = {}
         cells = [name, f"{row.default:g} [{low:.3g}, {high:.3g}]"]
         for setup in SETUPS:
             j = d[f"{setup}_joint"][m]
-            entry[setup] = {key: d[f"{setup}_{key}"][m].tolist() for key in
-                            ("joint", "stick", "power", "fire", "fire_share", "straight", "dive", "climb", "entropy")}
+            entry[setup] = {
+                key: d[f"{setup}_{key}"][m].tolist()
+                for key in (
+                    "joint",
+                    "stick",
+                    "power",
+                    "fire",
+                    "fire_share",
+                    "straight",
+                    "dive",
+                    "climb",
+                    "entropy",
+                )
+            }
             cells += [f"{j[0]:.4f} / {j[1]:.4f} / {j[2]:.4f} / {j[3]:.4f}"]
             heads = [d[f"{setup}_{key}"][m] for key in ("stick", "power", "fire")]
             share = [100.0 * h[[0, 3]].max() / max(j[[0, 3]].max(), 1e-12) for h in heads]
@@ -75,7 +90,11 @@ def sobol(data: Path, base: int, result: dict) -> str:
     if not path.exists():
         return "(Saltelli sample not complete)"
     d = np.load(path)
-    problem = {"num_vars": len(SAMPLED), "names": list(SAMPLED), "bounds": [[0.0, 1.0]] * len(SAMPLED)}
+    problem = {
+        "num_vars": len(SAMPLED),
+        "names": list(SAMPLED),
+        "bounds": [[0.0, 1.0]] * len(SAMPLED),
+    }
     record, columns = {}, {}
     for setup in SETUPS:
         y = d[f"{setup}_yard_joint"].reshape(-1)  # (base x (D + 2)) in the sample's order
@@ -84,12 +103,17 @@ def sobol(data: Path, base: int, result: dict) -> str:
         mean, error = redraw.mean(0), redraw.std(0, ddof=1) / math.sqrt(redraw.shape[0])
         heads = {key: d[f"{setup}_redraw_{key}"].mean(0) for key in ("stick", "power", "fire")}
         record[setup] = {
-            "S1": si["S1"].tolist(), "S1_conf": si["S1_conf"].tolist(),
-            "ST": si["ST"].tolist(), "ST_conf": si["ST_conf"].tolist(),
-            "redraw": mean[:-1].tolist(), "redraw_error": error[:-1].tolist(),
-            "redraw_all": float(mean[-1]), "redraw_all_error": float(error[-1]),
+            "S1": si["S1"].tolist(),
+            "S1_conf": si["S1_conf"].tolist(),
+            "ST": si["ST"].tolist(),
+            "ST_conf": si["ST_conf"].tolist(),
+            "redraw": mean[:-1].tolist(),
+            "redraw_error": error[:-1].tolist(),
+            "redraw_all": float(mean[-1]),
+            "redraw_all_error": float(error[-1]),
             "redraw_heads": {key: value[:-1].tolist() for key, value in heads.items()},
-            "from_yardstick_mean": float(y.mean()), "base": int(redraw.shape[0]),
+            "from_yardstick_mean": float(y.mean()),
+            "base": int(redraw.shape[0]),
         }
         columns[setup] = record[setup]
     result["sobol"] = record
@@ -100,11 +124,22 @@ def sobol(data: Path, base: int, result: dict) -> str:
         for setup in SETUPS:
             r = columns[setup]
             share = r["redraw"][k] / r["redraw_all"]
-            cells += [f"{r['redraw'][k]:.4f} +- {r['redraw_error'][k]:.4f} ({100 * share:.0f}%)",
-                      f"{r['ST'][k]:.3f} +- {r['ST_conf'][k]:.3f}", f"{r['S1'][k]:.3f} +- {r['S1_conf'][k]:.3f}"]
+            cells += [
+                f"{r['redraw'][k]:.4f} +- {r['redraw_error'][k]:.4f} ({100 * share:.0f}%)",
+                f"{r['ST'][k]:.3f} +- {r['ST_conf'][k]:.3f}",
+                f"{r['S1'][k]:.3f} +- {r['S1_conf'][k]:.3f}",
+            ]
         rows.append(cells)
-    rows.append(["every row redrawn (A against B)"] + sum(
-        [[f"{columns[s]['redraw_all']:.4f} +- {columns[s]['redraw_all_error']:.4f}", "", ""] for s in SETUPS], []))
+    rows.append(
+        ["every row redrawn (A against B)"]
+        + sum(
+            [
+                [f"{columns[s]['redraw_all']:.4f} +- {columns[s]['redraw_all_error']:.4f}", "", ""]
+                for s in SETUPS
+            ],
+            [],
+        )
+    )
     header = ["row"]
     for setup in SETUPS:
         header += [f"{setup} redraw JS (share of all)", f"{setup} ST", f"{setup} S1"]
@@ -120,21 +155,47 @@ def population(data: Path, result: dict) -> str:
             mixture, members = float(p["mixture_entropy"]), float(p["member_entropy"].mean())
             yard = float(p["yardstick_entropy"])
             entry = {
-                "yardstick_entropy": yard, "member_entropy": members, "mixture_entropy": mixture,
-                "generalized_js": mixture - members, "member_from_yardstick": float(p["from_yardstick"].mean()),
+                "yardstick_entropy": yard,
+                "member_entropy": members,
+                "mixture_entropy": mixture,
+                "generalized_js": mixture - members,
+                "member_from_yardstick": float(p["from_yardstick"].mean()),
                 "member_from_yardstick_max": float(p["from_yardstick"].max()),
-                "pairwise_mean": float(pairs.mean()), "pairwise_max": float(pairs.max()),
+                "pairwise_mean": float(pairs.mean()),
+                "pairwise_max": float(pairs.max()),
                 "mixture_from_yardstick": float(p["mixture_from_yardstick"]),
             }
             record[f"{setup}_{spread}"] = entry
-            rows.append([spread, setup, f(yard, 3), f(members, 3), f(mixture, 3),
-                         f"{mixture - members:.4f} ({100 * (mixture - members) / members:.1f}%)",
-                         f(entry["member_from_yardstick"]), f(entry["member_from_yardstick_max"]),
-                         f(entry["pairwise_mean"]), f(entry["mixture_from_yardstick"], 5)])
+            rows.append(
+                [
+                    spread,
+                    setup,
+                    f(yard, 3),
+                    f(members, 3),
+                    f(mixture, 3),
+                    f"{mixture - members:.4f} ({100 * (mixture - members) / members:.1f}%)",
+                    f(entry["member_from_yardstick"]),
+                    f(entry["member_from_yardstick_max"]),
+                    f(entry["pairwise_mean"]),
+                    f(entry["mixture_from_yardstick"], 5),
+                ]
+            )
     result["population"] = record
-    return table(["spread", "setup", "yardstick H", "members' mean H", "mixture H",
-                  "blur: mixture H - mean H", "JS member-yardstick mean", "max",
-                  "JS pairwise mean", "JS mixture-yardstick"], rows)
+    return table(
+        [
+            "spread",
+            "setup",
+            "yardstick H",
+            "members' mean H",
+            "mixture H",
+            "blur: mixture H - mean H",
+            "JS member-yardstick mean",
+            "max",
+            "JS pairwise mean",
+            "JS mixture-yardstick",
+        ],
+        rows,
+    )
 
 
 def skill(path: Path, result: dict) -> list[str]:
@@ -150,8 +211,10 @@ def skill(path: Path, result: dict) -> list[str]:
         for setup in SETUPS:
             entries = record["setups"][setup]
             low, high = entries.get(f"{name}@low"), entries.get(f"{name}@high")
-            cells += [f"{low['elo']:.0f} +- {low['elo_error']:.0f}" if low and low["elo"] else "-",
-                      f"{high['elo']:.0f} +- {high['elo_error']:.0f}" if high and high["elo"] else "-"]
+            cells += [
+                f"{low['elo']:.0f} +- {low['elo_error']:.0f}" if low and low["elo"] else "-",
+                f"{high['elo']:.0f} +- {high['elo_error']:.0f}" if high and high["elo"] else "-",
+            ]
             edge.setdefault(setup, {})[name] = (low and low["elo"], high and high["elo"])
         rows.append(cells)
     header = ["row"] + sum([[f"{s} Elo at u=0", f"{s} Elo at u=1"] for s in SETUPS], [])
@@ -161,18 +224,33 @@ def skill(path: Path, result: dict) -> list[str]:
     personas = [label for label in labels if label.startswith("persona")]
     for setup in SETUPS:
         entries = record["setups"][setup]
-        elo = np.array([entries[label]["elo"] for label in personas if entries[label]["elo"] is not None])
-        err = np.array([entries[label]["elo_error"] for label in personas if entries[label]["elo"] is not None])
+        elo = np.array(
+            [entries[label]["elo"] for label in personas if entries[label]["elo"] is not None]
+        )
+        err = np.array(
+            [entries[label]["elo_error"] for label in personas if entries[label]["elo"] is not None]
+        )
         games = sum(entries[label].get("games", 0) for label in labels[1:])
         if len(elo) < 4:
             continue
         observed_sd = float(elo.std(ddof=1))
-        true_sd = float(math.sqrt(max(observed_sd ** 2 - float((err ** 2).mean()), 0.0)))
+        true_sd = float(math.sqrt(max(observed_sd**2 - float((err**2).mean()), 0.0)))
         quantiles = np.quantile(elo, [0.0, 0.1, 0.5, 0.9, 1.0])
         best = personas[int(np.argmax([entries[label]["elo"] for label in personas]))]
-        summary_rows.append([setup, len(elo), games, f"{elo.mean():.0f}", f"{observed_sd:.0f}", f"{true_sd:.0f}",
-                             f"{err.mean():.0f}", " / ".join(f"{q:.0f}" for q in quantiles),
-                             int((elo > 1000).sum()), best])
+        summary_rows.append(
+            [
+                setup,
+                len(elo),
+                games,
+                f"{elo.mean():.0f}",
+                f"{observed_sd:.0f}",
+                f"{true_sd:.0f}",
+                f"{err.mean():.0f}",
+                " / ".join(f"{q:.0f}" for q in quantiles),
+                int((elo > 1000).sum()),
+                best,
+            ]
+        )
         # Least squares of Elo on the unit coordinates (centred at 0.5), personas and edges.
         xs, ys, ws = [], [], []
         for label in labels[1:]:
@@ -188,27 +266,55 @@ def skill(path: Path, result: dict) -> list[str]:
         coefficients, *_ = np.linalg.lstsq(x * sw[:, None], y * sw, rcond=None)
         residual = y - x @ coefficients
         dof = max(len(y) - x.shape[1], 1)
-        scale = float((w * residual ** 2).sum() / dof)
+        scale = float((w * residual**2).sum() / dof)
         covariance = np.linalg.inv((x * w[:, None]).T @ x) * scale
         errors = np.sqrt(np.diag(covariance))
-        r2 = 1.0 - float((w * residual ** 2).sum() / (w * (y - np.average(y, weights=w)) ** 2).sum())
-        fits[setup] = {"intercept": float(coefficients[0]), "slope": coefficients[1:].tolist(),
-                       "slope_error": errors[1:].tolist(), "r2": r2, "points": len(y),
-                       "population_mean": float(elo.mean()), "population_sd": observed_sd,
-                       "population_sd_true": true_sd, "mean_error": float(err.mean()),
-                       "quantiles": quantiles.tolist(), "games": games}
-    out.append(table(["setup", "personas", "games (all agents)", "mean Elo", "sd observed", "sd without error",
-                      "mean error", "min / 10% / median / 90% / max", "above 1000", "best"], summary_rows))
+        r2 = 1.0 - float((w * residual**2).sum() / (w * (y - np.average(y, weights=w)) ** 2).sum())
+        fits[setup] = {
+            "intercept": float(coefficients[0]),
+            "slope": coefficients[1:].tolist(),
+            "slope_error": errors[1:].tolist(),
+            "r2": r2,
+            "points": len(y),
+            "population_mean": float(elo.mean()),
+            "population_sd": observed_sd,
+            "population_sd_true": true_sd,
+            "mean_error": float(err.mean()),
+            "quantiles": quantiles.tolist(),
+            "games": games,
+        }
+    out.append(
+        table(
+            [
+                "setup",
+                "personas",
+                "games (all agents)",
+                "mean Elo",
+                "sd observed",
+                "sd without error",
+                "mean error",
+                "min / 10% / median / 90% / max",
+                "above 1000",
+                "best",
+            ],
+            summary_rows,
+        )
+    )
     rows = []
     for k, name in enumerate(SAMPLED):
         cells = [name]
         for setup in SETUPS:
             if setup in fits:
-                cells.append(f"{fits[setup]['slope'][k]:+.0f} +- {fits[setup]['slope_error'][k]:.0f}")
+                cells.append(
+                    f"{fits[setup]['slope'][k]:+.0f} +- {fits[setup]['slope_error'][k]:.0f}"
+                )
             else:
                 cells.append("-")
         rows.append(cells)
-    rows.append(["R^2 / points"] + [f"{fits[s]['r2']:.2f} / {fits[s]['points']}" if s in fits else "-" for s in SETUPS])
+    rows.append(
+        ["R^2 / points"]
+        + [f"{fits[s]['r2']:.2f} / {fits[s]['points']}" if s in fits else "-" for s in SETUPS]
+    )
     out.append(table(["row (Elo change from u=0 to u=1, linear fit)"] + list(SETUPS), rows))
     # Style and degenerate checks.
     style_rows, degenerate = [], []
@@ -225,12 +331,18 @@ def skill(path: Path, result: dict) -> list[str]:
                 if s["shots"] is not None and s["shots"] < 0.5 * yard_style["shots"]:
                     flags.append("fires under half the yardstick's shots")
                 if s["speed"] is not None and s["speed"] < 0.8 * yard_style["speed"]:
-                    flags.append(f"slow ({s['speed']:.2f} corner, yardstick {yard_style['speed']:.2f})")
+                    flags.append(
+                        f"slow ({s['speed']:.2f} corner, yardstick {yard_style['speed']:.2f})"
+                    )
                 if s["turning"] is not None and s["turning"] > 1.5 * yard_style["turning"]:
                     flags.append("turning fight 1.5x the yardstick's")
                 if s["store"] is not None and s["store"] < 0.15:
                     flags.append("store nearly empty")
-                if s["hit_range"] is not None and yard_style["hit_range"] and s["hit_range"] > 2.0 * yard_style["hit_range"]:
+                if (
+                    s["hit_range"] is not None
+                    and yard_style["hit_range"]
+                    and s["hit_range"] > 2.0 * yard_style["hit_range"]
+                ):
                     flags.append("hits from over twice the yardstick's range")
             if entry.get("games") and entry["draws"] / entry["games"] > 0.2:
                 flags.append(f"draws {entry['draws'] / entry['games']:.0%}")
@@ -238,11 +350,17 @@ def skill(path: Path, result: dict) -> list[str]:
                 flags.append(f"Elo {entry['elo']:.0f}")
             if flags:
                 degenerate.append([setup, label, "; ".join(flags)])
-            style_rows.append([setup, label, f"{entry['elo']:.0f}" if entry.get("elo") else "-", s["games"]]
-                              + [f(s[key], 3) if s[key] is not None else "-" for key in STYLE]
-                              + [f(s["hits"] / max(s["minutes"], 1e-9), 2)])
-    out.append(table(["setup", "agent", "Elo", "games"] + list(STYLE) + ["hits/ship-min"], style_rows))
-    out.append(table(["setup", "agent", "flag"], degenerate) if degenerate else "(no agent flagged)")
+            style_rows.append(
+                [setup, label, f"{entry['elo']:.0f}" if entry.get("elo") else "-", s["games"]]
+                + [f(s[key], 3) if s[key] is not None else "-" for key in STYLE]
+                + [f(s["hits"] / max(s["minutes"], 1e-9), 2)]
+            )
+    out.append(
+        table(["setup", "agent", "Elo", "games"] + list(STYLE) + ["hits/ship-min"], style_rows)
+    )
+    out.append(
+        table(["setup", "agent", "flag"], degenerate) if degenerate else "(no agent flagged)"
+    )
     result["skill"] = {"fits": fits, "edge": edge, "degenerate": degenerate}
     return out
 
