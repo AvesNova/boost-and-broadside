@@ -20,7 +20,7 @@ Every planned item, in order, with its status. Decisions behind the items are in
 | A9 | Measurements: top speed, corner, best sustained, minimum radius, dive and climb rates, time to cross the band, speed lost per second of firing | done (worklog 02:45) |
 | A10 | Before and after charts (doghouse, comparison, the five charts) for "core" | done (worklog 02:57) |
 | A11 | Sandbox flies "core" (`--set flight_model=core`); readout shows the model | done (overnight, see worklog 02:43) |
-| A12 | Number tuning (engine power, exchange caps, store size, fire fraction): needs the author's flying | blocked: author |
+| A12 | Number tuning (engine power, exchange caps, store size, fire fraction): needs the author's flying | done 2026-11-27: author signed the flight numbers off as they are |
 | A13 | Post-stall regime (author 2026-11-26): no new stick level; below corner speed full stick goes as deep into the stall as the plane gives, the middle level is about maximum lift before separation, the gradual level less; above corner unchanged (g limit). Gradual lift loss and rapid drag rise past the stall, the nose swinging freely; no asymmetric stall or spin. Literature: docs/rewrite/sections/post-stall/literature.md. Built and signed off (author 2026-11-26): levels Sustain / Max / Snap, deep angle 45 degrees opening over 30% of corner speed below corner, nose spring per level (core-decisions.md "Post-stall flight") | done 2026-11-26 (branch `post-stall`, docs/rewrite/sections/post-stall/progress.md) |
 
 ## B. Game corrections and settings
