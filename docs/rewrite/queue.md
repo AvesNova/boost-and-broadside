@@ -14,12 +14,12 @@ core when sensible (author 2026-11-27).
 
 ## Running
 
-- 8a Correctness fixes (`fixes-8a`, lean/learn).
+- 8c Heads (`heads-8c`, lean/learn + lean/model).
 - 8b Scripted one-tick action delay (`scripted-delay`, lean/scripted), beside 8a (disjoint files).
 
 ## Done
 
-R1 persona round 2, R2 two-level league, R3 persona round 3, items 1 (merge + compile baselines), 2 (hit-range
+R1 persona round 2, R2 two-level league, R3 persona round 3, 8a correctness fixes, items 1 (merge + compile baselines), 2 (hit-range
 port), 3 (docs cleanup), 7 (correctness review): see the Log.
 
 ## Queue (in order)
@@ -113,3 +113,4 @@ scripted delay is a bug; next-state and hit on all visible ships; the pairwise h
 - ~04:08 item 8a started (`fixes-8a`, lean/learn only, beside R3).
 - ~04:12 author: the two-level league is the default and the only league (the old capacity rule is already gone from the code; core-decisions entry marked decided). Clock times in the 04:xx lines corrected (were estimates).
 - ~04:30 R3 done (`personas-3` 5018e6da, merged into core; results-3.md, proposal-3.json). Agent's numbers: round 2's centre was not the top (69% of 96 Sobol points over the enlarged top region beat it); steep rows bounded, plateau rows (collision, threat, power rows, fire tolerance upward, temperature downward) flat to the hard end; robust-centre-3 vs round 2's centre -8 / +102 / +194 (surface predicted +453 / +334 / +533: over-extrapolates at the edge); with the old yardstick at 1000 it rates 1140 / 1587 / 2407. Gaussian sampler as briefed dropped 104 / 79 / 103 Elo for targets 25 / 50 / 100; the cause is temperature (a cliff on the warm side); the same personas with temperature reflected colder dropped 23. League personas league3-1..5 within about 70 of the centre, wider team-style spread than round 2. The five persona decisions go to the author. 8b started (`scripted-delay`).
+- ~04:45 8a done (`fixes-8a` 409b7be1, merged into core). Agent's numbers: perfect-critic target at the ship's last living tick, dying 30 / 100 / 300 ticks before the end: 3.974 / 0.462 / 0.001 before, 9.910 / 9.704 / 9.139 after (ideal 10 gamma^k), survivor unchanged; hit prior re-measured over 1.6M bullets (scripted 4v4, 4,200 ticks): miss 0.9865 / enemy 0.0110 / team-mate 0.0025 (the review's 0.0070 / 0.0015 came from mostly approach ticks); damage value_knee 0.0286 -> 0.0109; team payments over living ships; generator seed + 1,000,003. Quick tier lean/learn, model, eval 169 passed; slow learn 6 passed; ruff clean. For the author: on the damage and kill_death levels a team-mate's value also holds that team-mate's own future damage and kills, so option C credits a dying ship's last ticks with most of it; exact only on the outcome level (could restrict C to the outcome level). 8c started (`heads-8c`, lean/learn + lean/model, beside 8b; its timing waits for a quiet GPU).
