@@ -350,3 +350,16 @@ def test_the_chunked_policy_step_equals_one_call(chunks):
     for joined, one in zip(parts, whole, strict=True):
         assert joined.shape == one.shape
         torch.testing.assert_close(joined, one, rtol=1e-5, atol=1e-5 * one.abs().max().item())
+
+
+def test_the_critics_support_is_built_once_per_device_and_bins():
+    """returns.value_support: built once and reused (no copy per collect or update), equal to
+    the support built from value_centres and value_knees."""
+    from lean.learn.returns import value_centres, value_knees, value_support
+
+    config = LearnConfig()
+    first, again = value_support(config, 63), value_support(config, 63, "cpu")
+    assert first is again
+    assert torch.equal(first.centres, value_centres(config, 63))
+    assert torch.equal(first.knees, value_knees(config))
+    assert value_support(config, 31).centres.shape[-1] == 31
