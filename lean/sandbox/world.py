@@ -354,7 +354,7 @@ class HitRange(World):
             if outcome >= 0 and not path["reported"]:
                 path["reported"] = True
                 self.spreads.append((self.tick, path["a"], path["b"], path["range"]))
-            if self.tick - 1 - path["born"] >= life - 1:  # its last tick: the slot is rewritten next
+            if self.tick - 1 - path["born"] >= life - 1:  # last tick of its life
                 self.finished.append([path["points"], path["contact"]])
                 del self.paths[k]
         horizon = self.tick - round(self.WINDOW_SECONDS / self.h)

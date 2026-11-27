@@ -609,7 +609,7 @@ def test_hit_range_mode_streams_range_readouts_and_damage():
 
 def test_hit_range_paths_run_the_whole_life_and_colour_from_the_contact():
     """A bullet that hit keeps flying: its finished path is a whole life (BULLET_SLOTS ticks
-    after the muzzle) with a contact index inside it; a miss has none. Shots are real bullets only."""
+    after the muzzle) with a contact index inside it; a miss has none."""
     from lean.contract import BULLET_SLOTS
 
     client = TestClient(app)
