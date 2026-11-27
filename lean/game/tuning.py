@@ -279,6 +279,17 @@ def _bullet_life(gun_range: float, design: dict, tick_length: float = 1.0 / 30.0
     return math.ceil(flight / tick_length - LIFE_TOLERANCE) * tick_length
 
 
+def ring_gun_range(design: dict, tick_length: float = 1.0 / 30.0) -> float:
+    """The gun range (metres) whose bullet life is contract.BULLET_SLOTS ticks, the only life the
+    game allows (every bullet lives exactly its ring's slot count), for a design's muzzle speed
+    and bullet drag (fired at the launch speed): a design that moves either sets this range."""
+    from lean.contract import BULLET_SLOTS
+
+    drag = design["bullet_drag"]
+    launch = _launch_speed() + design["muzzle_speed"]
+    return math.log1p(drag * launch * BULLET_SLOTS * tick_length) / drag
+
+
 def _gun_range(row: dict, numbers: dict) -> float:
     """The range of a bullet's whole life, fired at the launch speed (at least the designed
     range)."""

@@ -107,6 +107,8 @@ def test_moved_designs_fly_their_inputs(documents, change):
         name: value if name in VALUES else value * documents.design[name]
         for name, value in change.items()
     }
+    # A bullet lives exactly BULLET_SLOTS ticks: a moved muzzle speed moves the gun range.
+    design["gun_range"] = tuning.ring_gun_range({**documents.design, **design})
     row = documents.start_row
     solved = tuning.design_row(documents, design, start=row)
     assert solved.residual < 1e-7 and solved.condition < 100.0
@@ -322,6 +324,7 @@ def test_a_card_built_inside_with_row_does_not_outlive_it():
     on entry and exit, so a card built from the changed table is never served after it."""
     config = core.GameConfig(arena_radius=4321.0)  # a key no other test builds
     row = {name: 2.0 * values[0] for name, values in card.CARD.items()}
+    row["bullet_life"] = card.CARD["bullet_life"][0]  # the only life the game allows
     with tuning._with_row(row):
         core.ship_card(config)  # built from the card with the extra row
     after = core.ship_card(config)

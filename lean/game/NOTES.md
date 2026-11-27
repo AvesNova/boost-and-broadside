@@ -13,7 +13,7 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
 - `GameConfig()` is the core game: arena 4,200 m, boundary ramp 300 m, clock 1,800 ticks (60 s at 30 Hz),
   "mixed" spawn, lineup `("p51d",)`, ten fields drawn per environment at each deal, ghost bullets,
   fog, a store of two loops at corner speed with 5% edge bands, firing cuts thrust to
-  `fire_thrust_fraction` (0). `field_count=0`, `ghost_bullets=False`, `fog=False` are ablations.
+  `fire_thrust_fraction` (0). `field_count=0` and `fog=False` are ablations.
 - `reset` / `deal` / `take_deal`: fresh states at given team sizes (unused slots `exists=False`);
   the learner draws deals once per segment and takes them as environments finish.
 - `step(config, state, action, noise)`: one tick. The tick applies `state.pending` (the previous
@@ -136,12 +136,27 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
   tracked; the deal's own perception sees by the ellipse alone). Per pair the reach is
   `torch.where(tracked, p / (1 - e), p + e d . nose)`, still squared against |d|^2. The circle
   contains the ellipse (|d| <= p + e |d| gives |d| <= p / (1 - e)) and equals it at e = 0, so
-  today's default is unchanged (tested). The switch is a GameConfig rule like `fog` and
-  `ghost_bullets`, not a card column: it is one on/off rule for every type, and the circle's
+  today's default is unchanged (tested). The switch is a GameConfig rule like `fog`,
+  not a card column: it is one on/off rule for every type, and the circle's
   radius comes from the card's p and e, so the card gains no number. `Obs.pending` holds own
   living ships' joint action, `NO_PENDING`
   (42) elsewhere. The ship row has no position scalars; `Obs.pos` carries position for the
   model's position code and rotary.
+- **Bullets: the ring is the clock** (PROPOSAL 2026-11-27, branch `ghost-only`; core-decisions
+  "Ghost-only bullets"): every ship, alive, dead or not existing, writes one bullet a tick into
+  slot `tick mod BULLET_SLOTS` of its ring (`_fire`), overwriting the bullet written 12 ticks
+  before, so every bullet lives exactly `contract.BULLET_SLOTS` (12) ticks and moves on each of
+  them (`_move_bullets`: no countdown, no frozen bullets). The card's `bullet_life` must round to
+  12 ticks (checked when the constants are built, `_per_type`; `tuning.time_scaled` keeps it;
+  a design moving muzzle speed or drag sets its gun range to `tuning.ring_gun_range`).
+  One uint8 state per bullet (`State.bullet_state`, `contract.GHOST / REAL / CONTACTED`): a
+  real bullet if the ship fired that tick, else a ghost (a dead or absent ship's bullets are
+  ghosts). Only a ghost or a real bullet can touch a ship, only a real one damages; a contact
+  makes it CONTACTED and it flies on unchanged (no stop, no further contact, no turn by an
+  egg). `_bullet_ends` reports each bullet's outcome once (StepOut.shot_outcome): its first
+  contact (1 enemy, 2 team-mate) or a miss (0) on its last tick; a fresh deal's slots start
+  CONTACTED, so they never report. The firing tick is the ring's age (`bullet_ages`):
+  `shot_tick = tick - age`. The observation's bullet share counts REAL bullets.
 - **Bullet damage** (`_damage`): the owner's hit damage x kinetic (the explosive share plus
   the rest by the squared ratio of the bullet's speed to its reference speed) x closeness
   (`graze`: full inside the core radius, a smoothstep to 0 at the hit radius, on the impact
@@ -290,7 +305,9 @@ phase, one score for a fast pass with both ships turning that the closest-approa
 twice or missed, none while overlapping and again only after separating, full closeness when
 the cores would meet and a graze between, the credit to the other ship including a team-mate
 and zero sum, no contact for a wide, later or dead pass),
-fields, fog, ghost bullets, the deflector (`test_deflector.py`: the hump, one turn per pass,
+fields, fog, ghost-only bullets (`test_ghost_bullets.py`: every ship writes a bullet a tick, a dead
+ship's are ghosts; each bullet reports once, a miss on its last tick; a fresh deal's slots never
+label; a contacted bullet never damages or labels again and flies on to its 12th tick), the deflector (`test_deflector.py`: the hump, one turn per pass,
 the relative speed kept, dead centre straight and full damage, a bullet from inside the egg not
 turned, ghosts like real bullets, the turned path and hit-or-miss equal the design sketch's
 trace_through, the hit widths equal the sketch's, the hit model's round trip and no recompile), invariants (finite, inert

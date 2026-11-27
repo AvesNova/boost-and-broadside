@@ -1007,3 +1007,35 @@ Bullet deflector and the runtime hit model (PROPOSAL, branch `bullet-deflector`,
   candidates: hit damage about 8.5 with spread up to 5 mrad, or 7 with today's.
   docs/rewrite/sections/bullet-deflector/egg-experiments.md and progress.md.
 
+
+## Ghost-only bullets (PROPOSAL, branch `ghost-only`, unmerged; author decision 2026-11-27 ~15:20)
+
+- **The ring is the clock** (author): no moves-left countdown. Every ship, alive, dead or not
+  existing, writes one bullet a tick into slot `tick mod BULLET_SLOTS` of its ring, so a bullet
+  lives exactly `contract.BULLET_SLOTS` = 12 ticks and moves on every one of them. Bullet life
+  is the slot count: `core._per_type` raises a ValueError when the card's `bullet_life` does not
+  round to 12 ticks (an assertion, not a derivation: the card keeps `bullet_life` from the gun
+  range, and `tuning.time_scaled` sets it to 12 ticks at any time factor, so the gun range there
+  follows the factor). The per-ship `next_slot` column and the `bullet_moves` constant are gone.
+  A design that moves the muzzle speed or the bullet drag must move the gun range with it
+  (`tuning.ring_gun_range`, the range of a 12-tick bullet; the design tests do). Open for the
+  author: the tool's gun-range slider (a design input) can now ask for a life the game refuses
+  (a clear error at constants build); it could become a read-out of muzzle speed and drag.
+- **One uint8 state per bullet** (author; `State.bullet_state`, `contract.GHOST / REAL /
+  CONTACTED` = 0 / 1 / 2, replacing `bullet_real` and the `bullet_counts` block): damage only
+  from REAL; a contact turns a ghost or a real bullet into CONTACTED and it keeps flying, motion
+  unchanged (no stop, no freeze; no further contact, so no egg turn either). A dead or absent
+  ship's bullets are ghosts.
+- **Labels: first contact only** (the coordinator's recommendation; the author has not
+  overruled): a bullet reports once, from GHOST or REAL, at its first contact (1 enemy, 2
+  team-mate) or as a miss (0) on its last tick; never from CONTACTED. A fresh deal's slots start
+  CONTACTED, so they never label (the prototype's parked ghosts labelled passers-by in the first
+  12 ticks). `shot_tick` is the ring age: `tick - age` (`core.bullet_ages`). Labels of dead and
+  absent ships' ghosts land on rows that are not `own` (the hit loss masks them).
+- **Observation**: the bullet share counts REAL bullets (not yet contacted), as before.
+- **Removed** (author: no ablation needed): `GameConfig.ghost_bullets` and the countdown code,
+  with every use (tests, eval runner, tool, sandbox).
+- **Cost** (compiled `core.step`, E 4096, 4v4, fields and fog, laptop 4070, performance
+  profile, load ~1.2-1.6; bench_tick, base b70dcd18 vs this branch, 2 rounds alternating):
+  off 0.973 / 0.973 -> 0.753 / 0.753 ms, egg 1.078 / 1.079 -> 0.880 / 0.925 ms. Kernels:
+  docs/rewrite/sections/bullet-deflector/progress.md (2026-11-27 16:00).
