@@ -113,7 +113,8 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
   the maximum lift, starting near 0.8 of it). `steady_rates` / `quasi_steady` evaluate the same
   functions with the nose settled; they give the derived constants, `tuning`, and the web tool.
 - **Constants:** `ship_card` / `ship_constants` build a run's `contract.Constants` once; a
-  value equal for the whole lineup is a Python number, one that differs is a per-slot row. The
+  value equal for the whole lineup is a Python number, one that differs is a row of the card's
+  (C, T) table read through the slot's type (no per-slot copy; 2026-11-27). The
   scripted agent reads every number it uses from these by name.
 - **Fog:** `perceive` (sight by v2's rule, or a shot, a real bullet's hit or a collision that tick),
   `enemy_view`, `team_view`. Sight (`sight_pairs`, per target and observer; `sighted_by_enemy`,
@@ -196,7 +197,7 @@ environments. Pure functions of tensors, no Python loops over ships or bullets. 
   egg-experiments.md.
 - **The hit model at runtime** (proposal 2026-11-27): every hit-model number (`core.HIT_MODEL`:
   hit and core radius, hit damage, bullet spread, the egg's front, rear and half-width, the
-  largest turn, the nose cone's weight and angles; and the derived hit widths) is a row of the per-slot table (`core.RUNTIME_CONSTANTS`), never a
+  largest turn, the nose cone's weight and angles; and the derived hit widths) is a row of the constants table (`core.RUNTIME_CONSTANTS`), never a
   Python number baked into the compiled graph: `core.with_hit_model(constants, **inputs)` changes
   it for every ship between calls of the compiled tick with no recompile (tested under
   `torch.compile(fullgraph=True)`). The workbench `python -m lean.tool.hitbench` (effective hit

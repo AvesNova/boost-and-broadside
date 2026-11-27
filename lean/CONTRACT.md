@@ -26,8 +26,9 @@ BULLET_SLOTS = 12  # also every bullet's life in ticks: the ring (slot tick mod 
 GHOST, REAL, CONTACTED = 0, 1, 2  # State.bullet_state
 ```
 
-Also here: `symlog`, `map_fields`, `whole_state`, `compile_dynamic` (the one place duck sizing is
-turned off), `random_keywords` (a factory's generator keywords; compiled graphs draw from torch's
+Also here: `symlog`, `map_fields`, `whole_state`, `compile_graph` (shapes "static": a training
+run's graphs, specialised to its sizes, a recompile an error; "dynamic": `compile_dynamic`, the one
+place duck sizing is turned off, for evaluation across sizes), `random_keywords` (a factory's generator keywords; compiled graphs draw from torch's
 default generator).
 
 Stick: 0 straight, then (1, 2) gradual, (3, 4) middle, (5, 6) full, one direction odd and the
@@ -35,8 +36,9 @@ other even. Power: 0 coast, 1 dive, 2 climb. Fire: 0 or 1.
 
 **`Constants`**: per-ship constants of one run, read by name (`constants["lift"]` or
 `constants.lift`). A value equal for the whole lineup is a Python number; one that differs by
-ship type is a row of a table `(E, C, N)` gathered at the deal. `lean.game.core.ship_constants`
-builds it.
+ship type is a row of the card's table `(C, T)` (one column per ship type), read through each
+slot's type (`Constants.ship_type`, the state's `type`): `(E, N)`, an action table `(E, width,
+N)`. The table is shared, never copied per slot. `lean.game.core.ship_constants` builds it.
 
 **`State`**: the whole game state, packed by block so per-field work is one operation per block.
 Every quantity named in the `*_COLUMNS` tuples reads by name as a view, `state.x` being `(E, N)`

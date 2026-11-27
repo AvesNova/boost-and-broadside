@@ -19,7 +19,9 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
   league side (`slot_actions`, capacity routing, `league_rows`), hit labels, the teacher's
   distribution. A tick is `act` (returns a `Decision`: views, the live policy's sample through
   lean.model.agent.agent_step, value, the scripted `ScriptedMove`), `league_actions` (a
-  `LeagueMove`) and `advance` (takes both and the `HitLabels`; the game half is lean.game.tick).
+  `LeagueMove`) and `advance` (takes both; the game half is lean.game.tick). `advance` returns
+  each ship's bullet outcomes by age; `collect` assembles the segment's hit labels once at its
+  end (`assemble_hit_labels`), nothing is written in place in the tick.
 - `store.py`: `RolloutStore`, an update's segments, compact, streamed to pinned host memory on a GPU.
 - `returns.py`: GAE per level, chaining across segments, advantage scaling and shares, the value
   supports' range monitoring.
@@ -28,8 +30,11 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
 - `pool.py`: `League` (members, network slots, capacity draws, tallies, retiring slots),
   `SnapshotSchedule`, `retained`.
 - `rewards.py`: v2's five reward levels and the damage ledger.
-- `compiled.py`: `graphs()`: act, advance, slot_actions, minibatch_values, minibatch_loss, each
-  compiled once with dynamic sizes (no recompile at a new team size, league size or batch size).
+- `compiled.py`: `graphs(shapes)`: act, advance, slot_actions, minibatch_values, minibatch_loss.
+  `LearnConfig.compile_shapes` (2026-11-27): "static" (the default) compiles each for the run's
+  sizes (environments, slots, fields, micro-batch: all fixed in a run) and any second compile
+  raises; "dynamic" compiles once for every size (duck sizing off). The league routing
+  (slot_actions) is dynamic either way: its table width follows the league's capacity.
 - `lean/train.py`: the stages, checkpoints, `--resume`.
 
 ## The recipe
