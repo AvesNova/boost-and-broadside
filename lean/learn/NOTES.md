@@ -31,6 +31,7 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
 - `geometry.py`: the rows the auxiliary losses train (`observed_rows`), the geometry heads'
   pairs (`pair_query`: K sampled per view and tick from `draw_keys`' uniform keys), targets
   (lean.game's functions) and losses (`geometry_losses`).
+- `gradients.py`: the gradient decomposition (a diagnostic, below).
 - `weights.py`: `WeightAverages` (EMA and uniform), checkpoints.
 - `pool.py`: `League` (the pool of members and tallies, level 1 `allocate`, level 2 `draw` /
   `slot_draws`, draining slots, the persona parameter table), `SnapshotSchedule`, `retained`.
@@ -69,8 +70,10 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
   (initial weights, the compiled rollout's draws) `--seed`.
 - **BC stage** (`update(..., cloning=True)`): the student plays its own games (half self-play,
   half against the scripted agent). Loss: cross-entropy of the 42-way policy against the scripted
-  teacher's full distribution (its joint over the 42 actions, flight x fire, `lean.scripted.Choice`) at 1.0, plus value, next-state and hit; no
-  surrogate, no entropy. 96 updates (100.7M ticks, v2's 100M-tick stage). The hand-off is the
+  teacher's full distribution (its joint over the 42 actions, flight x fire, `lean.scripted.Choice`) at 1.0, plus the
+  entropy bonus (0.003, as RL: author 2026-11-24, "on for the whole run, teacher phase
+  included"; applied since 2026-11-28, item 11), value, next-state, hit and the geometry heads; no
+  surrogate. 96 updates (100.7M ticks, v2's 100M-tick stage). The hand-off is the
   stage's EMA, with a fresh optimiser, warm-up, league and averages.
 - **Teacher term in RL:** the same cross-entropy at 0.5 x 0.95^k at RL update k; off for good once
   the league's win rate against the scripted agent reaches 0.45 or the weight falls below 0.005.
@@ -95,7 +98,7 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
 - **PPO:** clip 0.2; no KL stop (`approximate_kl_epoch_<k>` logged, a warning above 0.02);
   advantages summed over levels and divided by their standard deviation, mean kept.
 - **Loss coefficients** (fixed, on scale-free terms): value 0.05, next-state 0.1, hit 0.05, entropy
-  0.003 on the joint 42-way entropy in RL; the geometry heads (PROVISIONAL, 2026-11-28, for the
+  0.003 on the joint 42-way entropy in both stages; the geometry heads (PROVISIONAL, 2026-11-28, for the
   author) ship pairs 0.1, ship-field pairs 0.05, map edge 0.05.
 - **Auxiliary rows** (author 2026-11-28): next-state, hit and the geometry heads train on the
   rows the seat sees (`observed`: its living ships and the enemies visible this tick; hidden
@@ -223,6 +226,28 @@ until the author decides; numbers in docs/rewrite/sections/league-pool/progress.
   TORCHINDUCTOR_CACHE_DIR is unset): /tmp is wiped at reboot, and a warm cache skips most of the
   cold compile.
 
+## Gradient decomposition (item 11, 2026-11-28)
+
+`lean.learn.gradients`, ported from v2 (src/bnb/learn/gradients.py), off by default:
+`LearnConfig.gradient_diagnostics_every` N > 0 (or `lean.train --gradient-diagnostics-every N`)
+runs it on updates 0, N, 2N, ... of each stage. On the update's first minibatch (the views of
+its first Adam step), before that step, `minibatch_loss(..., parts=True)` runs eagerly (never
+compiled: the training graphs are unchanged) and returns its weighted terms; each basic term's
+gradient (coefficient applied, before the clip) is summed over two halves of the minibatch's
+micro-batches. Terms: surrogate (0 in BC), the teacher cross-entropy (`bc` in BC, `teacher` in
+RL), entropy (the bonus with its sign), value (and `value_<level>`), next_state (and
+`next_state_<column>`), hit, pair (and `pair_<column>`), field, edge. Measures: norm and share
+of the step (<g_t, g> / |g|^2, the top-level shares sum to 1) per scope (`model`, `trunk`),
+pairwise trunk cosines, group agreement, coherent fraction between the halves, the next-state
+columns' and pair targets' coherent shares, actor/critic share in the trunk. The trunk is the
+`encoder` and the `blocks` (1,829,952 of the default model's 2,269,524 parameters); the heads,
+auxiliary heads and pair head are outside it. The trainer prints a table line (trunk share,
+norm, cosine with the policy term, coherent fraction) and a `gradients_json` line with every
+measure. The pass draws its pair keys from its own generator, leaves .grad alone, and the
+training's results are the same with it on (tests). Cost: one eager forward per micro-batch of
+the minibatch and a backward per non-zero term (about 20). First measurement:
+docs/rewrite/sections/gradients-11-progress.md.
+
 ## Tests
 
 All run the real game, scripted agent and model at tiny sizes (`tests/setting.py`).
@@ -236,7 +261,9 @@ retention), `test_learn.py` (also the chunked live-policy step equals one call, 
 support built once), `test_hit_head.py`, `test_geometry.py` (sampling unbiased and exact at K >=
 c, distinct valid pairs, the upper triangle, the trained rows are the visible ships in a fogged
 rollout, the pair loss with every pair equals a direct sum of the game's targets),
-`test_rewards.py`, `test_store.py`; slow, `test_compiled.py` (compiled collect and update, loss
+`test_rewards.py`, `test_store.py`, `test_gradients.py` (shares sum to 1 and parts to their
+term, a zero-coefficient term has zero share, the training unchanged with the diagnostic on,
+the weighted terms sum to the loss, the trunk's parameters, BC applies the entropy bonus); slow, `test_compiled.py` (compiled collect and update, loss
 equal to eager, the league tick fullgraph, and static for the whole run: one compile at RL's
 start through loads, unloads, duplicates and a retention drop).
 
