@@ -89,6 +89,12 @@ port), 3 (docs cleanup), 7 (correctness review): see the Log.
 - The two-level league's K and R; whether the personas share one member's PFSP share.
 - Optional: a literature check on team critics / a super-token critic (MAPPO's death masking).
 - Muon (tabled); Liger-style kernels (tabled); the BC dry run itself (proposed first).
+- The cold-compile budget: core is 164.7 s vs 150 s (8b +~10 s in the scripted graph, 8c +~14 s in the loss; ~10 s run-to-run): raise it, or shrink one of the two graphs.
+- Option C on the damage and kill_death levels too (as built) or the outcome level only (8a).
+- The hit-label bias (item 4): in-flight bullets at an episode or update end never report a miss: mask those windows or label them missed.
+- 8c's provisional geometry coefficients (pair 0.1, field 0.05, edge 0.05) and K = 8.
+- Optional: re-check fire_tolerance and lead_error on the fixed scripted agent (8b).
+- micro_batch_views (8) and policy_step_chunks (6) are per GPU: re-measure on the 5090.
 
 Decided 2026-11-27 ~22:00: hidden enemies masked in the per-enemy losses (visible only, to
 start); residual stream stays float32; compile baselines reset after item 1.
