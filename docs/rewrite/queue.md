@@ -240,3 +240,4 @@ scripted delay is a bug; next-state and hit on all visible ships; the pairwise h
 - ~00:00 author: go-ahead for the trigger redesign (item 20), at a sensible time (RL runs to completion first); signing off.
 - ~00:46 RL dry run at update 45: win rate vs the scripted teacher 0.51-0.55 in its league games (BC end: 0.10-0.12), teacher term off, 8,500-8,620 steps/s. Item 20: trigger built (CPU), its measurements wait for the GPU (watcher launches bnb-20-step1 when RL ends).
 - ~01:46 RL dry run at update 75: win rate vs the scripted teacher 0.89-0.90 in league games, 8,520-8,650 steps/s.
+- ~02:45 item 17 done: RL 100.7M ticks, exit 0; RL EMA score vs the teacher 0.914 (4v4, ~1,410 Elo), 0.908 (1v1), 0.352 (16v16); vs the BC student 0.990; sprays (175 shots per ship-minute vs the teacher's 56, hits per shot 0.08) at close range. Item 20 step 1 running (bnb-20-step1).
