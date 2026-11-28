@@ -66,3 +66,14 @@ Behaviour tables (old vs new rules), replays, tick timing, the end-of-branch che
 - Compile check (17:30, performance, load 1.5): 6 graphs, 11,439 traced operations (baseline
   11,511), `advance` 3,261 (baseline 3,306), `scripted_actions` 5,231 (5,258), 0 graph breaks,
   cold 166.4 s (budget 175 s): within the baseline.
+
+## 17:55 done
+
+- Tests: quick tier on lean/game, lean/scripted, lean/learn, lean/model, lean/eval, lean/tool
+  408 passed, 1 failed (lean/eval test_style "from the front": it assumed the nose armour off;
+  now a beam shot and a separate armour test; that file re-run, 16 passed); slow tier
+  lean/learn 6 passed; ruff clean.
+- For the author: the hit-class prior (lean/model/policy.py, measured under the egg) and the
+  feature scales may want a re-measure under these rules; the robust centre collides much
+  more under them (a persona re-run is proposed separately); 1v1 games end by elimination
+  less often with the smaller sight egg (yardstick 43.7% core -> 37.0%).

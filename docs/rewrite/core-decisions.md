@@ -1197,3 +1197,5 @@ After replays showed duels degenerate into nose-to-nose fire and collisions. lea
   circle 0.735 ms (with the armour and the sight egg; off 0.589 / 0.569 ms): the same within
   noise; CPU eager 22.1 to 16.8 ms. Compile check 11,439 traced operations (baseline 11,511;
   `advance` 3,306 to 3,261), cold 166.4 s (budget 175 s), within the baseline.
+- Checks: quick tier on lean/game, scripted, learn, model, eval, tool 409 passed (one style
+  test rewritten for the armour); slow tier lean/learn 6 passed; ruff clean.
