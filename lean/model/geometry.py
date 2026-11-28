@@ -46,13 +46,20 @@ class GeometryColumn:
     both_orders: bool = False
 
 
-# Ranges and knees from scripted 4v4 under the training game (the yardstick against itself,
-# 64 environments x 1,800 ticks on the CPU, every 4th tick, both teams' views: 0.70M pairs the
-# team sees, 3.0M ship-field pairs, 0.30M ships; 2026-11-28; lean/model/NOTES.md "Geometry
-# heads"). Each range is the 99.9% interval rounded out (the buffer columns take the rest),
-# each knee about the finest scale that matters (a collision's tens of metres, a hit's 8 mrad
-# aim tolerance at 300 m, the field band's 160 m). 32 bins; 16 for the map edge (coarse is
-# enough: the scripted agent rarely nears it).
+# Ranges and knees from the default scripted agent against itself under the training game,
+# every 8th tick, both teams' views, the rows the team sees (2026-11-28, queue item 15, the
+# core rules with the shrinking zone; docs/rewrite/sections/calibrate-15/): 4v4 (256 of 1,024
+# environments x 8,000 ticks: 5.3M ship pairs, 24.7M ship-field pairs, 2.5M ships), 1v1
+# and 16v16. Each range is the 99.9% interval rounded out over the three team sizes (the
+# buffer columns take the rest), each knee about the finest scale that matters (a
+# collision's tens of metres, a hit's 8 mrad aim tolerance at 300 m, the field band's 160 m,
+# the boundary ramp's 300 m) traded against the bins' balance. The ship-pair columns (first
+# measured 2026-11-28 ~04:00 on the fixed arena) still fit: 99% of the mass in 20-32 of 32
+# bins at 4v4 and 16v16, no bin above 13%. Changed by item 15: the field edge (-2,000 to
+# 7,000 m, knee 50: the largest bin 21%, perplexity 9.7 -> -1,500 to 6,200 m, knee 200: 15%,
+# 13.2; innermost bin 50 m) and the map edge, now the shrinking zone's edge, which every
+# ship nears (16 bins, -4,200 to 300 m, knee 100: 99% in 6 of 16, largest 38-46% -> 32
+# bins, -3,900 to 300 m, knee 1,000: 99% in 19 of 32, largest 8-15%; innermost bin 77 m).
 PAIR_COLUMNS = (
     GeometryColumn("range", 32, 100.0, 0.0, 6700.0),  # m
     GeometryColumn("range_rate", 32, 50.0, -1000.0, 1000.0),  # m/s
@@ -61,8 +68,8 @@ PAIR_COLUMNS = (
     GeometryColumn("train_angle", 32, 0.0, circular=True, both_orders=True),  # rad
     GeometryColumn("gun_error", 32, 0.02, circular=True, both_orders=True),  # rad
 )
-FIELD_COLUMN = GeometryColumn("field_edge", 32, 50.0, -2000.0, 7000.0)  # m, negative inside
-EDGE_COLUMN = GeometryColumn("map_edge", 16, 100.0, -4200.0, 300.0)  # m, negative inside
+FIELD_COLUMN = GeometryColumn("field_edge", 32, 200.0, -1500.0, 6200.0)  # m, negative inside
+EDGE_COLUMN = GeometryColumn("map_edge", 32, 1000.0, -3900.0, 300.0)  # m, negative inside
 
 
 def circular_centres(knee: float, bins: int) -> Tensor:

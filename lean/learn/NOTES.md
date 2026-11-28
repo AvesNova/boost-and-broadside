@@ -120,13 +120,19 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
   column: the ship pairs' symmetric columns on the upper triangle, the train angle and gun
   error averaged over both orders. Off for an ablation: `ModelConfig(geometry_heads=False)`.
 - **Rewards:** v2's levels (the objective levels off by default); value supports from measured
-  returns (2026-11-25): damage +-5.4, kill_death +-7.5, outcome +-10, objective levels +-1 (placeholders), each 57 bins
+  returns (2026-11-28, queue item 15: the core rules with the shrinking zone, every game
+  ending; the default scripted agent, 1v1, 4v4 and 16v16; Monte Carlo returns, a perfect
+  critic's target; docs/rewrite/sections/calibrate-15/): damage +-5.6 (+-5.4 until then),
+  kill_death +-8.2 (+-7.5), outcome +-10, objective levels +-1 (placeholders), each 57 bins
   across the range plus 3 buffer columns of the same width beyond both ends (63 bins;
   lean/model/NOTES.md). Damage and kill_death are symlog (`value_knee`, the event rule: one
   event x e^-3: a hit of 8 points 0.0109 (0.0286 until 2026-11-28, from 21-point hits) and a
-  kill 0.141; innermost bins 0.0027 and 0.022, outermost 2.09 and 1.56, outermost centres
-  +-10.5 and +-11.6); outcome (bimodal) and the objectives linear (bins
-  0.357 and 0.0357). The range monitoring counts bins in bin space (`usage_counts` takes the
+  kill 0.141; innermost bins 0.0026 and 0.021, outermost 2.45 and 1.88, outermost centres
+  +-10.9 and +-12.8); outcome (bimodal) and the objectives linear (bins
+  0.357 and 0.0357). At 4v4 99% of the returns lie in 42 / 41 / 30 of the 63 bins, the largest
+  bin 35% / 36% / 6% (damage and kill_death: the bin at 0, quiet ticks). The outcome's middle
+  bins are empty by construction: with no clock a game lasts at most 3,934 ticks, so |outcome
+  return| >= 10 x 0.9997^3,934 = 3.1 except draws. The range monitoring counts bins in bin space (`usage_counts` takes the
   knees); its thresholds (`range_narrow_bins` 8, `range_bin_share`) are unchanged.
 - **Store:** positions, the geometry record and PPO numbers float32, other floats float16,
   actions int8. The geometry record (`lean.game.geometry_record`: world velocity, launch

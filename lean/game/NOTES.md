@@ -301,6 +301,18 @@ other packages: `lean/contract.py`.
 | inside the boundary (the zone's edge since 2026-11-28) | linear / 1,000 m, clipped to [-1, 1] | 752 / 4,049 m (fixed arena) |
 | gun cooldown | whole ticks | 0 / 0 |
 
+Checked 2026-11-28 (queue item 15, the core rules with the shrinking zone; the default scripted
+agent, 1v1 / 4v4 / 16v16, every 8th tick, the attended rows of both views;
+`docs/rewrite/sections/calibrate-15/`): no scale changed. Scaled |x| at 4v4, median / 99th
+percentile (max): world velocity 0.43 / 1.04 (1.54), speed 0.63 / 1.19, nose rate 0.37 / 1.27
+(2.4), angle of attack 0.39 / 3.2 (3.9: the post-stall levels reach 0.8-1.0 rad; linear,
+kept), store 0.87 / 1.0, shield 0.49 / 1.0, shield wait 1 / 1, inside the zone's edge 1 / 1 (p1
+0.18: clipped at 1,000 m in most rows until the zone closes in), bullet share 0 / 0.75; the
+globals' zone radius 3.4 / 4.2 (p1 1.5), the next radius 0.3 (fixed), time left 1.8 / 2.1;
+fields 0.65 / 1.94 (radius), 4 (band, fixed), 1 (level). 1v1 and 16v16 alike (1v1 angle of
+attack median 0.19). Nothing has most values above 10 or below 0.01; constant columns (gun
+cooldown 0, field band 4, the zone centres 0, the next radius 0.3) are as designed.
+
 ## Tests
 
 `lean/game/tests`: flight rules, damage (the aspect curve on the sine for both angle pairs, 0
@@ -342,8 +354,6 @@ coefficients; the cache's key).
 - Inputs that carry little: the angle of attack's cos and sin repeat the angle, the gun cooldown
   is always 0 at one shot a tick, the shield wait sits at its 3 s maximum. Kept for other types;
   a model step may drop them.
-- The feature scales were measured on the 2026-11-23 game; the flight, the bullets and the hit
-  model have changed since.
 - The zone's settings (35 m/s from 4,200 m) are the author's; staged zones (hold, then shrink
   to a random circle inside the current one) later: the observation already has the next
   circle and the time to the stage's end, and nothing reads a fixed radius (the model's map

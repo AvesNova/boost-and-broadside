@@ -189,14 +189,22 @@ class LearnConfig:
     # (LEVEL_NAMES order); the support adds the buffer columns beyond both ends
     # (lean.model.value.buffered_centres), 63 bins uniform in each level's bin space
     # (lean.model.value.symlog with value_knee; 0 linear). The learner owns the support.
-    # Measured 2026-11-25 (scripted against scripted, the training game, 4v4, 35.5M living
-    # ship-ticks of finished episodes; docs/rewrite/sections/scoreboard/target_ranges.py):
-    # extremes damage -3.9 to 5.4, kill_death -6.5 to 7.5, outcome +-10 (its bound); the
-    # 0.1st to 99.9th percentiles -2.1 to 2.1, -2.8 to 3.7 and +-10. Symmetric, so an
-    # untrained critic (uniform softmax) reads 0. Objective levels: placeholders, no mode
-    # pays them yet.
-    value_low: tuple[float, ...] = (-5.4, -7.5, -1.0, -1.0, -10.0)
-    value_high: tuple[float, ...] = (5.4, 7.5, 1.0, 1.0, 10.0)
+    # Measured 2026-11-28 (queue item 15, the core rules: nose armour, circle deflector,
+    # sight egg, the shrinking zone, no clock; docs/rewrite/sections/calibrate-15/): the
+    # default scripted agent against itself under the training game, each living ship's
+    # discounted Monte Carlo return to its episode's end (with no clock every game ends, so
+    # this is a perfect critic's target for any GAE lambda; the outcome runs on through a
+    # death, option C's target), 4v4 (1,024 environments x 8,000 ticks, 43.9M ship-ticks), 1v1
+    # (28.3M) and 16v16 (31.3M). Each range is symmetric, +-the largest extreme over the three
+    # team sizes rounded out: damage 4v4 -2.97 to 4.15, 1v1 +-2.52, 16v16 -4.13 to 5.59;
+    # kill_death 4v4 -4.80 to 8.19, 1v1 +-2.83, 16v16 -4.81 to 7.06; outcome +-10 (its bound;
+    # |x| >= 10 x 0.9997^3,934 = 3.1 except draws, so the middle bins stay empty). 0.1st to
+    # 99.9th percentiles at 4v4: -1.59 to 1.60, -2.80 to 3.02, -9.98 to 9.99. Until
+    # 2026-11-28 (2026-11-25's game, the 1,800-tick clock): damage +-5.4, kill_death +-7.5.
+    # Symmetric, so an untrained critic (uniform softmax) reads 0. Objective levels:
+    # placeholders, no mode pays them yet.
+    value_low: tuple[float, ...] = (-5.6, -8.2, -1.0, -1.0, -10.0)
+    value_high: tuple[float, ...] = (5.6, 8.2, 1.0, 1.0, 10.0)
     # Symlog knees by the event rule (author 2026-11-25): one reward event's size x e^-3 (the
     # event three discount horizons ahead). A hit: 8 points (hit damage since 2026-11-27) /
     # damage_unit x 2.74 = 0.219 damage units, so 0.0109; a kill or a death: 2.83 units, so

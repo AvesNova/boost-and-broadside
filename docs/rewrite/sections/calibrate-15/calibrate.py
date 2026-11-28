@@ -108,8 +108,11 @@ def main() -> None:
                     seen = observed_rows(obs)[:g]
                     pos, heading = obs.pos[:g], obs.heading[:g]
                     pairs = game.pair_geometry(
-                        pos[:, :, None], heading[:, :, None], record[:, :, None],
-                        pos[:, None, :], record[:, None, :],
+                        pos[:, :, None],
+                        heading[:, :, None],
+                        record[:, :, None],
+                        pos[:, None, :],
+                        record[:, None, :],
                     )
                     both = seen[:, :, None] & seen[:, None, :]
                     for name, values in pairs.items():
@@ -118,8 +121,11 @@ def main() -> None:
                     field_pos = obs.field_pos[:g]
                     radius = obs.field[:g, :, 0] * FIELD_RADIUS_SCALE
                     distance = game.field_edge_distance(
-                        field_pos[:, None, :, 0], field_pos[:, None, :, 1], radius[:, None, :],
-                        pos[:, :, None, 0], pos[:, :, None, 1],
+                        field_pos[:, None, :, 0],
+                        field_pos[:, None, :, 1],
+                        radius[:, None, :],
+                        pos[:, :, None, 0],
+                        pos[:, :, None, 1],
                     )
                     add("field_edge", distance[seen].flatten())
                     add("map_edge", record[..., GEOMETRY_COLUMNS.index("edge")][seen])

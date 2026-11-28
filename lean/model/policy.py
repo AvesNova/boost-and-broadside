@@ -52,22 +52,31 @@ class NextStateColumn:
     high: float
 
 
-# The next-state columns (next_state_target). Measured from the per-tick changes of living
-# ships, scripted against scripted under the training game (42.7M rows, 2026-11-25;
-# lean/model/NOTES.md; docs/rewrite/sections/scoreboard/target_ranges.py): each range is
-# symmetric, +-the larger measured extreme; each knee from the flat-core data rule
-# (docs/rewrite/sections/scoreboard/symlog-preview.md). The shield's low end, -90, was set when
-# a hit dealt about 21 (four in one tick); a hit now deals 8, so bullets take at most 32 per
-# tick at 4v4 and only a collision (up to the shield held) reaches -90, rare, clamping into the
-# buffer columns. Kept until the ranges are re-measured (NOTES "Open"). High end 0, knee 1. The
+# The next-state columns (next_state_target). Measured 2026-11-28 (queue item 15, the core
+# rules of items 12 and 13: nose armour, circle deflector, sight egg, the shrinking zone, no
+# clock) from the per-tick changes of living ships, the default scripted agent against
+# itself under the training game, 4v4 (1,024 environments x 8,000 ticks, 47M rows), 1v1
+# (2,048 x 8,000) and 16v16 (256 x 8,000); docs/rewrite/sections/calibrate-15/. Each range is
+# symmetric, +-the largest |0.1st| or |99.9th| percentile over the three team sizes, rounded
+# out (until 2026-11-28 +-the measured extreme, which left a quarter to a third of the bins
+# empty; the rare beyond goes into the buffer columns, at most 0.03% clamped). Knees from the
+# flat-core data rule (docs/rewrite/sections/scoreboard/symlog-preview.md) where it improves
+# the occupancy: energy 21.8 -> 0.18 (56% of rows are exactly 0; the largest bin 72% -> 58%,
+# perplexity 4.7 -> 9.0); along, across, heading and speed keep theirs (the rule gives
+# 2.8e-3, 2.0e-5, no core and 0.166: no better or worse occupancy). The shield's low end is
+# the full shield (-100: a collision takes up to the shield held; measured -98.2), high end 0,
+# knee 1; 99.3% of its rows are exactly 0. 4v4 percentiles 0.1 / 99.9 (extremes):
+# along -0.352 / 0.325 (-1.68, 1.82), across -0.477 / 0.481 (-1.80, 2.03), heading -0.0385 /
+# 0.0385 (+-0.26), speed -3.37 / 1.83 (-10.1, 3.2), energy -380 / 439 (-672, 686); 1v1's
+# along +-0.52 and across +-0.59 and 16v16's speed -3.58 and energy 455 set four ranges. The
 # buffer columns lie beyond both ends.
 NEXT_STATE_COLUMNS = (
-    NextStateColumn("along", 2.4e-3, -1.89, 1.89),  # metres
-    NextStateColumn("across", 0.0244, -1.82, 1.82),  # metres
-    NextStateColumn("heading", 7.7e-5, -0.100, 0.100),  # radians
-    NextStateColumn("speed", 0.156, -5.39, 5.39),  # metres per second
-    NextStateColumn("energy", 21.8, -976.0, 976.0),  # store units
-    NextStateColumn("shield", 1.0, -90.0, 0.0),  # shield points
+    NextStateColumn("along", 2.4e-3, -0.53, 0.53),  # metres (until 2026-11-28 +-1.89)
+    NextStateColumn("across", 0.0244, -0.60, 0.60),  # metres (+-1.82)
+    NextStateColumn("heading", 7.7e-5, -0.039, 0.039),  # radians (+-0.100)
+    NextStateColumn("speed", 0.156, -3.6, 3.6),  # metres per second (+-5.39)
+    NextStateColumn("energy", 0.18, -460.0, 460.0),  # store units (+-976, knee 21.8)
+    NextStateColumn("shield", 1.0, -100.0, 0.0),  # shield points (-90 to 0)
 )
 
 
@@ -119,10 +128,13 @@ class ModelConfig:
     bins: int = COLUMNS  # 57 across the measured range, 3 buffer columns each end
     value_levels: int = len(contract.level_names(objective_levels=False))
     hit_classes: int = 3  # the hit head: miss, enemy, team-mate
-    # Shares of the outcomes of every bullet that ended (ghosts included), 1.6M bullets of
-    # the scripted yardstick against itself, 4v4 under the training game, 48 environments x
-    # 4,200 ticks re-dealt (2026-11-28, hit damage 8, the egg; lean/model/NOTES.md).
-    hit_class_frequencies: tuple[float, ...] = (0.9865, 0.0110, 0.0025)
+    # Shares of the outcomes of every bullet that ended (ghosts included), 65.0M bullets of
+    # the default scripted agent against itself, 4v4 under the training game, 1,024
+    # environments x 8,000 ticks re-dealt (2026-11-28, queue item 15: nose armour, circle
+    # deflector, the shrinking zone; docs/rewrite/sections/calibrate-15/). Before: 0.9865 /
+    # 0.0110 / 0.0025 (1.6M bullets, the egg deflector). 1v1 0.9958 / 0.0042 / 0; 16v16
+    # 0.9792 / 0.0141 / 0.0067.
+    hit_class_frequencies: tuple[float, ...] = (0.9863, 0.0109, 0.0028)
     recurrence_exponent: float = 8.0
     retention_low: float = 0.9
     retention_high: float = 0.999

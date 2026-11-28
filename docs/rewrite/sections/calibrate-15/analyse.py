@@ -35,15 +35,35 @@ symlog_preview = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(symlog_preview)
 
 SHIP_SCALAR_NAMES = (
-    "velocity x (symlog /200)", "velocity y (symlog /200)", "speed (symlog /200)",
-    "nose rate (symlog /1)", "angle of attack (/0.25)", "angle cos", "angle sin",
-    "store fraction", "shield fraction", "shield (/100)", "shield wait (/3, clip)",
-    "gun cooldown (ticks)", "inside zone edge (/1000, clip)", "outward x", "outward y",
-    "heading cos", "heading sin", "bullet share",
+    "velocity x (symlog /200)",
+    "velocity y (symlog /200)",
+    "speed (symlog /200)",
+    "nose rate (symlog /1)",
+    "angle of attack (/0.25)",
+    "angle cos",
+    "angle sin",
+    "store fraction",
+    "shield fraction",
+    "shield (/100)",
+    "shield wait (/3, clip)",
+    "gun cooldown (ticks)",
+    "inside zone edge (/1000, clip)",
+    "outward x",
+    "outward y",
+    "heading cos",
+    "heading sin",
+    "bullet share",
 )
 GLOBAL_NAMES = (
-    "zone x", "zone y", "zone radius", "next zone x", "next zone y", "next zone radius",
-    "stage time left", "own alive", "enemy alive",
+    "zone x",
+    "zone y",
+    "zone radius",
+    "next zone x",
+    "next zone y",
+    "next zone radius",
+    "stage time left",
+    "own alive",
+    "enemy alive",
 )
 FIELD_NAMES = ("field radius (/1000)", "field band (/40)", "field level (/2)")
 
@@ -90,7 +110,11 @@ def q(stats: dict, key: str, *shares: str) -> str:
 
 def main() -> None:
     data = Path(sys.argv[1])
-    proposal = json.loads((HERE / "proposal.json").read_text()) if (HERE / "proposal.json").exists() else {}
+    proposal = (
+        json.loads((HERE / "proposal.json").read_text())
+        if (HERE / "proposal.json").exists()
+        else {}
+    )
     sizes = [n for n in (4, 1, 16) if (data / f"team{n}.json").exists()]
     stats = {n: json.loads((data / f"team{n}.json").read_text()) for n in sizes}
     arrays = {n: np.load(data / f"team{n}.npz") for n in sizes}
@@ -111,15 +135,21 @@ def main() -> None:
         )
         new = proposal.get(f"value_{level}")
         for n in sizes:
-            print(f"- {level} {n}v{n} ({stats[n]['counts'][f'value_{level}']} rows): "
-                  f"{q(stats[n], f'value_{level}', *keys)}")
+            print(
+                f"- {level} {n}v{n} ({stats[n]['counts'][f'value_{level}']} rows): "
+                f"{q(stats[n], f'value_{level}', *keys)}"
+            )
             values = arrays[n][f"value_{level}"]
-            print(f"    current {current.low}..{current.high} knee {current.knee}: "
-                  f"{occupancy_line(occupancy(values, current))}")
+            print(
+                f"    current {current.low}..{current.high} knee {current.knee}: "
+                f"{occupancy_line(occupancy(values, current))}"
+            )
             if new:
                 column = GeometryColumn(level, 63, new[2], new[0], new[1])
-                print(f"    proposed {column.low}..{column.high} knee {column.knee}: "
-                      f"{occupancy_line(occupancy(values, column))}")
+                print(
+                    f"    proposed {column.low}..{column.high} knee {column.knee}: "
+                    f"{occupancy_line(occupancy(values, column))}"
+                )
 
     model = ModelConfig()
     print("\n## Next-state targets")
@@ -129,40 +159,58 @@ def main() -> None:
             print(f"- {spec.name} {n}v{n}: {q(stats[n], key, *keys)}")
         values = arrays[4][key]
         knee = symlog_preview.data_knee(values.astype(np.float64))
-        print(f"    data-rule knee (4v4): {knee['knee']} (every side {knee['knee_every_side']}), "
-              f"exact zeros {float(np.mean(values == 0)):.3f}")
+        print(
+            f"    data-rule knee (4v4): {knee['knee']} (every side {knee['knee_every_side']}), "
+            f"exact zeros {float(np.mean(values == 0)):.3f}"
+        )
         current = GeometryColumn(spec.name, 63, spec.knee, spec.low, spec.high)
-        print(f"    current {spec.low}..{spec.high} knee {spec.knee}: "
-              f"{occupancy_line(occupancy(values, current))}")
+        print(
+            f"    current {spec.low}..{spec.high} knee {spec.knee}: "
+            f"{occupancy_line(occupancy(values, current))}"
+        )
         new = proposal.get(key)
         if new:
             column = GeometryColumn(spec.name, 63, new[2], new[0], new[1])
-            print(f"    proposed {column.low}..{column.high} knee {column.knee}: "
-                  f"{occupancy_line(occupancy(values, column))}")
+            print(
+                f"    proposed {column.low}..{column.high} knee {column.knee}: "
+                f"{occupancy_line(occupancy(values, column))}"
+            )
 
     print("\n## Geometry targets")
     columns = list(model.pair_columns) + [model.field_column, model.edge_column]
     for column in columns:
         key = column.name if column.name in ("field_edge", "map_edge") else f"pair_{column.name}"
         for n in sizes:
-            print(f"- {column.name} {n}v{n} ({stats[n]['counts'][key]}): "
-                  f"{q(stats[n], key, *keys)}; "
-                  f"current: {occupancy_line(occupancy(arrays[n][key], column))}")
+            print(
+                f"- {column.name} {n}v{n} ({stats[n]['counts'][key]}): "
+                f"{q(stats[n], key, *keys)}; "
+                f"current: {occupancy_line(occupancy(arrays[n][key], column))}"
+            )
         new = proposal.get(key)
         if new:
-            proposed = GeometryColumn(column.name, new.get("bins", column.bins), new["knee"],
-                                      new.get("low", 0.0), new.get("high", 0.0),
-                                      column.circular, column.both_orders)
+            proposed = GeometryColumn(
+                column.name,
+                new.get("bins", column.bins),
+                new["knee"],
+                new.get("low", 0.0),
+                new.get("high", 0.0),
+                column.circular,
+                column.both_orders,
+            )
             for n in sizes:
-                print(f"    proposed {new} {n}v{n}: "
-                      f"{occupancy_line(occupancy(arrays[n][key], proposed))}")
+                print(
+                    f"    proposed {new} {n}v{n}: "
+                    f"{occupancy_line(occupancy(arrays[n][key], proposed))}"
+                )
 
     print("\n## Hit outcomes (missed / enemy / team-mate)")
     for n in sizes:
         counts = np.array(stats[n]["hit_counts"], dtype=np.float64)
         shares = counts / counts.sum()
-        print(f"- {n}v{n}: {int(counts.sum())} bullets: " +
-              " / ".join(f"{share:.4f}" for share in shares))
+        print(
+            f"- {n}v{n}: {int(counts.sum())} bullets: "
+            + " / ".join(f"{share:.4f}" for share in shares)
+        )
 
     print("\n## Scaled features (attended rows): 1% / 50% / 99% / max |x|; flags")
     names = [("ship_features", i, SHIP_SCALAR_NAMES[i]) for i in range(SHIP_SCALARS)]
@@ -178,8 +226,10 @@ def main() -> None:
             print(f"- {name} {n}v{n}: {p1:.3g} / {p50:.3g} / {p99:.3g} / {top:.3g}{flag}")
     for n in sizes:
         values = arrays[n]["since_seen"]
-        print(f"- since_seen {n}v{n}: " + " / ".join(
-            f"{v:.3g}" for v in np.quantile(values, [0.01, 0.5, 0.99, 1.0])))
+        print(
+            f"- since_seen {n}v{n}: "
+            + " / ".join(f"{v:.3g}" for v in np.quantile(values, [0.01, 0.5, 0.99, 1.0]))
+        )
 
 
 if __name__ == "__main__":
