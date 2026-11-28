@@ -18,3 +18,15 @@ worktree in `data/fixes10/` (not committed); scripts in `fixes-10/` (from item 6
   for core's three jobs 14:15 (worst 14:25); then the quick tier and the slow tier on the CPU
   (alone), then the branch's three jobs. The trainer also prints the enemy-hit share of the
   labelled observed rows, all of them and away from the ends (from core RL on).
+- 14:20-15:06 branch smoke, compile and the slowdown check (one bnb-10 unit at a time; a
+  browser opened at ~14:23 kept the load at 3-8, so no run was fully quiet). The branch's
+  first BC/RL runs (116.9 / 115.9 s per BC update, 119.9 / 116.4 s RL) were slower than core's
+  earlier runs. Rerun back to back (14:42-15:00): core BC 108.7 / 110.9 s per update (8,612 /
+  8,756 steps/s), branch BC 106.4 / 106.5 s (8,946 / 8,967 steps/s): the slowdown was noise
+  (the machine), the branch is ~3% faster. `end_segment` alone (training sizes): core
+  0.18-0.35 ms per segment, branch 0.27-0.43 ms (+0.1 ms). Store 2,601.5 -> 2,409.4 MiB, BC
+  peak 1.16 -> 1.06 GiB, RL peak 1.28 -> 1.15 GiB. Hit share on the branch: equal on all
+  labelled rows and away from the ends in every update (core: +2-9% relative).
+- Compile (cold, budget 175 s): branch 189.6 s at load 7.0 (FAIL), rerun 164.8 s at load 2.9
+  (pass); core 170.3 s at load 6.8, rerun 174.7 s at load 7.0. Operations 11,509 (core 11,511);
+  minibatch_loss 1,645 either way. 6 graphs, no graph break, no recompile.
