@@ -51,6 +51,7 @@ from lean.game.core import (
     path_velocity,
     slot_indices,
     smootherstep,
+    zone_circle,
 )
 
 from . import kernels
@@ -147,18 +148,24 @@ def time_weights(horizon: Tensor | float, device, points=None) -> Tensor:
     return device_constant(intervals(points), device) * torch.exp(-times / _lay(horizon, 1))
 
 
-def own_components(c, paths: Paths, margin) -> Paths:
+def own_components(c, paths: Paths, margin, tick: Tensor) -> Paths:
     """The paths with their own-only rates per point (unweighted) attached: boundary (in the
-    edge band, more flying outward; growing past the edge) and slow (ln n in half-octaves where
-    the medium is slow). The speed term reads the paths' speed. `c` the ships' constants
-    ((E, N) rows of the paths' slots); `margin` the boundary margin (turn radii), a number or
-    the slots' own rows (E, N)."""
-    distance = torch.sqrt(paths.x * paths.x + paths.y * paths.y).clamp_min(TINY)
+    edge band of the zone at the point's time, more flying outward; growing past the edge) and
+    slow (ln n in half-octaves where the medium is slow). The speed term reads the paths'
+    speed. `c` the ships' constants ((E, N) rows of the paths' slots); `margin` the boundary
+    margin (turn radii), a number or the slots' own rows (E, N); `tick` (E,) the game's tick
+    now: each point reads the zone (lean.game.core.zone_circle) at its LOOK_AHEAD time."""
+    seconds = tick.to(paths.x.dtype)[:, None, None, None] * c["tick_length"] + device_constant(
+        paths_module.LOOK_AHEAD, paths.x.device
+    )
+    centre_x, centre_y, radius = zone_circle(c, seconds)  # (E, 1, 1, P)
+    out_x, out_y = paths.x - centre_x, paths.y - centre_y
+    distance = torch.sqrt(out_x * out_x + out_y * out_y).clamp_min(TINY)
     over_corner = paths.speed * _lay(c["inverse_corner_speed"], 2)
     turn_radius = _lay(c["sustained_radius"], 2) * (over_corner * over_corner).clamp_min(1.0)
     margin = _lay(margin, 2) * turn_radius
-    depth = (distance - (c["arena_radius"] - margin)) / margin
-    outward = (paths.x * paths.path_cos + paths.y * paths.path_sin) / distance
+    depth = (distance - (radius - margin)) / margin
+    outward = (out_x * paths.path_cos + out_y * paths.path_sin) / distance
     boundary = smootherstep(depth.clamp(0.0, 1.0)) * 0.5 * (1.0 + outward)
     boundary = boundary + (depth - 1.0).clamp_min(0.0)
     slow = paths.log_index.clamp_min(0.0) / card.LN_SQRT2
@@ -833,7 +840,7 @@ def _predict_views(
     tick = c["tick_length"]
     start = torch.cat([torch.full_like(state.x, tick), torch.zeros_like(state.x)], 1)
     paths = own_components(
-        constants, predict(constants, state.fields, ships, table_power, start), margin
+        constants, predict(constants, state.fields, ships, table_power, start), margin, state.tick
     )
     # Materialised once, (P, E, 2 N, PATH_FIELDS, C): every write a run of C.
     stacked = torch.stack([getattr(paths, name).permute(3, 0, 1, 2) for name in PATH_FIELDS], -2)

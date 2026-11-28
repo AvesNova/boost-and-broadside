@@ -62,8 +62,15 @@ BULLET_SPEED, BULLET_LOG_INDEX = (
 class GameConfig:
     """The rules of one run: the core game (docs/rewrite/core-decisions.md).
 
-    arena_radius: metres; boundary damage starts beyond it. boundary_ramp_width: metres over
-    which boundary damage rises to its maximum. clock_ticks: the episode length. spawn, the
+    arena_radius: metres, the zone's radius at the deal (the map's extent: spawns, fields,
+    the map scale and the model's rotary reach read it). zone_shrink_speed: metres per second
+    the zone's radius shrinks from the deal (`zone_circle`; author 2026-11-28: 4,200 m at 35
+    m/s, 0 at 120 s, held at minus the ramp width from about 128.6 s, where every ship takes
+    full boundary damage); 0 a fixed arena (the tool and the sandbox only: games then end only
+    by a wipe). Boundary damage starts beyond the zone's edge and rises over
+    boundary_ramp_width metres to its maximum. No clock: a game ends by elimination (one team
+    or both), at the latest `longest_game_ticks`. clock_ticks: None (training, evaluation,
+    play); a number ends every game there as a draw, for short test games only. spawn, the
     rule chosen at launch (`deal`): "mixed" (every ship uniform over the spawn disc, uniform
     heading) or "sides" (each team uniform over a half disc on its side of a random axis,
     noses toward the other side); under both, no ship starts near the edge facing outward.
@@ -78,9 +85,9 @@ class GameConfig:
     """
 
     arena_radius: float = 4200.0
+    zone_shrink_speed: float = 35.0
     boundary_ramp_width: float = 300.0
-    # 60 s: about 85% of scripted 4v4 games end before it (docs/rewrite/clock-measurement.md).
-    clock_ticks: int = 1800
+    clock_ticks: int | None = None
     spawn: str = "mixed"
     lineup: tuple[str, ...] = ("p51d",)
     tick_length: float = 1.0 / 30.0
@@ -773,7 +780,13 @@ def _build_ship_card(config: GameConfig) -> Constants:
     used = torch.tensor([card.TYPE_NAMES.index(name) for name in lineup])
     # The arena's size and the tick's length, for the scripted opponent (it reads every number
     # from the game).
-    uniform = {"arena_radius": config.arena_radius, "tick_length": config.tick_length}
+    # The zone (`zone_circle`): the scripted agent reads it through the same function.
+    uniform = {
+        "arena_radius": config.arena_radius,
+        "zone_shrink_speed": config.zone_shrink_speed,
+        "zone_floor_radius": -config.boundary_ramp_width,
+        "tick_length": config.tick_length,
+    }
     columns, rows, per_type = {}, [], {}
     every = _per_type(config)
     every.update(steady_characteristics(every))
@@ -813,6 +826,8 @@ def ship_card(config: GameConfig) -> Constants:
         config.tick_length,
         tuple(config.lineup),
         config.arena_radius,
+        config.zone_shrink_speed,
+        config.boundary_ramp_width,
         config.post_stall,
         config.deflector,
     )
@@ -1543,7 +1558,7 @@ def step(
         bullets = _deflect(bullets, contact)
     no_damage = filled((E, N), 0.0, bullet_damage.dtype, device)
     hit_taken = no_damage.scatter_add(1, contact.target, bullet_damage)
-    boundary = _boundary_damage(config, flown, alive0)
+    boundary = _boundary_damage(config, state, flown, alive0)
     # Collisions (after the move, with the bullet hits and the boundary, before the shields):
     # each ship's collision damage is credited to the other ship of the pair.
     crash = collisions(
@@ -1554,7 +1569,7 @@ def step(
     died, shield, restored, wait = _shields(config, state, total, stick, power, shoot)
     alive = alive0 & ~died
     recharged = shield + restored
-    tick, done, result = _end_check(config, state, alive, recharged)
+    tick, done, result = _end_check(config, state, alive)
     enemy = state.team[:, index.owner] != _on_target(state.team, contact.target)
     age = bullet_ages(state.tick, K)
     bullet_state, shot_outcome = _bullet_ends(
@@ -2381,10 +2396,13 @@ def _pair_sum(values: Tensor | float) -> Tensor | float:
     return values[:, :, None] + values[:, None, :] if isinstance(values, Tensor) else 2.0 * values
 
 
-def _boundary_damage(config: GameConfig, flown: SimpleNamespace, alive: Tensor) -> Tensor:
-    """(E, N): damage from the arena boundary after the move, rising by a smootherstep over the
-    ramp width beyond the arena radius to its maximum (per second); none for a dead ship."""
-    depth = boundary_distance(config, flown.x, flown.y)
+def _boundary_damage(
+    config: GameConfig, state: State, flown: SimpleNamespace, alive: Tensor
+) -> Tensor:
+    """(E, N): damage from the zone's boundary after the move, rising by a smootherstep over the
+    ramp width beyond the zone's edge at the tick's end (`zone_circle` at state.tick + 1, the
+    zone the next observation shows) to its maximum (per second); none for a dead ship."""
+    depth = boundary_distance(state.constants, state.tick + 1, flown.x, flown.y)
     ramp = smootherstep((depth / config.boundary_ramp_width).clamp(0.0, 1.0))
     return torch.where(alive, card.BOUNDARY_MAX_DAMAGE * ramp * config.tick_length, 0.0)
 
@@ -2411,32 +2429,19 @@ def _shields(
     return died, shield, restored, wait
 
 
-def _end_check(
-    config: GameConfig, state: State, alive: Tensor, shield: Tensor
-) -> tuple[Tensor, Tensor, Tensor]:
+def _end_check(config: GameConfig, state: State, alive: Tensor) -> tuple[Tensor, Tensor, Tensor]:
     """The tick count after this tick, done (E,) and result (E,) (0 or 1 the winner, 2 a draw, -1
-    not done). A wipe ends the game: the team with ships left wins, both wiped is a draw. At the
-    clock: more living ships wins; equal living ships, more total shield over the living ships
-    wins (the shield after this tick's recharge, `shield`); equal on both, a draw. A shield lead
-    within float32 rounding of the sums is equal: the two sums add their ships in different
-    orders, so an exact tie can differ by a rounding residue."""
+    not done). Only a wipe ends the game (author 2026-11-28: no clock; the zone makes every game
+    end, `longest_game_ticks`): the team with ships left wins, both wiped is a draw. With a
+    test clock (`GameConfig.clock_ticks` a number) a game still running at it is a draw."""
     team_one = state.team == 1
     left_zero = (alive & ~team_one).sum(-1)
     left_one = (alive & team_one).sum(-1)
     wiped = (left_zero == 0) | (left_one == 0)
     wipe_result = torch.where(left_zero > 0, 0, torch.where(left_one > 0, 1, 2))
-    living_shield = torch.where(alive, shield, 0.0)
-    shield_zero = torch.where(team_one, 0.0, living_shield).sum(-1)
-    shield_one = torch.where(team_one, living_shield, 0.0).sum(-1)
-    lead = shield_zero - shield_one
-    level = lead.abs() <= 1e-5 * (shield_zero + shield_one).clamp_min(1.0)
-    by_shield = torch.where(level, 2, torch.where(lead > 0.0, 0, 1))
-    clock_result = torch.where(
-        left_zero == left_one, by_shield, torch.where(left_zero > left_one, 0, 1)
-    )
     tick = state.tick + 1
-    done = wiped | (tick >= config.clock_ticks)
-    return tick, done, torch.where(done, torch.where(wiped, wipe_result, clock_result), -1)
+    done = wiped if config.clock_ticks is None else wiped | (tick >= config.clock_ticks)
+    return tick, done, torch.where(done, torch.where(wiped, wipe_result, 2), -1)
 
 
 def bullet_ages(tick: Tensor, slots: int = BULLET_SLOTS) -> Tensor:
@@ -2957,11 +2962,64 @@ GEOMETRY_COLUMNS = (
 LEAD_PASSES = 3
 
 
-def boundary_distance(config: GameConfig, x: Tensor, y: Tensor) -> Tensor:
-    """The signed distance beyond the arena's edge, metres (negative inside): boundary damage
-    rises over the ramp from 0 (`_boundary_damage`); the observation's boundary scalar is its
-    negative."""
-    return torch.sqrt(x * x + y * y) - config.arena_radius
+def zone_circle(constants, seconds: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+    """The zone at `seconds` after the deal (any shape): its centre x, y and radius, metres,
+    each shaped like `seconds`. A function of the game's time, no state (author 2026-11-28): the
+    radius shrinks linearly from the arena radius at the zone's shrink speed and is held at
+    minus the ramp width (`zone_floor_radius`) once it gets there, where every point of the map
+    takes full boundary damage; the centre is the map's centre. `constants` the run's (State.
+    constants: the game, the observation and the scripted agent all read the zone here)."""
+    radius = (constants["arena_radius"] - constants["zone_shrink_speed"] * seconds).clamp_min(
+        constants["zone_floor_radius"]
+    )
+    centre = torch.zeros_like(radius)
+    return centre, centre, radius
+
+
+def zone_at_tick(constants, tick: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+    """`zone_circle` after `tick` (E,) ticks of the game, each (E, 1) to lay against (E, N)."""
+    seconds = tick.to(torch.float32)[:, None] * constants["tick_length"]
+    return zone_circle(constants, seconds)
+
+
+def zone_stage_end(config: GameConfig) -> float:
+    """Seconds from the deal to the end of the zone's one stage: the moment its radius reaches
+    minus the ramp width (every ship in full boundary damage; the radius holds there). The
+    observation's next circle is the zone at this moment. Infinite for a fixed arena."""
+    if config.zone_shrink_speed <= 0.0:
+        return math.inf
+    return (config.arena_radius + config.boundary_ramp_width) / config.zone_shrink_speed
+
+
+def longest_game_ticks(config: GameConfig) -> int:
+    """The longest possible game in ticks, derived (author 2026-11-28), for any play: from the
+    first tick whose zone radius is at minus the ramp width (`zone_stage_end`, rounded up to a
+    tick) every living ship anywhere takes the full boundary damage card.BOUNDARY_MAX_DAMAGE
+    per second, and a hurt ship never recharges (`_shields`: the recharge needs a tick without
+    damage; nothing else heals), so the net rate is the full damage. A full shield (the
+    lineup's largest) empties in ceil(max shield / damage per tick) ticks and the next damaged
+    tick kills (a ship hurt at 0 shield dies). One tick more for the float32 damage sums.
+    Every ship is then dead: the game ended by a wipe (both teams at the latest, a draw).
+    Damage before that tick (the ramp, bullets, collisions) only ends it sooner."""
+    if config.zone_shrink_speed <= 0.0:
+        raise ValueError("a fixed arena (zone_shrink_speed 0) has no longest game")
+    if card.BOUNDARY_MAX_DAMAGE <= 0.0:
+        raise ValueError("no boundary damage: a game in the zone could last for ever")
+    full = math.ceil(zone_stage_end(config) / config.tick_length - 1e-9)
+    max_shield = ship_card(config)["max_shield"]
+    if isinstance(max_shield, Tensor):
+        max_shield = float(max_shield.max())
+    per_tick = card.BOUNDARY_MAX_DAMAGE * config.tick_length
+    return full + math.ceil(max_shield / per_tick - 1e-9) + 1
+
+
+def boundary_distance(constants, tick: Tensor, x: Tensor, y: Tensor) -> Tensor:
+    """The signed distance beyond the zone's edge after `tick` (E,) ticks, metres (negative
+    inside), of points x, y (E, N): boundary damage rises over the ramp from 0
+    (`_boundary_damage`); the observation's boundary scalar is its negative; the map-edge
+    head's target. The zone's edge is `zone_at_tick`'s circle (`field_edge_distance` to it)."""
+    centre_x, centre_y, radius = zone_at_tick(constants, tick)
+    return field_edge_distance(centre_x, centre_y, radius, x, y)
 
 
 def field_edge_distance(
@@ -3027,7 +3085,7 @@ def geometry_record(config: GameConfig, state: State) -> Tensor:
         "launch_x": launch_x * inverse_index,
         "launch_y": launch_y * inverse_index,
         "energy": state.energy,
-        "edge": boundary_distance(config, state.x, state.y),
+        "edge": boundary_distance(state.constants, state.tick, state.x, state.y),
         "bullet_drag": drag if isinstance(drag, Tensor) else torch.full_like(state.x, drag),
         "bullet_life": torch.full_like(state.x, BULLET_SLOTS * config.tick_length),
     }
@@ -3105,6 +3163,8 @@ ANGLE_SCALE = 0.25  # rad, linear: the angle of attack, about the stall angle
 SHIELD_SCALE = 100.0  # shield points, linear
 SHIELD_WAIT_SCALE = 3.0  # s, linear, clipped to [0, 1]: the recharge delay
 BOUNDARY_CLIP = 1000.0  # m, linear, clipped to [-1, 1]
+ZONE_SCALE = 1000.0  # m, linear: the globals' zone centres and radii (4.2 to -0.3 by default)
+ZONE_TIME_SCALE = 60.0  # s, linear: the globals' time to the zone stage's end (2.14 to 0)
 
 
 FIELD_RADIUS_SCALE = 1000.0  # m (v2's inputs.py)
@@ -3164,7 +3224,16 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
     else:
         speed = view.speed * torch.exp(-view.log_index)
         velocity_x, velocity_y = world_velocity(view)  # stored
-    distance = torch.sqrt(view.x * view.x + view.y * view.y)
+    # The zone now (the step's boundary damage read the same circle) and at the stage's end.
+    centre_x, centre_y, radius = zone_at_tick(c, state.tick)
+    stage_end = zone_stage_end(config)
+    if math.isfinite(stage_end):
+        next_x, next_y, next_radius = zone_circle(c, torch.full_like(radius, stage_end))
+        time_left = (stage_end - state.tick.to(torch.float32)[:, None] * h).clamp_min(0.0)
+    else:  # a fixed arena: the next circle is this one, no stage end
+        next_x, next_y, next_radius, time_left = centre_x, centre_y, radius, radius * 0.0
+    out_x, out_y = view.x - centre_x, view.y - centre_y
+    distance = torch.sqrt(out_x * out_x + out_y * out_y)
     inverse_distance = 1.0 / distance.clamp_min(1.0)
     fired_last = state.fired  # stored by the step (agreed fix 12), not inferred from the ring
     wide = symlog(
@@ -3187,9 +3256,9 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
         view.shield / SHIELD_SCALE,
         (view.shield_wait / SHIELD_WAIT_SCALE).clamp(0.0, 1.0),
         view.cooldown,
-        (-boundary_distance(config, view.x, view.y) / BOUNDARY_CLIP).clamp(-1.0, 1.0),
-        view.x * inverse_distance,
-        view.y * inverse_distance,
+        ((radius - distance) / BOUNDARY_CLIP).clamp(-1.0, 1.0),
+        out_x * inverse_distance,
+        out_y * inverse_distance,
         view.heading_cos,
         view.heading_sin,
         bullet_share,
@@ -3215,11 +3284,15 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
         return (living & mask).sum(-1) / (exists & mask).sum(-1).clamp_min(1)
 
     enemy_living = counted if config.fog else alive
-    globals_ = torch.stack(
+    zone = torch.cat(
+        [centre_x, centre_y, radius, next_x, next_y, next_radius], -1
+    ) / ZONE_SCALE
+    globals_ = torch.cat(
         [
-            state.tick.to(torch.float32) / config.clock_ticks,
-            alive_fraction(same_team, alive),
-            alive_fraction(~same_team, enemy_living),
+            zone,
+            time_left / ZONE_TIME_SCALE,
+            alive_fraction(same_team, alive)[:, None],
+            alive_fraction(~same_team, enemy_living)[:, None],
         ],
         -1,
     )

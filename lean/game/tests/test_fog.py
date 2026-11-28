@@ -6,11 +6,13 @@ import math
 
 import torch
 
-from lean.contract import FIRES, POWERS, REAL, STICKS
+from lean.contract import FIRES, GLOBAL_COLUMNS, POWERS, REAL, STICKS
 from lean.game import GameConfig, card, core, draw_noise, observe, reset, step
 from lean.game.tests.values import game_value
 from lean.scripted import ScriptedConfig, act, chaser_act, draw_uniforms, personas
 from lean.scripted.opponent import nearest_enemies
+
+ENEMY_ALIVE = GLOBAL_COLUMNS.index("enemy_alive")
 
 torch.set_num_threads(1)
 
@@ -309,7 +311,7 @@ def test_never_seen_enemies_are_masked_and_seen_dead_enemies_drop_out():
         and (obs.ship[enemy] == 0).all()
         and not obs.visible[enemy].any()
     )
-    assert torch.equal(obs.globals[:, 2], torch.ones(1))
+    assert torch.equal(obs.globals[:, ENEMY_ALIVE], torch.ones(1))
     # Enemy 1 in sight dies: the sighting records the death, the row leaves the mask.
     far = 2.0 * VISION  # ship 1 is a third of the vision range from ship 3, ship 0 out of sight
     state = duel([(0.0, 0.0), (far - VISION / 3.0, 0.0), (-far, 0.0), (far, 0.0)])
@@ -317,7 +319,7 @@ def test_never_seen_enemies_are_masked_and_seen_dead_enemies_drop_out():
     state = state.replace(alive=torch.tensor([[True, False, True, True]]))
     state = core.perceive(state, torch.zeros_like(state.exists))
     view = observe(FOG, state, 1)
-    assert not view.key_mask[0, 1] and float(view.globals[0, 2]) == 0.5
+    assert not view.key_mask[0, 1] and float(view.globals[0, ENEMY_ALIVE]) == 0.5
     # Enemy 0 of team 1's view dies out of sight: team 1 does not know.
     hidden_death = state.replace(alive=torch.tensor([[False, False, True, True]]))
     assert torch.equal(observe(FOG, hidden_death, 1).globals, view.globals)

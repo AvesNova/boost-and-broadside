@@ -105,7 +105,7 @@ def main() -> None:
     )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
-    parser.add_argument("--clock-ticks", type=int, default=None)
+    parser.add_argument("--zone-shrink-speed", type=float, default=None)
     parser.add_argument("--arena-radius", type=float, default=None)
     parser.add_argument("--spawn", choices=("mixed", "sides"), default=None)
     parser.add_argument("--fields", type=int, default=None)
@@ -115,7 +115,7 @@ def main() -> None:
     changes = {
         name: value
         for name, value in (
-            ("clock_ticks", arguments.clock_ticks),
+            ("zone_shrink_speed", arguments.zone_shrink_speed),
             ("arena_radius", arguments.arena_radius),
             ("spawn", arguments.spawn),
             ("field_count", arguments.fields),
