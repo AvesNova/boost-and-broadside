@@ -130,6 +130,27 @@ port), 3 (docs cleanup), 7 (correctness review): see the Log.
    settings (field strengths, ship parameters), so small rule changes don't need hours of
    re-tuning.
 
+15. Calibration under the new rules and the zone (after 13): re-measure the value supports, the
+   next-state column ranges, the geometry heads' ranges (pair, field, map edge) and their bin
+   balance, the hit-class prior, and check the feature scales. Units stay physical (1 m is 1 m,
+   1 m/s is 1 m/s, whatever the map size); only the super token's zone features carry the map's
+   size. Ranges are re-measured, never rescaled by the arena.
+16. BC dry run (author authorised 2026-11-28 ~18:00, overnight, coordinator's judgement): one
+   teacher and one scripted persona, the default ScriptedConfig() (also the league's only
+   scripted member and the yardstick); 4v4 training game as the recipe; 96 updates (~100M
+   ticks); gradient diagnostics every 16 updates; checkpoints as configured. Loss weights by the
+   literature (literature-loss-balance.md): value 0.25 (categorical critic on a shared trunk,
+   MuZero family), auxiliaries unchanged (small fixed, nats), entropy 0.003 (decided), BC 1.0.
+   Watch: no NaN / recompile, bc_kl and the losses falling, gradient shares sensible (no term
+   near 99%). Then rate the live and averaged students against the yardstick (4v4, plus a
+   small 1v1 / 16v16 check).
+17. RL dry run from the BC checkpoint if BC trains and the student plays (no crash, losses
+   sane, the student wins games against the teacher): ~96 updates (~100M ticks), defaults
+   (two-level league K 12 / R 4, teacher term with decay and gate), diagnostics every 16;
+   rate the result against the yardstick and the BC student.
+   Rules overnight: fix bugs found on the way, note every change and choice in the Log and in
+   docs/rewrite/sections/dry-run-2026-11-28.md; no major redesign without the author.
+
 ## Waiting on the author (not in the queue)
 
 - After R3: the five persona decisions (yardstick = robust centre with crowd rows on?, persona
@@ -182,3 +203,4 @@ scripted delay is a bug; next-state and hit on all visible ships; the pairwise h
 - ~16:30 author: nose-cone armour back; shared aspect function on the sine (armour 30-45, collision blame 0-45); circle deflector 24 m; egg vision 1,500 / 850 / 850 m. Item 12 started (`rules-12`).
 - ~17:30 author: shrinking zone as item 13 (linear 35 m/s from spawn, past 0, no clock; stages later; observation laid out for stages); a resilient scripted agent as a later item 14. Item 12's behaviour check trimmed (new rules with the default yardstick at 1v1 / 4v4; old rules with the centre at 1v1 as the baseline).
 - ~17:50 item 12 done (`rules-12` 0c07a97b, merged into core). Nose armour on; aspect function on the sine (armour 0 / 0 / 0 / 0 / 0.547 / 1 at 0 / 10 / 22.5 / 30 / 37.5 / 45 deg; blame 1 / 0.951 / 0.712 / 0.577 / 0.511 / 0.5); circle deflector 24 m (hit width 4.75 m from every aspect); sight egg 1,500 / 850 / 850 m. GPU tick 0.738 -> 0.735 ms (noise); compile 11,439 ops, cold 166.4 s (budget 175). Behaviour (mirror games, fields + fog): centre under core rules 1v1: tail-chase share 4.9%, collision deaths 4.0%, mutual 6.6% of fatal collisions, 1.00 kills/min; yardstick under the new rules: 1v1 tail-chase 75.7%, collision deaths 0.7%, 0.43 kills/min, 37.0% end by elimination; 4v4 tail-chase 53.4%, collision deaths 3.1%, 5.68 kills/min. The round-3 centre breaks under the new rules (collision deaths 21.0% at 1v1, 41.5% of fatal collisions mutual). The degeneracy shows in the tail-chase share. Replays data/replays-2026-11-28-rules12/. Quick tier 408 passed + the fixed style test (merged tree: eval + game + scripted 197 passed); slow learn 6; ruff clean. Stale under the new rules: the hit-class prior, feature scales. Item 13 started (`zone-13`).
+- ~18:00 author (leaving until ~10:00 tomorrow): after 13, calibrate (15), then BC dry run (16) and RL from its checkpoint (17); one teacher / one persona; loss weights by the literature, watched with the gradient diagnostics; coordinator's judgement for loose ends, every change noted.
