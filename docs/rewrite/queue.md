@@ -14,11 +14,11 @@ core when sensible (author 2026-11-27).
 
 ## Running
 
-- 12 Armour, circle deflector, collision blame, egg vision (`rules-12`, lean/game + scripted + tool).
+- 13 Shrinking zone (`zone-13`, lean/game + learn + scripted).
 
 ## Done
 
-R1 persona round 2, R2 two-level league, R3 persona round 3, 8a correctness fixes, 8b scripted delay, 8c heads, items 4 (second training review), 5 (speed wins), 6 (teacher), 9 (eval counters), 10 (morning fixes), 11 (gradient tools), 1 (merge + compile baselines), 2 (hit-range
+R1 persona round 2, R2 two-level league, R3 persona round 3, 8a correctness fixes, 8b scripted delay, 8c heads, items 4 (second training review), 5 (speed wins), 6 (teacher), 9 (eval counters), 10 (morning fixes), 11 (gradient tools), 12 (game rules), 1 (merge + compile baselines), 2 (hit-range
 port), 3 (docs cleanup), 7 (correctness review): see the Log.
 
 ## Queue (in order)
@@ -181,3 +181,4 @@ scripted delay is a bug; next-state and hit on all visible ships; the pairwise h
 - ~16:10 author (replays): the round-3 centre and league personas are degenerate in duels: nose to nose, firing, colliding (often both die; inside-egg shots get through). Discussing front armour by hit angle with an "absorbed" visual and collision damage; nothing built yet.
 - ~16:30 author: nose-cone armour back; shared aspect function on the sine (armour 30-45, collision blame 0-45); circle deflector 24 m; egg vision 1,500 / 850 / 850 m. Item 12 started (`rules-12`).
 - ~17:30 author: shrinking zone as item 13 (linear 35 m/s from spawn, past 0, no clock; stages later; observation laid out for stages); a resilient scripted agent as a later item 14. Item 12's behaviour check trimmed (new rules with the default yardstick at 1v1 / 4v4; old rules with the centre at 1v1 as the baseline).
+- ~18:05 item 12 done (`rules-12` 0c07a97b, merged into core). Nose armour on; aspect function on the sine (armour 0 / 0 / 0 / 0 / 0.547 / 1 at 0 / 10 / 22.5 / 30 / 37.5 / 45 deg; blame 1 / 0.951 / 0.712 / 0.577 / 0.511 / 0.5); circle deflector 24 m (hit width 4.75 m from every aspect); sight egg 1,500 / 850 / 850 m. GPU tick 0.738 -> 0.735 ms (noise); compile 11,439 ops, cold 166.4 s (budget 175). Behaviour (mirror games, fields + fog): centre under core rules 1v1: tail-chase share 4.9%, collision deaths 4.0%, mutual 6.6% of fatal collisions, 1.00 kills/min; yardstick under the new rules: 1v1 tail-chase 75.7%, collision deaths 0.7%, 0.43 kills/min, 37.0% end by elimination; 4v4 tail-chase 53.4%, collision deaths 3.1%, 5.68 kills/min. The round-3 centre breaks under the new rules (collision deaths 21.0% at 1v1, 41.5% of fatal collisions mutual). The degeneracy shows in the tail-chase share. Replays data/replays-2026-11-28-rules12/. Quick tier 408 passed + the fixed style test; slow learn 6; ruff clean. Stale under the new rules: the hit-class prior, feature scales. Item 13 started (`zone-13`).

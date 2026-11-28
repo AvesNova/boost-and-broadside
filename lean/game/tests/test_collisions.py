@@ -1,5 +1,6 @@
 """Collisions (author 2026-11-25): every pair of living ships, any teams; scored once per overlap
-on the tick of first touch (author 2026-11-26); blame by the nose cone at first touch; damage
+on the tick of first touch (author 2026-11-26); blame by the card's blame pair at first touch
+(author 2026-11-28: full dead-on, half from 45 deg); damage
 linear in the closing speed, a full shield's worth head-on at cruise with full blame, closeness
 by the pass's predicted closest approach; credited to the other ship like a hit."""
 
@@ -65,11 +66,13 @@ def smootherstep(t):
 
 
 def blame_of(cosine):
-    """The rule written out: full blame inside the card's inner nose angle, 0.5 beyond the
-    outer, a smootherstep in the cosine between."""
-    inner = math.cos(card.CARD["nose_inner_angle"][0])
-    outer = math.cos(card.CARD["nose_outer_angle"][0])
-    return 0.5 + 0.5 * smootherstep((cosine - outer) / (inner - outer))
+    """The rule written out: full blame inside the card's inner blame angle, 0.5 beyond the
+    outer and behind the beam, a smootherstep in the sine between."""
+    inner = math.sin(card.CARD["blame_inner_angle"][0])
+    outer = math.sin(card.CARD["blame_outer_angle"][0])
+    sine = math.sqrt(max(0.0, 1.0 - cosine * cosine))
+    t = 1.0 if cosine < 0.0 else (sine - inner) / (outer - inner)
+    return 1.0 - 0.5 * smootherstep(t)
 
 
 def first_touch(start, end, me, other):
@@ -115,8 +118,8 @@ def test_equal_speed_crossing_at_ninety_degrees_is_half_blame_each():
 
 def test_the_t_bone_blames_the_nose_that_hits_the_side():
     """(b) A at the origin flying +x slowly; B from below flying +y into A's side: A is about 90
-    degrees off the line (blame 0.5), B about 0 (blame 1); the cosines are the first touch's,
-    solved independently."""
+    degrees off the line (blame 0.5), B within 5 degrees of it (blame nearly 1); the cosines are
+    the first touch's, solved independently."""
     start, end = [(0.0, 0.0), (0.5, -30.0)], [(1.0, 0.0), (0.5, 0.0)]
     nose = [0.0, math.pi / 2]
     out = swept(start, end, nose)
@@ -128,7 +131,7 @@ def test_the_t_bone_blames_the_nose_that_hits_the_side():
         assert abs(float(out.blame[0, me, other]) - blame_of(cosine)) < 1e-5
     assert abs(float(out.nose_cos[0, 0, 1])) < math.sin(math.radians(5.0))
     assert float(out.nose_cos[0, 1, 0]) > math.cos(math.radians(5.0))
-    assert float(out.blame[0, 0, 1]) == 0.5 and float(out.blame[0, 1, 0]) == 1.0
+    assert float(out.blame[0, 0, 1]) == 0.5 and float(out.blame[0, 1, 0]) > 0.99
 
 
 def run(state, sizes=None):

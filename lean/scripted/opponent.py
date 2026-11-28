@@ -45,7 +45,6 @@ from lean.game.core import (
     field_blocks,
     flight_tick,
     hit_damage,
-    hit_width,
     maximum,
     medium,
     minimum,
@@ -186,8 +185,9 @@ def _laid_constants(constants, index: Tensor | None, dims: int) -> dict:
     names = (
         "hit_radius",
         "core_radius",
-        "nose_inner_cos",
+        "nose_inner_sin",
         "inverse_nose_width",
+        "hit_width",
         "inverse_max_energy",
         "inverse_corner_speed",
         "corner_speed",
@@ -212,21 +212,7 @@ def _laid_constants(constants, index: Tensor | None, dims: int) -> dict:
             laid[name] = _lay(item, dims - 1)
         else:
             laid[name] = _lay(item, dims)
-    widths = _widths_at(constants, index)
-    extra = dims - 1 if index is not None else dims
-    laid["hit_widths"] = widths.reshape(widths.shape[:-1] + (1,) * extra + widths.shape[-1:])
     return laid
-
-
-def _widths_at(constants, index: Tensor | None) -> Tensor:
-    """The game's hit widths by aspect (core.hit_widths, a constants column) per ship, (E, N,
-    POINTS), or at slots `index` (E, N, K): (E, N, K, POINTS)."""
-    widths = constants["hit_widths"].movedim(1, -1)
-    if index is None:
-        return widths
-    envs, slots, count = index.shape
-    flat = index.reshape(envs, slots * count, 1).expand(-1, -1, widths.shape[-1])
-    return widths.gather(1, flat).view(envs, slots, count, -1)
 
 
 def _flight_time(distance, c, cap, index):
@@ -244,8 +230,8 @@ def gun_solution(rel_x, rel_y, nose_x, nose_y, velocity_x, velocity_y, target, s
     gun ranges); the hit's worth by the game's hit model (`hit_worth`: kinetic at that
     distance, the target's nose cone at the bullet's path). rel: target minus shooter;
     velocity: target minus shooter over the map. `target`, `shooter`: dicts of constants and
-    the paths' nose and log index. The target's size is half the game's hit width at the
-    bullet's aspect (core.hit_width on the hit_widths column: the deflector's turn)."""
+    the paths' nose and log index. The target's size is half the game's hit width (the
+    constants' hit_width, core.hit_widths: the deflector's turn, the same from every aspect)."""
     distance_squared = rel_x * rel_x + rel_y * rel_y
     distance = torch.sqrt(distance_squared + TINY)
     gun_range = shooter["gun_range"]
@@ -258,24 +244,29 @@ def gun_solution(rel_x, rel_y, nose_x, nose_y, velocity_x, velocity_y, target, s
     lead_length = torch.sqrt(lead_x * lead_x + lead_y * lead_y + TINY)
     off = 1.0 - (nose_x * lead_x + nose_y * lead_y) / lead_length  # 1 - cos(aim error)
     hit_cos = -(shooter["bullet_x"] * target["nose_cos"] + shooter["bullet_y"] * target["nose_sin"])
-    # The target's size: half the game's hit width at the bullet's aspect (the deflector).
-    half_width = 0.5 * hit_width(target["hit_widths"], hit_cos)
+    hit_sin = (
+        shooter["bullet_x"] * target["nose_sin"] - shooter["bullet_y"] * target["nose_cos"]
+    ).abs()
+    # The target's size: half the game's hit width (the deflector).
+    half_width = 0.5 * target["hit_width"]
     tolerance = half_width / distance + read("aim_blur", dims) * time
     tolerance = maximum(tolerance, 0.5 * read("target_size_minimum", dims))
     aligned = torch.exp(-off / (tolerance * tolerance))
     band = ((distance / gun_range - 0.8) / 0.4).clamp(0.0, 1.0)
     in_range = 1.0 - band * band * (3.0 - 2.0 * band)
-    return aligned * in_range * hit_worth(shooter, target, distance, hit_cos)
+    return aligned * in_range * hit_worth(shooter, target, distance, hit_cos, hit_sin)
 
 
-def hit_worth(shooter, target, distance, hit_cos) -> Tensor:
+def hit_worth(shooter, target, distance, hit_cos, hit_sin) -> Tensor:
     """A dead-centre hit's damage as a share of the shooter's hit damage, by the game's hit model
     (`core.hit_damage`, the one call): the bullet launched at the shooter's
     `bullet_launch_speed` slowed by the drag law over `distance` (speed x e^(-drag d)), the
-    target's nose cone at `hit_cos`. `shooter`, `target`: constants by name, laid to broadcast."""
+    target's nose armour at the bullet's path (`hit_cos`, `hit_sin`: its cosine against the
+    target's nose, 1 head-on, and |sine|). `shooter`, `target`: constants by name, laid to
+    broadcast."""
     speed = shooter["bullet_launch_speed"] * torch.exp(-shooter["bullet_drag"] * distance)
     centre = torch.zeros_like(speed)
-    return hit_damage(shooter, target, speed, centre, hit_cos) / shooter["hit_damage"]
+    return hit_damage(shooter, target, speed, centre, hit_cos, hit_sin) / shooter["hit_damage"]
 
 
 def _bullet_direction(paths: dict[str, Tensor], c) -> tuple[Tensor, Tensor]:
@@ -872,7 +863,6 @@ def _pair_kernel(c, fields_, own_paths, seen_paths, enemy_slot, now_x, now_y, ho
         return torch.as_tensor(item, dtype=torch.float32, device=now_x.device).expand(envs, slots)
 
     constants = torch.stack([per_ship(c[name]) for name in kernels.CONSTANTS], -1)
-    constants = torch.cat([constants, _widths_at(c, None).to(constants.dtype)], -1)
     times = device_constant(paths_module.LOOK_AHEAD, now_x.device)
     discounts = torch.exp(-times / read("horizon", 1))
     parameters = torch.cat(
@@ -1031,17 +1021,17 @@ def _trigger(state, ahead, enemies, enemy_slot, enemy_weight, read) -> Tensor:
     turned_cos, turned_sin = torch.cos(turned), torch.sin(turned)
     nose_x = his_cos * turned_cos - his_sin * turned_sin
     nose_y = his_sin * turned_cos + his_cos * turned_sin
-    hit_cos = -(launch_x * nose_x + launch_y * nose_y) * torch.rsqrt(
-        launch_x * launch_x + launch_y * launch_y + TINY
-    )
+    inverse_launch = torch.rsqrt(launch_x * launch_x + launch_y * launch_y + TINY)
+    hit_cos = -(launch_x * nose_x + launch_y * nose_y) * inverse_launch
+    hit_sin = (launch_x * nose_y - launch_y * nose_x).abs() * inverse_launch
     mine = {name: _lay(c[name], 1) for name in SHOOTER_HIT_CONSTANTS + ("bullet_drag",)}
     mine["bullet_launch_speed"] = torch.sqrt(launch_x * launch_x + launch_y * launch_y + TINY)
     his = {name: _at(enemies.constants[name], enemy_slot) for name in TARGET_HIT_CONSTANTS}
-    # The target's size: the game's hit width at that aspect (the deflector's turn narrows it);
+    # The target's size: the game's hit width (the deflector's turn narrows it);
     # the chance a centred shot lands within it: the bullet spread and the lead error (the
     # target's unpredicted turn, lead_error x his sustained turn acceleration, over the flight)
     # spread the bullet sideways by a normal of that deviation (round 4, 2026-11-27).
-    half_width = 0.5 * hit_width(_widths_at(enemies.constants, enemy_slot), hit_cos)
+    half_width = 0.5 * _at(enemies.constants["hit_width"], enemy_slot)
     size = maximum(2.0 * torch.atan(half_width / distance), read("target_size_minimum", 1))
     size = size.clamp_max(math.radians(45.0))
     aligned = torch.sigmoid(
@@ -1053,7 +1043,7 @@ def _trigger(state, ahead, enemies, enemy_slot, enemy_weight, read) -> Tensor:
     lead = read("lead_error", 1) * 0.5 * his_turn * flight
     sideways = flight * torch.sqrt(_lay(c["spread_speed"], 1) ** 2 + lead * lead + TINY)
     chance = torch.erf(half_width / (math.sqrt(2.0) * sideways))
-    hit = _lay(c["hit_damage"], 1) * hit_worth(mine, his, distance, hit_cos) * chance
+    hit = _lay(c["hit_damage"], 1) * hit_worth(mine, his, distance, hit_cos, hit_sin) * chance
     worth = read("fire_worth", 1) * _lay(c["shield_rate"] * c["tick_length"], 1)
     shield = _at(enemies.shield, enemy_slot)
     worthwhile = (hit >= worth) | ((hit >= shield) & (hit > 0.0))

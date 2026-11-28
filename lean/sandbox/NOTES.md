@@ -4,9 +4,9 @@ The flight sandbox's world, without drawing. You fly it in the browser (`lean/to
 
 `World` (`lean/sandbox/world.py`) is the game at batch size 1 on the CPU: the player (slot 0)
 and an optional opponent (slot 1), stepped by `lean.game.core.tick`, so bullets, hits,
-shields, the boundary, collisions, the egg and the fog behave as in the game (the opponent
-sees the player by the game's sight rule, the card's vision range with the tracking circle, or
-on a tick the player fires, is hit or collides). The opponent is the scripted opponent
+shields, the boundary, collisions, the deflector circle, the nose armour and the fog behave as
+in the game (the opponent sees the player by the game's sight rule, the card's sight egg with
+the tracking circle, or on a tick the player fires, is hit or collides). The opponent is the scripted opponent
 (`lean/scripted/opponent.py`, the yardstick; no memory) or the chaser
 (`lean/scripted/chaser.py`, `World(opponent="chaser")`). `HitRange` (same file) is the tool's
 Hit range tab: a shooter and a pinned target on the real step (`lean/tool/NOTES.md`).

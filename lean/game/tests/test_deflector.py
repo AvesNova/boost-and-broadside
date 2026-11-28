@@ -1,4 +1,4 @@
-"""The bullet deflector (proposal 2026-11-27, the egg: core.egg_entry, core.egg_turn,
+"""The bullet deflector (author 2026-11-28, the circle: core.circle_entry, core.circle_turn,
 core._deflect) and the hit model's runtime inputs (core.HIT_MODEL, core.with_hit_model).
 Every number is read from the code."""
 
@@ -91,14 +91,15 @@ def heading(direction_x, direction_y):
 
 
 OFF = core.GameConfig(field_count=0, fog=False, deflector="off")
-EGG = dataclasses.replace(OFF, deflector="egg")
-# A start well outside the egg on every aspect, the egg's entry within the first tick's move.
-FAR = -(model(EGG)["egg_front"] + 10.0)
+CIRCLE = dataclasses.replace(OFF, deflector="circle")
+RADIUS = model(CIRCLE)["deflector_radius"]
+# A start well outside the circle, its entry within the first tick's move.
+FAR = -(RADIUS + 10.0)
 
 
 def sketch():
     """The design sketch's ray tracer (docs/rewrite/sections/bullet-deflector), set to the
-    game's egg, turn curve and largest turn."""
+    game's circle, turn curve and largest turn."""
     import sys
     from pathlib import Path
 
@@ -109,12 +110,11 @@ def sketch():
         import deflector_profiles_sketch as profiles
     finally:
         sys.path.remove(str(folder))
-    egg = model(EGG)
-    profiles.EDGE = humps.EDGE = egg["egg_half_width"]
-    shape = [(0.0, egg["egg_front"], egg["egg_half_width"], +1)]
-    shape.append((0.0, egg["egg_rear"], egg["egg_half_width"], -1))
+    circle = model(CIRCLE)
+    profiles.EDGE = humps.EDGE = circle["deflector_radius"]
+    shape = [(0.0, circle["deflector_radius"], circle["deflector_radius"], 0)]
     act = profiles.profile_turn(
-        humps.CURVES["early hump, 27/4 x (1 - x)^2"], math.degrees(egg["deflector_turn"])
+        humps.CURVES["early hump, 27/4 x (1 - x)^2"], math.degrees(circle["deflector_turn"])
     )
     return humps, shape, act
 
@@ -127,10 +127,10 @@ def test_the_turn_curve_is_the_early_hump():
 
 
 def test_exactly_one_turn_per_pass():
-    """Over a whole pass flown tick by tick, wherever in a tick the egg's entry falls, a bullet
-    passing through the egg off centre is turned on exactly one tick; one passing outside the
-    egg, or dead centre, never."""
-    half_width = model(EGG)["egg_half_width"]
+    """Over a whole pass flown tick by tick, wherever in a tick the circle's entry falls, a
+    bullet passing through the circle off centre is turned on exactly one tick; one passing
+    outside the circle, or dead centre, never."""
+    half_width = RADIUS
     starts = torch.linspace(FAR - 70.0, FAR, 25)
     for offset, aspect, expected in (
         (0.3 * half_width, 0.5 * math.pi, 1),
@@ -140,11 +140,11 @@ def test_exactly_one_turn_per_pass():
         (0.0, 0.0, 0),  # head-on: the target's own move is along the line, b stays 0
         (0.0, math.pi, 0),
     ):
-        state = crossing(EGG, [offset] * len(starts), [aspect] * len(starts), start_x=FAR)
+        state = crossing(CIRCLE, [offset] * len(starts), [aspect] * len(starts), start_x=FAR)
         state = state.replace(bullets=_shifted(state.bullets, starts))
         turns = torch.zeros(len(starts), dtype=torch.long)
         before = bullet(state)
-        for after, _ in run(EGG, state, ticks=6):
+        for after, _ in run(CIRCLE, state, ticks=6):
             now = bullet(after)
             alive = after.bullet_state[:, 0, SLOT] != CONTACTED
             changed = (now[2] - before[2]).abs() + (now[3] - before[3]).abs() > 1e-6
@@ -165,10 +165,10 @@ def test_the_turn_keeps_the_speed():
     vector."""
     offsets = torch.linspace(-30.0, 30.0, 41)
     aspects = torch.linspace(0.0, math.pi, 41)
-    start = crossing(EGG, offsets, aspects, start_x=FAR, target_speed=150.0)
-    ((on, _),) = run(EGG, start)
+    start = crossing(CIRCLE, offsets, aspects, start_x=FAR, target_speed=150.0)
+    ((on, _),) = run(CIRCLE, start)
     ((off, _),) = run(OFF, crossing(OFF, offsets, aspects, start_x=FAR, target_speed=150.0))
-    tick = EGG.tick_length
+    tick = CIRCLE.tick_length
     ship_x = (on.x[:, 1] - start.x[:, 1]) / tick
     ship_y = (on.y[:, 1] - start.y[:, 1]) / tick
 
@@ -183,12 +183,13 @@ def test_the_turn_keeps_the_speed():
 
 
 def test_dead_centre_goes_straight_and_hits():
-    """A bullet aimed at the centre does the full damage (inside the core) at every aspect;
-    head-on and from astern (the target's own move along the line) it is not turned at all,
-    from the side by at most the hump's slope at the target's sideways move this tick."""
+    """A bullet aimed at the centre does the damage it does with the deflector off (inside the
+    core: full beyond the nose armour); head-on and from astern (the target's own move along
+    the line) it is not turned at all, from the side by at most the hump's slope at the
+    target's sideways move this tick."""
     aspects = torch.linspace(0.0, math.pi, 9)
     offsets = torch.zeros_like(aspects)
-    states = run(EGG, crossing(EGG, offsets, aspects, start_x=FAR, target_speed=0.0), ticks=2)
+    states = run(CIRCLE, crossing(CIRCLE, offsets, aspects, start_x=FAR, target_speed=0.0), ticks=2)
     damage = sum(out.hit_damage[:, 0, 1] for _, out in states)
     plain = sum(
         out.hit_damage[:, 0, 1]
@@ -196,23 +197,22 @@ def test_dead_centre_goes_straight_and_hits():
             OFF, crossing(OFF, offsets, aspects, start_x=FAR, target_speed=0.0), ticks=2
         )
     )
-    assert bool((plain > 0.0).all())
+    assert bool((plain[aspects > math.radians(46.0)] > 0.0).all())
     assert torch.allclose(damage, plain, rtol=1e-5)
     first, _ = states[0]
     turn = bullet(first)[3].abs()
     assert float(turn[0]) < 1e-8 and float(turn[-1]) < 1e-8  # (float rounding of cos pi)
     sideways = float((first.x[:, 1] ** 2 + first.y[:, 1] ** 2).sqrt().max())
-    egg = model(EGG)
-    assert float(turn.max()) <= 6.75 * egg["deflector_turn"] * sideways / egg["egg_half_width"]
+    assert float(turn.max()) <= 6.75 * model(CIRCLE)["deflector_turn"] * sideways / RADIUS
 
 
-def test_a_bullet_from_inside_the_egg_is_not_turned():
-    """A bullet starting inside the egg (fired from inside, or already turned) never enters it,
-    so flies straight: the same block as with the deflector off."""
+def test_a_bullet_from_inside_the_circle_is_not_turned():
+    """A bullet starting inside the circle (fired from inside, or already turned) never enters
+    it, so flies straight: the same block as with the deflector off."""
     offsets = torch.tensor([6.0, -6.0, 10.0])
     aspects = torch.tensor([0.5 * math.pi, 0.25 * math.pi, 0.0])
-    start = -0.5 * model(EGG)["egg_rear"]
-    ((on, _),) = run(EGG, crossing(EGG, offsets, aspects, start_x=start))
+    start = -0.5 * RADIUS
+    ((on, _),) = run(CIRCLE, crossing(CIRCLE, offsets, aspects, start_x=start))
     ((off, _),) = run(OFF, crossing(OFF, offsets, aspects, start_x=start))
     assert torch.allclose(on.bullets, off.bullets)
 
@@ -221,8 +221,8 @@ def test_ghosts_turn_like_real_bullets():
     """A ghost's flight is a real bullet's: the same bullet block after the tick."""
     offsets = torch.linspace(-30.0, 30.0, 41)
     aspects = torch.linspace(0.0, math.pi, 41)
-    ((real, _),) = run(EGG, crossing(EGG, offsets, aspects, real=True, start_x=FAR))
-    ((ghost, _),) = run(EGG, crossing(EGG, offsets, aspects, real=False, start_x=FAR))
+    ((real, _),) = run(CIRCLE, crossing(CIRCLE, offsets, aspects, real=True, start_x=FAR))
+    ((ghost, _),) = run(CIRCLE, crossing(CIRCLE, offsets, aspects, real=False, start_x=FAR))
     assert torch.equal(real.bullets, ghost.bullets)
     assert torch.equal(real.bullet_state == CONTACTED, ghost.bullet_state == CONTACTED)
 
@@ -230,8 +230,9 @@ def test_ghosts_turn_like_real_bullets():
 def test_the_turn_matches_the_design_sketch():
     """The game's turned direction and hit-or-miss on a nearly still ship (its own move this
     tick, a few centimetres, shifts the relative line: the turn agrees within 0.01 rad) equal
-    the design sketch's ray tracer (trace_through, the early hump, the egg) for rays across
-    the egg."""
+    the design sketch's ray tracer (trace_through, the early hump, the circle) for rays across
+    the circle (a contact counts as a hit: the nose armour leaves a head-on contact at no
+    damage)."""
     humps, shape, act = sketch()
     np = pytest.importorskip("numpy")
     rays = [
@@ -241,9 +242,9 @@ def test_the_turn_matches_the_design_sketch():
     ]
     aspects = torch.tensor([a for a, _ in rays])
     offsets = torch.tensor([o for _, o in rays])
-    states = run(EGG, crossing(EGG, offsets, aspects, start_x=FAR, target_speed=0.0), ticks=3)
+    states = run(CIRCLE, crossing(CIRCLE, offsets, aspects, start_x=FAR, target_speed=0.0), ticks=3)
     after, _ = states[0]
-    hit = sum(out.hit_damage[:, 0, 1] for _, out in states) > 0.0
+    hit = states[-1][0].bullet_state[:, 0, SLOT] == CONTACTED
     game_turn = heading(*bullet(after)[2:4])
     for i, (aspect, offset) in enumerate(rays):
         # The ray in the target's frame (nose +x): the bullet flies +x in the world, the nose at
@@ -260,32 +261,29 @@ def test_the_turn_matches_the_design_sketch():
         assert bool(hit[i]) == bool(sketch_hit), (aspect, offset)
 
 
-def test_the_hit_widths_match_the_design_sketch():
-    """The hit widths (core.hit_widths, the agent's table) equal the sketch's at head-on, side
-    and from astern, within the scan's step; 2 x the hit radius with no turn."""
+def test_the_hit_width_matches_the_design_sketch():
+    """The hit width (core.hit_widths, the agent's row) equals the sketch's at head-on, side
+    and from astern (the circle has no orientation: one width), within the scan's step; 2 x
+    the hit radius with no turn."""
     humps, shape, act = sketch()
     radius = card_value("hit_radius")
-    widths = core.hit_widths(torch.tensor([radius]), model(EGG))[0]
+    game = float(core.hit_widths(torch.tensor([radius]), model(CIRCLE))[0])
     for degrees in (0.0, 90.0, 180.0):
-        hit_cos = torch.tensor(math.cos(math.radians(degrees)))
-        game = float(core.hit_width(widths, hit_cos))
         assert abs(game - humps.hit_width(shape, act, degrees)) < 0.15, degrees
-    plain = core.hit_widths(torch.tensor([radius]), model(OFF))[0]
-    assert torch.allclose(plain, torch.full_like(plain, 2.0 * radius), atol=0.11)
+    plain = float(core.hit_widths(torch.tensor([radius]), model(OFF))[0])
+    assert abs(plain - 2.0 * radius) < 0.11
 
 
 def test_hit_model_round_trip_and_unknown_names():
     """with_hit_model writes the inputs (and rebuilds the hit widths); hit_model_of reads them
     back; an unknown name raises."""
-    state = core.reset(EGG, 2, torch.tensor([[1, 1]]).expand(2, 2), None, CPU)
+    state = core.reset(CIRCLE, 2, torch.tensor([[1, 1]]).expand(2, 2), None, CPU)
     values = dict(
         hit_radius=14.0,
         core_radius=4.0,
         hit_damage=9.0,
         bullet_spread=2.0,
-        egg_front=60.0,
-        egg_rear=20.0,
-        egg_half_width=30.0,
+        deflector_radius=30.0,
         deflector_turn=0.6,
         nose_cone=1.0,
         nose_inner_angle=0.3,
@@ -298,7 +296,7 @@ def test_hit_model_round_trip_and_unknown_names():
         assert abs(read[name] - value) < 1e-5, name
     assert torch.equal(changed["hit_radius"], torch.full((2, 2), 14.0))
     expected = core.hit_widths(torch.tensor([14.0]), values)[0]
-    assert torch.allclose(changed["hit_widths"][0, :, 0], expected)
+    assert torch.allclose(changed["hit_width"], torch.full((2, 2), float(expected)))
     with pytest.raises(KeyError):
         core.with_hit_model(state.constants, gun_range=1.0)
 
@@ -311,18 +309,18 @@ def test_a_hit_model_change_needs_no_recompile():
     torch.compiler.reset()
     counter = CompileCounter()
     compiled = torch.compile(core.step, backend=counter, fullgraph=True)
-    state = crossing(EGG, [0.0, 0.0], [0.5 * math.pi] * 2, start_x=-30.0)
+    state = crossing(CIRCLE, [0.0, 0.0], [0.5 * math.pi] * 2, start_x=-30.0)
     idle = torch.zeros(2, 2, 3, dtype=torch.long)
     noise = {"spread": torch.zeros(2, 2, 2)}
-    _, first = compiled(EGG, state, idle, noise)
+    _, first = compiled(CIRCLE, state, idle, noise)
     assert float(first.hit_damage[:, 0, 1].min()) > 0.0
     moved = {entry.name: entry.low + 0.25 * (entry.high - entry.low) for entry in core.HIT_MODEL}
     moved.update(nose_inner_angle=0.3, nose_outer_angle=0.6)
     changed = state.replace(constants=core.with_hit_model(state.constants, **moved))
     with torch._dynamo.config.patch(error_on_recompile=True):
-        _, second = compiled(EGG, changed, idle, noise)
+        _, second = compiled(CIRCLE, changed, idle, noise)
     assert counter.frame_count == 1
     assert not torch.allclose(second.hit_damage, first.hit_damage)
-    eager = core.step(EGG, changed, idle, noise)[1]
+    eager = core.step(CIRCLE, changed, idle, noise)[1]
     assert torch.allclose(second.damage_taken, eager.damage_taken)
     assert BULLET_SLOTS > SLOT + 1

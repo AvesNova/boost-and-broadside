@@ -12,7 +12,8 @@ other packages: `lean/contract.py`.
 
 - `GameConfig()` is the core game: arena 4,200 m, boundary ramp 300 m, clock 1,800 ticks (60 s
   at 30 Hz), "mixed" spawn, lineup `("p51d",)`, ten fields drawn per environment at each deal,
-  ghost-only bullets, fog with the tracking circle, the "egg" deflector, the post-stall regime,
+  ghost-only bullets, fog (the sight egg) with the tracking circle, the "circle" deflector, the
+  nose armour, the post-stall regime,
   a store of two loops at corner speed with 5% edge bands, firing cuts thrust to
   `fire_thrust_fraction` (0). Ablations: `field_count=0`, `fog=False`, `fog_tracking=False`,
   `deflector="off"`, `post_stall=False`.
@@ -126,27 +127,23 @@ other packages: `lean/contract.py`.
   number it uses from these by name.
 - **Fog:** `perceive` (sight, or a shot, a real bullet's hit or a collision that tick),
   `enemy_view`, `team_view`. Sight (`sight_pairs`, per target and observer; `sighted_by_enemy`,
-  any observer) is an ellipse with the observer at one focus, stretched along its nose:
-  |d| - e (d . nose) <= p, d the offset to the target, p the card's vision range (the side
-  reach, 1,500 m) and e its `vision_eccentricity` (0 <= e < 1, a card column and design input;
-  0, the circle, until the author has tested the ellipse). Reach p / (1 - e) ahead, p to the
-  side, p / (1 + e) behind: with p = 1,500 m, e 0.2 gives 1,875 / 1,250 m, e 0.5 gives 3,000 /
-  1,000 m, e 0.6 gives 3,750 / 938 m. From a wanted forward reach F: e = 1 - p / F (the rear
-  reach is then p F / (2F - p)). Tested without a square root as |d|^2 <= (p + e d . nose)^2;
-  one dot product more per pair than the circle. Field cores block the line; a team sees what
+  any observer) is an egg in the observer's frame (author 2026-11-28; replaced the ellipse and
+  its eccentricity): with d the offset to the target, along = d . nose, across = d x nose, the
+  front half (along >= 0) the ellipse (along / ahead)^2 + (across / side)^2 <= 1, the rear
+  half the same with behind; the card's `vision_ahead` / `vision_side` / `vision_behind`
+  (design inputs, 1,500 / 850 / 850 m), held as inverses in the constants, so the test is
+  multiplies and a sign check, no square root. Field cores block the line; a team sees what
   any of its ships sees.
   **Tracking circle** (`GameConfig.fog_tracking`, on): a ship visible to the enemy team on the
   tick before, by any means (sight, its shot, a hit, a collision), stays visible while some
-  living enemy observer has it within the circle of that observer's forward reach p / (1 - e),
-  with a clear line (the same field-core test); once no observer holds it (and nothing reveals
-  it) it is hidden and needs the ellipse or a reveal again. "Visible the tick before" is read
-  from the state, no new field: `tracked_by_enemy` = ticks since seen 0 and known (the deal
-  starts every row at ticks since seen 0 but unknown, so a never-seen ship is not tracked; the
-  deal's own perception sees by the ellipse alone). Per pair the reach is
-  `torch.where(tracked, p / (1 - e), p + e d . nose)`, still squared against |d|^2. The circle
-  contains the ellipse (|d| <= p + e |d| gives |d| <= p / (1 - e)) and equals it at e = 0, so
-  at today's e = 0 the switch changes nothing. It is a GameConfig rule like `fog`, not a card
-  column: one on/off rule for every type, its radius from the card's p and e.
+  living enemy observer has it within the circle of the longest of the three reaches (the
+  constants' `tracking_range`, 1,500 m: the circle contains the egg), with a clear line (the
+  same field-core test); once no observer holds it (and nothing reveals it) it is hidden and
+  needs the egg or a reveal again. "Visible the tick before" is read from the state, no new
+  field: `tracked_by_enemy` = ticks since seen 0 and known (the deal starts every row at ticks
+  since seen 0 but unknown, so a never-seen ship is not tracked; the deal's own perception sees
+  by the egg alone). A GameConfig rule like `fog`, not a card column (the radius comes from the
+  card's reaches). With equal reaches the egg is a circle and tracking changes nothing (tested).
 - **Observation:** `Obs.pending` holds own living ships' joint action, `NO_PENDING` (42)
   elsewhere. The ship row has no position scalars; `Obs.pos` carries position for the model's
   position code and rotary.
@@ -164,49 +161,60 @@ other packages: `lean/contract.py`.
   CONTACTED`): a real bullet if the ship fired that tick, else a ghost (a dead or absent ship's
   bullets are ghosts). Only a ghost or a real bullet can touch a ship, only a real one damages; a
   contact makes it CONTACTED and it flies on unchanged (no stop, no further contact, no turn by
-  an egg). `_bullet_ends` reports each bullet's outcome once (StepOut.shot_outcome): its first
+  the deflector). `_bullet_ends` reports each bullet's outcome once (StepOut.shot_outcome): its first
   contact (1 enemy, 2 team-mate) or a miss (0) on its last tick; a fresh deal's slots start
   CONTACTED, so they never report. The firing tick is the ring's age (`bullet_ages`):
   `shot_tick = tick - age`. The observation's bullet share counts REAL bullets.
 - **Bullet damage** (`_damage`, `hit_damage`): the owner's hit damage x kinetic (the explosive
   share plus the rest by the squared ratio of the bullet's speed to its reference speed) x
   closeness (`graze`: full inside the core radius, a smoothstep to 0 at the hit radius, on the
-  impact parameter) x the nose cone weighted by the hit model's `nose_cone` (`card.NOSE_CONE`,
-  0 by default: off). The nose cone (`aspect_factor`): no damage when the bullet's path is
-  within the card's inner angle (30 deg) of the target's nose, full from the outer angle (45
-  deg) round to dead astern, a smootherstep in the cosine between (t = (cos 30 - c) / (cos 30 -
-  cos 45), no acos; the card stores the angles, the constants their cosines). Collision blame
-  uses the same angles whatever the weight.
-- **Deflector** (the egg; `GameConfig.deflector`, `card.DEFLECTOR_PRESETS`, `core.egg_entry`,
-  `core.egg_turn`, `core.hump`, `core._deflect`). An invisible egg around every ship, in its
-  frame (nose +x): the front half an ellipse of semi-axis `egg_front` 53.3 m (40/18 x 24)
-  along the nose, the rear half one of `egg_rear` 24 m, both of half-width `egg_half_width` 24
-  m; the same for every type and at any shield. Not drawn. In the relative frame (bullet minus
-  ship, as the hit test): on the tick a bullet's straight in-tick path first crosses a living
-  ship's egg inward (a path starting inside never enters: a bullet fired from inside, or
-  already turned, flies straight), its direction is turned away from the ship's centre by
-  deflector_turn x hump(b / half-width), b the distance of the straight line from the centre,
-  hump(x) = 27/4 x (1 - x)^2 on x clamped to [0, 1] (0 at both ends, peak 1 at a third;
-  `deflector_turn` 45 deg); the side is the side of the centre the line passes (b = 0 goes
-  straight). The relative speed is kept. The rest of the tick's move uses the turned
-  direction, and the swept hit test runs on that remainder (entry point to tick end) against
-  the hit circle; the bullet's map velocity after the tick is the ship's average velocity over
-  the tick plus the turned relative velocity (its map speed changes by the ship's part; its
-  cached medium is the unturned end's). Once per pass by construction (only inward
-  crossings). Ghosts run the same code. With one egg per bullet and tick: the first egg by
-  tau; the bullet's contacts with other ships in that tick stay on the straight path. Damage:
-  `hit_damage` at the hitting pass's impact parameter (the turned remainder's line for a turned
-  hit) and its path against the nose (the turned direction). Ship hit radius 12 m, core 10 m
-  (a soft 2 m edge). Hit width (the band of aim offsets that hit, a still ship): 24 m with no
-  turn; with the egg 4.75 m from the side and astern, 2.05 m head-on (`core.hit_widths`, the
-  same numbers as the design sketch deflector_humps_sketch.py, tested). Presets: "egg"
-  (default), "off" (no turn; also skips the code). The scripted agent reads `hit_widths` (a
-  constants column, `core.hit_width` between its 17 aspects) for its target size and its
-  trigger's hit chance (with the spread and its lead error). Measurements:
+  impact parameter) x the nose armour weighted by the hit model's `nose_cone` (`card.NOSE_CONE`,
+  1 by default again since 2026-11-28; 0 off, for ablations).
+- **The aspect curve** (`aspect_factor`, author 2026-11-28: one function, one curve, two angle
+  pairs). Its input is the angle off the nose as its |sine|, |cross(nose, n)| (no trig: a cross
+  product), with its cosine's sign: t = clamp((sin - sin inner) / (sin outer - sin inner), 0,
+  1), t = 1 behind the beam (a negative cosine), the result smootherstep(t): 0 inside the inner
+  angle, 1 beyond the outer. The card stores the angles (`tuning` design inputs), the constants
+  the inner sine and 1 / (sin outer - sin inner) (`_cone_rows`; the outer angle at most 90
+  deg). Two pairs: the **nose armour** for bullets, `nose_inner_angle` / `nose_outer_angle` 30
+  / 45 deg (no damage when the bullet's path is within 30 deg of the target's nose, full from
+  45 deg; the constants `nose_inner_sin`, `inverse_nose_width`, hit-model rows); the
+  **collision blame**, `blame_inner_angle` / `blame_outer_angle` 0 / 45 deg (blame 1 - aspect
+  / 2: full dead-on, half from 45 deg and behind the beam; `blame_inner_sin`,
+  `inverse_blame_width`). Values (armour factor; blame): 0 deg 0; 1, 10 deg 0; 0.951, 22.5
+  deg 0; 0.712, 30 deg 0; 0.577, 37.5 deg 0.547; 0.511, 45 deg and beyond 1; 0.5. The scripted
+  agent's gun and trigger read the same function (`hit_damage`; the Triton kernel's copy is
+  held to it by the kernel-against-twin test).
+- **Deflector** (the circle, author 2026-11-28; `GameConfig.deflector`, `card.DEFLECTOR_PRESETS`,
+  `core.circle_entry`, `core.circle_turn`, `core.hump`, `core._deflect`). An invisible circle of
+  radius `deflector_radius` 24 m (the old egg's side and rear) around every ship, the same for
+  every type and at any shield. Not drawn in play (the Hit range tab draws it). In the relative
+  frame (bullet minus ship, as the hit test): on the tick a bullet's straight in-tick path
+  first crosses a living ship's circle inward (one quadratic; a path starting inside never
+  enters: a bullet fired from inside, or already turned, flies straight), its direction is
+  turned away from the ship's centre by deflector_turn x hump(b / radius), b the distance of
+  the straight line from the centre, hump(x) = 27/4 x (1 - x)^2 on x clamped to [0, 1] (0 at
+  both ends, peak 1 at a third; `deflector_turn` 45 deg); the side is the side of the centre
+  the line passes (b = 0 goes straight). The relative speed is kept. The rest of the tick's
+  move uses the turned direction, and the swept hit test runs on that remainder (entry point
+  to tick end) against the hit circle; the bullet's map velocity after the tick is the ship's
+  average velocity over the tick plus the turned relative velocity (its map speed changes by
+  the ship's part; its cached medium is the unturned end's). Once per pass by construction
+  (only inward crossings). Ghosts run the same code. With one circle per bullet and tick: the
+  first by tau; the bullet's contacts with other ships in that tick stay on the straight path.
+  Damage: `hit_damage` at the hitting pass's impact parameter (the turned remainder's line for
+  a turned hit) and its path against the nose (the turned direction). Ship hit radius 12 m,
+  core 10 m (a soft 2 m edge). Hit width (the band of aim offsets that hit, a still ship):
+  24 m with no turn, 4.75 m with the circle from every aspect (`core.hit_widths`, the
+  constants' one `hit_width` row; the design sketch's circle, tested). Presets: "circle"
+  (default), "off" (no turn; also skips the code). The scripted agent reads `hit_width` for
+  its target size and its trigger's hit chance (with the spread and its lead error). The egg
+  (2026-11-27 to 11-28: front 53.3 m, head-on width 2.05 m) and its card and hit-model rows are
+  removed. Measurements: docs/rewrite/sections/rules-12-progress.md; the egg's:
   docs/rewrite/sections/bullet-deflector/progress.md and egg-experiments.md.
 - **The hit model at runtime**: every hit-model number (`core.HIT_MODEL`: hit and core radius,
-  hit damage, bullet spread, the egg's front, rear and half-width, the largest turn, the nose
-  cone's weight and angles; and the derived hit widths) is a row of the constants table
+  hit damage, bullet spread, the deflector's radius and largest turn, the nose armour's weight
+  and angles; and the derived hit width) is a row of the constants table
   (`core.RUNTIME_CONSTANTS`), never a Python number baked into the compiled graph:
   `core.with_hit_model(constants, **inputs)` changes it for every ship between calls of the
   compiled tick with no recompile (tested under `torch.compile(fullgraph=True)`). The
@@ -223,8 +231,8 @@ other packages: `lean/contract.py`.
   |m|, m = p + tau w, tau = -p.w / |w|^2 unclamped: the closest distance of the tick's relative
   line extended past the tick (the pass's predicted closest approach). Each ship's blame is 1 -
   aspect / 2 at the cosine between its nose (after the move) and the line of centres at first
-  touch, n = m / R - sqrt(max(0, 1 - b^2 / R^2)) w / |w|: 1 within 30 deg, 0.5 beyond 45 deg
-  (the nose cone's angles). Damage = max shield x (|w| / tick) / (2 x cruise speed) x graze(b;
+  touch, n = m / R - sqrt(max(0, 1 - b^2 / R^2)) w / |w|, on the blame pair (`aspect_factor`
+  on |nose x n|): 1 dead-on, 0.5 from 45 deg and behind the beam. Damage = max shield x (|w| / tick) / (2 x cruise speed) x graze(b;
   the two core radii, R) x blame: linear in the closing speed, a full shield head-on at
   cruise; full when the cores would meet, a partial graze when only the hit radii do. Zero
   sum: each ship's collision damage is in `hit_damage` as dealt by the other (rewards, kill
@@ -239,9 +247,11 @@ other packages: `lean/contract.py`.
 
 ## Numbers
 
-- Compile baseline (2026-11-27 ~22:00, laptop 4070,
-  `docs/rewrite/sections/scoreboard/compile_baseline.json`): the tick's `advance` graph 3,194
-  traced operations.
+- Compile baseline (`docs/rewrite/sections/scoreboard/compile_baseline.json`, laptop 4070): the
+  tick's `advance` graph 3,306 traced operations; with the rules of 2026-11-28 (circle, armour,
+  sight egg) 3,261 (baseline not updated).
+- Tick (compiled static, E 4096, 4v4, fields and fog, laptop 4070, 2026-11-28): 0.735 ms with
+  the circle (the egg's was 0.738 ms), 0.569 ms with the deflector off.
 - Feature scales: the ship scalars' fixed scales, the same for every type, from scripted 4v4
   play with the training spawn (`.../scoreboard/feature_ranges.py`, 256 environments x 3,000
   ticks, 2026-11-23). Raw 1st / 99th percentiles in brackets.
@@ -258,19 +268,22 @@ other packages: `lean/contract.py`.
 
 ## Tests
 
-`lean/game/tests`: flight rules, damage (the nose cone with its weight at 1: 29 deg no damage,
-46 deg full, both sides), collisions (the 90-degree crossing at equal speeds 0.5 blame each and
+`lean/game/tests`: flight rules, damage (the aspect curve on the sine for both angle pairs, 0
+inside, a half at the sine's midpoint, 1 beyond and behind the beam, both sides; the nose
+armour through the step: 29 deg no damage, 46 deg full, both sides), collisions (the 90-degree crossing at equal speeds 0.5 blame each and
 closing sqrt 2 v, the T-bone, head-on at cruise a full shield each, one score per straight pass
 whatever its phase, one score for a fast pass with both ships turning, none while overlapping
 and again only after separating, full closeness when the cores would meet and a graze between,
 the credit to the other ship including a team-mate and zero sum, no contact for a wide, later
-or dead pass), fields, fog, ghost-only bullets (`test_ghost_bullets.py`: every ship writes a
+or dead pass), fields, fog (the card's egg reaches ahead, beside and behind; the egg against its polar
+outline from atan2 on random scenes; cores and team sharing; tracking), ghost-only bullets (`test_ghost_bullets.py`: every ship writes a
 bullet a tick, a dead ship's are ghosts; each bullet reports once, a miss on its last tick; a
 fresh deal's slots never label; a contacted bullet never damages or labels again and flies on
 to its 12th tick), the deflector (`test_deflector.py`: the hump, one turn per pass, the relative
-speed kept, dead centre straight and full damage, a bullet from inside the egg not turned,
-ghosts like real bullets, the turned path and hit-or-miss equal the design sketch's
-trace_through, the hit widths equal the sketch's, the hit model's round trip and no recompile),
+speed kept, dead centre straight and the deflector-off damage, a bullet from inside the circle
+not turned, ghosts like real bullets, the turned path and contact equal the design sketch's
+trace_through on its circle, the hit width equals the sketch's, the hit model's round trip and
+no recompile),
 the steady-flight table (`test_steady_table.py`), invariants (finite, inert padding, team
 swap), the clock and wipe, both spawn rules, the training spawn, the one-tick delay, the levels
 (Max the envelope's top line to 0.1% and above every fraction of it, Snap equal to Max above

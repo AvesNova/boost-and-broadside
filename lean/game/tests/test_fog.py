@@ -16,15 +16,20 @@ torch.set_num_threads(1)
 
 FOG = GameConfig(field_count=0)  # the scenes are placed by hand, with no fields unless given
 CPU = torch.device("cpu")
-# The scenes' distances are set from the game's vision and gun ranges (lean.game.tests.values).
-VISION = game_value("vision_range", FOG)
+# The scenes' distances are set from the game's sight egg and gun range (lean.game.tests.values):
+# VISION the longest reach (ahead, also the tracking circle's radius), SIDE and BEHIND the others.
+VISION = game_value("vision_ahead", FOG)
+SIDE = game_value("vision_side", FOG)
+BEHIND = game_value("vision_behind", FOG)
+TRACKING = game_value("tracking_range", FOG)
 GUN = game_value("gun_range", FOG)
 
 
-def duel(positions, headings=None, vision=None, fields=None, eccentricity=None):
+def duel(positions, headings=None, vision=None, fields=None, sight=None):
     """One environment, one ship per entry of positions [(x, y), ...], the first half team 0,
     the rest team 1, nobody seen yet, then one perception at these positions. fields: (1, 5, F)
-    as State.fields, or none; eccentricity: every ship's vision eccentricity, or the card's."""
+    as State.fields, or none; vision: a circle of that radius for every ship (`with_vision`);
+    sight: (ahead, side, behind) metres for every ship (`with_sight`); else the card's egg."""
     count = len(positions)
     sizes = torch.tensor([[count // 2, count - count // 2]])
     state = reset(FOG, 1, sizes, torch.Generator().manual_seed(0), CPU)
@@ -36,8 +41,8 @@ def duel(positions, headings=None, vision=None, fields=None, eccentricity=None):
     constants = state.constants
     if vision is not None:
         constants = with_vision(constants, vision)
-    if eccentricity is not None:
-        constants = with_eccentricity(constants, eccentricity)
+    if sight is not None:
+        constants = with_sight(constants, *sight)
     log_index, gradient_x, gradient_y = core.medium(state.fields, x, y)
     seen = torch.zeros_like(state.seen)
     seen[:, core.SEEN_ALIVE] = 1.0
@@ -56,15 +61,25 @@ def duel(positions, headings=None, vision=None, fields=None, eccentricity=None):
     return core.perceive(core.with_velocity(state), torch.zeros_like(state.exists))
 
 
-def with_vision(constants, vision):
-    """The constants with every ship's vision range set to `vision` metres."""
-    return dataclasses.replace(constants, uniform={**constants.uniform, "vision_range": vision})
-
-
-def with_eccentricity(constants, eccentricity):
-    """The constants with every ship's vision eccentricity set to `eccentricity`."""
-    uniform = {**constants.uniform, "vision_eccentricity": eccentricity}
+def with_sight(constants, ahead, side, behind):
+    """The constants with every ship's sight egg set to these reaches (metres), the inverses
+    and the tracking circle (the longest reach) with them, as core._per_type writes them."""
+    uniform = {
+        **constants.uniform,
+        "vision_ahead": ahead,
+        "vision_side": side,
+        "vision_behind": behind,
+        "inverse_vision_ahead": 1.0 / ahead,
+        "inverse_vision_side": 1.0 / side,
+        "inverse_vision_behind": 1.0 / behind,
+        "tracking_range": max(ahead, side, behind),
+    }
     return dataclasses.replace(constants, uniform=uniform)
+
+
+def with_vision(constants, vision):
+    """The constants with every ship's sight a circle of `vision` metres (all three reaches)."""
+    return with_sight(constants, vision, vision, vision)
 
 
 def idle(state, fire=None):
@@ -128,16 +143,15 @@ def test_fog_off_is_full_information_and_leaves_the_game_unchanged():
     assert compared > 100
 
 
-def test_sight_range_and_field_cores():
-    """Rule: "in sight" is v2's sight test: within the observer's vision range (the card's),
-    all round, blocked only by a field's core (core to band sees, core to outside does not,
-    a line through a core is blocked, both in one core see each other)."""
-    constants = reset(FOG, 1, torch.tensor([[1, 1]]), None, CPU).constants
-    vision = float(torch.as_tensor(constants["vision_range"]).flatten()[0])
-    assert abs(vision - card.VISION_RANGE * card.CARD["vision_range_scale"][0]) < 1e-3
-    near, far = vision - 1.0, vision + 1.0
-    assert core.sighted_by_enemy(duel([(0.0, 0.0), (near, 0.0)], headings=[math.pi, 0.0])).all()
-    assert not core.sighted_by_enemy(duel([(0.0, 0.0), (far, 0.0)])).any()
+def test_sight_reaches_are_the_cards_and_field_cores_block():
+    """Rule: "in sight" is v2's sight test: within the observer's sight egg (the card's reaches:
+    vision_ahead, vision_side, vision_behind; the tracking circle the longest), blocked only by
+    a field's core (core to band sees, core to outside does not, a line through a core is
+    blocked, both in one core see each other; tested on a circle of sight, so only the cores
+    decide)."""
+    for name, value in (("vision_ahead", VISION), ("vision_side", SIDE), ("vision_behind", BEHIND)):
+        assert abs(value - card.CARD[name][0]) < 1e-3, name
+    assert TRACKING == max(VISION, SIDE, BEHIND)
     # One field at the centre: radius 300, band 160, so core 220 and outer disc 380.
     field = torch.tensor([[[0.0], [0.0], [300.0], [160.0], [2.0 * card.LN_SQRT2]]])
     cases = [
@@ -150,68 +164,66 @@ def test_sight_range_and_field_cores():
         ([(250.0, 0.0), (-250.0, 0.0)], False),  # band to band across the core
     ]
     for positions, expected in cases:
-        seen = core.sighted_by_enemy(duel(positions, fields=field))
+        seen = core.sighted_by_enemy(duel(positions, fields=field, vision=VISION))
         assert bool(seen.all()) == expected and bool(seen.any()) == expected, positions
 
 
-def test_sight_ellipse_at_zero_eccentricity_is_the_circle():
-    """Rule: with vision eccentricity 0 the sight ellipse is exactly the old circle d^2 <= p^2
-    (p the card's vision range), on random scenes of 3v3 with random headings."""
+def test_sight_egg_is_its_polar_outline():
+    """Rule: the egg in the observer's frame, front half the ellipse of semi-axes (ahead, side),
+    rear half (behind, side): on random 3v3 scenes with random headings (and reaches unlike the
+    card's), a target is seen exactly when its distance is within the outline's polar reach
+    1 / sqrt((cos a / A)^2 + (sin a / side)^2) at its angle a off the observer's nose (A ahead
+    for cos a >= 0, else behind), from the angle by atan2: an independent form of the test."""
     generator = torch.Generator().manual_seed(5)
-    for _ in range(20):
-        positions = (torch.rand(6, 2, generator=generator) * 2.0 - 1.0) * 1.5 * VISION
-        headings = (torch.rand(6, generator=generator) * 2.0 * math.pi).tolist()
-        state = duel(positions.tolist(), headings=headings, eccentricity=0.0)
-        x, y = state.x[0], state.y[0]
-        squared = (x[:, None] - x[None]) ** 2 + (y[:, None] - y[None]) ** 2  # (target, observer)
-        enemy = state.team[0][:, None] != state.team[0][None]
-        expected = ((squared <= VISION * VISION) & enemy).any(-1)
-        assert torch.equal(core.sighted_by_enemy(state)[0], expected)
+    for sight in ((1500.0, 850.0, 850.0), (900.0, 1200.0, 400.0)):
+        for _ in range(20):
+            positions = (torch.rand(6, 2, generator=generator) * 2.0 - 1.0) * 1.2 * max(sight)
+            headings = (torch.rand(6, generator=generator) * 2.0 * math.pi).tolist()
+            state = duel(positions.tolist(), headings=headings, sight=sight)
+            x, y = state.x[0].double(), state.y[0].double()
+            dx, dy = x[:, None] - x[None], y[:, None] - y[None]  # (target, observer)
+            off = torch.atan2(dy, dx) - torch.tensor(headings, dtype=torch.float64)[None]
+            front = torch.where(torch.cos(off) >= 0.0, sight[0], sight[2])
+            reach = 1.0 / torch.sqrt(
+                (torch.cos(off) / front) ** 2 + (torch.sin(off) / sight[1]) ** 2
+            )
+            distance = torch.sqrt(dx * dx + dy * dy)
+            clear = (distance - reach).abs() > 1e-2  # not on the outline (float32 rounding)
+            enemy = state.team[0][:, None] != state.team[0][None]
+            expected = (distance <= reach) & enemy
+            pairs = core.sight_pairs(state)[0]
+            assert torch.equal(pairs[clear], expected[clear])
 
 
-def test_sight_ellipse_reach_ahead_beside_and_behind():
-    """Rule: the observer at one focus of an ellipse along its nose, |d| - e (d . nose) <= p:
-    reach p / (1 - e) dead ahead, p to the side, p / (1 + e) behind (p the card's vision
-    range), in any heading. The target faces away, so only the observer's nose matters."""
-    eccentricity = 0.5
-    reaches = {
-        0.0: VISION / (1.0 - eccentricity),
-        0.5 * math.pi: VISION,
-        -0.5 * math.pi: VISION,
-        math.pi: VISION / (1.0 + eccentricity),
-    }
+def test_sight_egg_reach_ahead_beside_and_behind():
+    """Rule: the card's egg reaches dead ahead, to either side and dead behind the observer, in
+    any heading. The target faces away, so only the observer's nose matters."""
+    reaches = {0.0: VISION, 0.5 * math.pi: SIDE, -0.5 * math.pi: SIDE, math.pi: BEHIND}
     for heading in (0.0, 1.0, -2.5):
         for bearing, reach in reaches.items():
             for distance, expected in ((reach - 1.0, True), (reach + 1.0, False)):
                 angle = heading + bearing
                 target = (distance * math.cos(angle), distance * math.sin(angle))
-                state = duel(
-                    [(0.0, 0.0), target], headings=[heading, angle], eccentricity=eccentricity
-                )
+                state = duel([(0.0, 0.0), target], headings=[heading, angle])
                 assert bool(core.sighted_by_enemy(state)[0, 1]) == expected, (heading, bearing)
 
 
-def test_sight_ellipse_keeps_field_cores_and_team_sharing():
-    """Rules: the ellipse changes only the reach: a field's core still blocks a line well
-    inside it, and a team sees what any of its ships sees (a wingman facing away does not see
-    an enemy that its leader, nosed at it, does)."""
-    eccentricity = 0.5
-    ahead = 0.9 * VISION / (1.0 - eccentricity)  # beyond the circle, inside the ellipse ahead
-    assert ahead > VISION
-    open_line = duel([(0.0, 0.0), (ahead, 0.0)], headings=[0.0, 0.0], eccentricity=eccentricity)
+def test_sight_egg_keeps_field_cores_and_team_sharing():
+    """Rules: the egg changes only the reach: a field's core still blocks a line well inside
+    it, and a team sees what any of its ships sees (a wingman facing away does not see an enemy
+    that its leader, nosed at it, does)."""
+    ahead = 0.9 * VISION  # beyond the side and rear reaches, inside the egg ahead
+    assert ahead > max(SIDE, BEHIND)
+    open_line = duel([(0.0, 0.0), (ahead, 0.0)], headings=[0.0, 0.0])
     assert bool(core.sighted_by_enemy(open_line)[0, 1])
     field = torch.tensor([[[0.5 * ahead], [0.0], [300.0], [160.0], [2.0 * card.LN_SQRT2]]])
-    blocked = duel(
-        [(0.0, 0.0), (ahead, 0.0)], headings=[0.0, 0.0], fields=field, eccentricity=eccentricity
-    )
+    blocked = duel([(0.0, 0.0), (ahead, 0.0)], headings=[0.0, 0.0], fields=field)
     assert not bool(core.sighted_by_enemy(blocked)[0, 1])
     # Team 0: the leader at the origin nosed at the enemy, the wingman beside it facing away.
     # Team 1: the enemy ahead, and a far ship nobody sees.
     positions = [(0.0, 0.0), (0.0, 100.0), (ahead, 0.0), (-3.0 * VISION, 0.0)]
     for leader_heading, seen in ((0.0, True), (math.pi, False)):
-        state = duel(
-            positions, headings=[leader_heading, math.pi, 0.0, 0.0], eccentricity=eccentricity
-        )
+        state = duel(positions, headings=[leader_heading, math.pi, 0.0, 0.0])
         assert core.sighted_by_enemy(state)[0, 2:].tolist() == [seen, False]
 
 
@@ -413,19 +425,16 @@ def test_scripted_opponent_does_not_cheat():
 
 # --------------------------------------------------------------------------- the tracking circle
 
-TRACK_ECCENTRICITY = 0.5  # an ellipse whose circle differs from it (the card's default is 0)
 UNTRACKED = GameConfig(field_count=0, fog_tracking=False)
 
 
 def tracking_scene():
-    """Team 0's ship at the origin nosed east; team 1's ship ahead, inside the sight ellipse
-    (seen at once), flying away north-east. Returns the state and the side spot: due north of
-    the observer, beyond the ellipse's side reach p but inside the tracking circle p / (1 - e)."""
-    circle = VISION / (1.0 - TRACK_ECCENTRICITY)
-    ahead = 0.9 * circle
-    state = duel([(0.0, 0.0), (ahead, 0.0)], headings=[0.0, 0.0], eccentricity=TRACK_ECCENTRICITY)
+    """Team 0's ship at the origin nosed east; team 1's ship ahead, inside the sight egg (seen
+    at once), flying away north-east. Returns the state and the side spot: due north of the
+    observer, beyond the egg's side reach but inside the tracking circle (the longest reach)."""
+    state = duel([(0.0, 0.0), (0.9 * VISION, 0.0)], headings=[0.0, 0.0])
     assert state.ticks_since_seen[0, 1] == 0 and state.seen[0, core.SEEN_KNOWN, 1] == 1.0
-    return state, 0.5 * (VISION + circle)
+    return state, 0.5 * (SIDE + TRACKING)
 
 
 def move_target(state, x, y):
@@ -440,33 +449,32 @@ def move_target(state, x, y):
 
 def test_tracking_holds_a_seen_ship_inside_the_circle_and_not_a_never_seen_one():
     """Rules: a ship visible on the tick before stays visible while an observer has it inside the
-    tracking circle (the ellipse's forward reach p / (1 - e) all round), outside the ellipse;
-    the off switch gives the ellipse alone; a ship never seen is not tracked there."""
+    tracking circle (the egg's longest reach all round), outside the egg; the off switch gives
+    the egg alone; a ship never seen is not tracked there."""
     state, side = tracking_scene()
-    assert side > VISION  # outside the ellipse beside the observer
+    assert side > SIDE  # outside the egg beside the observer
     moved = move_target(state, 0.0, side)
-    assert not bool(core.sighted_by_enemy(moved)[0, 1])  # the ellipse alone does not see it
+    assert not bool(core.sighted_by_enemy(moved)[0, 1])  # the egg alone does not see it
     for config, held in ((FOG, True), (UNTRACKED, False)):
         after = moved
         for tick in range(1, 4):
             after, _ = step(config, after, idle(after), no_noise(after))
             assert bool(after.ticks_since_seen[0, 1] == 0) == held, (config.fog_tracking, tick)
     # Never seen: the same spot in a fresh scene (nothing known) is hidden.
-    fresh = duel([(0.0, 0.0), (0.0, side)], headings=[0.0, 0.0], eccentricity=TRACK_ECCENTRICITY)
+    fresh = duel([(0.0, 0.0), (0.0, side)], headings=[0.0, 0.0])
     assert fresh.seen[0, core.SEEN_KNOWN, 1] == 0.0 and fresh.ticks_since_seen[0, 1] == 1
     fresh, _ = step(FOG, fresh, idle(fresh), no_noise(fresh))
     assert fresh.seen[0, core.SEEN_KNOWN, 1] == 0.0 and fresh.ticks_since_seen[0, 1] == 2
     # Beyond the circle: lost even while tracked.
-    circle = VISION / (1.0 - TRACK_ECCENTRICITY)
-    beyond = move_target(state, 0.0, circle + 50.0)
+    beyond = move_target(state, 0.0, TRACKING + 50.0)
     beyond, _ = step(FOG, beyond, idle(beyond), no_noise(beyond))
     assert beyond.ticks_since_seen[0, 1] == 1
 
 
-def test_a_field_core_breaks_tracking_and_then_the_ellipse_is_needed_again():
+def test_a_field_core_breaks_tracking_and_then_the_egg_is_needed_again():
     """Rules: tracking needs a clear line (a field's core blocks it as it blocks sight); once
-    the ship is hidden it is not tracked, so inside the circle but outside the ellipse it stays
-    hidden after the core is gone, until it enters the ellipse again."""
+    the ship is hidden it is not tracked, so inside the circle but outside the egg it stays
+    hidden after the core is gone, until it enters the egg again."""
     state, side = tracking_scene()
     state = move_target(state, 0.0, side)
     state, _ = step(FOG, state, idle(state), no_noise(state))
@@ -480,8 +488,8 @@ def test_a_field_core_breaks_tracking_and_then_the_ellipse_is_needed_again():
     for tick in range(2, 5):
         clear, _ = step(FOG, clear, idle(clear), no_noise(clear))
         assert clear.ticks_since_seen[0, 1] == tick  # inside the circle, but no longer tracked
-    # Into the ellipse ahead: seen again, then tracked again beside.
-    ahead = move_target(clear, 0.9 * VISION / (1.0 - TRACK_ECCENTRICITY), 0.0)
+    # Into the egg ahead: seen again, then tracked again beside.
+    ahead = move_target(clear, 0.9 * VISION, 0.0)
     ahead, _ = step(FOG, ahead, idle(ahead), no_noise(ahead))
     assert ahead.ticks_since_seen[0, 1] == 0
     beside = move_target(ahead, 0.0, side)
@@ -491,14 +499,11 @@ def test_a_field_core_breaks_tracking_and_then_the_ellipse_is_needed_again():
 
 def test_a_shot_reveal_starts_tracking():
     """Rule: every way of becoming visible counts: a ship revealed by its shot, outside the
-    observer's ellipse but inside its circle, is tracked on the next tick (with tracking off it
-    is hidden again)."""
-    circle = VISION / (1.0 - TRACK_ECCENTRICITY)
-    side = 0.5 * (VISION + circle)
+    observer's egg but inside its circle, is tracked on the next tick (with tracking off it is
+    hidden again)."""
+    side = 0.5 * (SIDE + TRACKING)
     for config, held in ((FOG, True), (UNTRACKED, False)):
-        state = duel(
-            [(0.0, 0.0), (0.0, side)], headings=[0.0, 0.0], eccentricity=TRACK_ECCENTRICITY
-        )
+        state = duel([(0.0, 0.0), (0.0, side)], headings=[0.0, 0.0])
         assert state.seen[0, core.SEEN_KNOWN, 1] == 0.0  # hidden, never seen
         state = state.replace(pending=idle(state, torch.tensor([[False, True]])))
         state, _ = step(config, state, idle(state), no_noise(state))
@@ -508,13 +513,14 @@ def test_a_shot_reveal_starts_tracking():
         assert bool(state.ticks_since_seen[0, 1] == 0) == held, config.fog_tracking
 
 
-def random_game_visibility(config, eccentricity, ticks=60):
+def random_game_visibility(config, circle, ticks=60):
     """ticks_since_seen (T, E, N) over a game of random actions, 3v3 with fields, every ship's
-    vision eccentricity set to `eccentricity`."""
+    sight a circle of radius VISION (`circle`) or the card's egg."""
     sizes = torch.tensor([[3, 3]] * 8)
     state = reset(config, 8, sizes, torch.Generator().manual_seed(11), CPU)
+    constants = with_vision(state.constants, VISION) if circle else state.constants
     state = core.perceive(
-        dataclasses.replace(state, constants=with_eccentricity(state.constants, eccentricity)),
+        dataclasses.replace(state, constants=constants),
         torch.zeros_like(state.exists),
         config.fog_tracking,
     )
@@ -533,49 +539,46 @@ def random_game_visibility(config, eccentricity, ticks=60):
     return torch.stack(history)
 
 
-def test_tracking_at_zero_eccentricity_changes_nothing():
-    """Rule: at e = 0 the tracking circle is the ellipse: the sight pairs with every target
-    tracked equal the untracked ones on random scenes, and a game's visibility is the same with
-    tracking on and off. The comparison can fail: at e = 0.5 the two differ."""
+def test_tracking_with_a_circle_of_sight_changes_nothing():
+    """Rule: with equal reaches the egg is a circle and the tracking circle is it: the sight
+    pairs with every target tracked equal the untracked ones on random scenes, and a game's
+    visibility is the same with tracking on and off. The comparison can fail: with the card's
+    egg the two differ."""
     generator = torch.Generator().manual_seed(7)
     for _ in range(20):
         positions = (torch.rand(6, 2, generator=generator) * 2.0 - 1.0) * 1.5 * VISION
         headings = (torch.rand(6, generator=generator) * 2.0 * math.pi).tolist()
-        state = duel(positions.tolist(), headings=headings, eccentricity=0.0)
+        state = duel(positions.tolist(), headings=headings, vision=VISION)
         everyone = torch.ones_like(state.exists)
         assert torch.equal(core.sight_pairs(state, everyone), core.sight_pairs(state))
     arena = dict(arena_radius=3.0 * VISION, spawn="mixed")
     on, off = GameConfig(**arena), GameConfig(**arena, fog_tracking=False)
-    assert torch.equal(random_game_visibility(on, 0.0), random_game_visibility(off, 0.0))
-    assert not torch.equal(
-        random_game_visibility(on, TRACK_ECCENTRICITY),
-        random_game_visibility(off, TRACK_ECCENTRICITY),
-    )
+    assert torch.equal(random_game_visibility(on, True), random_game_visibility(off, True))
+    assert not torch.equal(random_game_visibility(on, False), random_game_visibility(off, False))
 
 
-def test_tracking_off_is_the_ellipse_and_tracked_means_visible_the_tick_before():
+def test_tracking_off_is_the_egg_and_tracked_means_visible_the_tick_before():
     """Rules: a ship is tracked exactly when it was visible on the tick before (ticks since seen
     0 and known): every ship so marked is held by the circle; the deal's rows (nothing known,
-    ticks since seen 0) are not tracked, so the deal sees by the ellipse alone; with tracking off
-    perception is the ellipse whatever was seen before."""
+    ticks since seen 0) are not tracked, so the deal sees by the egg alone; with tracking off
+    perception is the egg whatever was seen before."""
     config = GameConfig(spawn="mixed")
     state = reset(config, 8, torch.tensor([[4, 4]] * 8), torch.Generator().manual_seed(2), CPU)
-    state = state.replace(constants=with_eccentricity(state.constants, TRACK_ECCENTRICITY))
     nothing = torch.zeros_like(state.exists)
-    ellipse = core.sighted_by_enemy(state) & state.exists
+    egg = core.sighted_by_enemy(state) & state.exists
     circle = core.sighted_by_enemy(state, torch.ones_like(state.exists)) & state.exists
-    assert not torch.equal(ellipse, circle)  # the scene tells the two apart
+    assert not torch.equal(egg, circle)  # the scene tells the two apart
     # As the deal leaves it before its perception: nothing known, ticks since seen 0.
     seen = torch.zeros_like(state.seen)
     seen[:, core.SEEN_ALIVE] = state.exists.to(torch.float32)
     since = torch.zeros_like(state.ticks_since_seen)
     at_deal = state.replace(seen=seen, ticks_since_seen=since)
     assert not core.tracked_by_enemy(at_deal).any()
-    assert torch.equal(core.perceive(at_deal, nothing).ticks_since_seen == 0, ellipse)
+    assert torch.equal(core.perceive(at_deal, nothing).ticks_since_seen == 0, egg)
     # Everyone seen on the tick before.
     seen[:, core.SEEN_KNOWN] = 1.0
     everyone = state.replace(seen=seen, ticks_since_seen=since)
     assert core.tracked_by_enemy(everyone)[state.exists].all()
     assert torch.equal(core.perceive(everyone, nothing).ticks_since_seen == 0, circle)
     off = core.perceive(everyone, nothing, tracking=False)
-    assert torch.equal(off.ticks_since_seen == 0, ellipse)
+    assert torch.equal(off.ticks_since_seen == 0, egg)

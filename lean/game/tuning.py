@@ -563,12 +563,12 @@ DESIGN_INPUTS = (
         low=0.2,
         high=4.0,
     ),
-    # The nose cone (author 2026-11-25): no bullet damage inside the inner angle off the
-    # target's nose, full beyond the outer, a smootherstep in the cosine between; the same zone
-    # sets a collision's blame (core.aspect_factor).
+    # The nose cone's armour (author 2026-11-25, on again 2026-11-28): no bullet damage when the
+    # bullet arrives within the inner angle of the target's nose, full beyond the outer, a
+    # smootherstep in the sine between (core.aspect_factor).
     scaled(
         "nose_inner_angle",
-        "nose cone: no damage inside",
+        "nose armour: no bullet damage inside",
         H,
         unit="rad",
         low=0.0,
@@ -577,33 +577,38 @@ DESIGN_INPUTS = (
     ),
     scaled(
         "nose_outer_angle",
-        "nose cone: full damage beyond",
+        "nose armour: full bullet damage beyond",
         H,
         unit="rad",
         low=0.05,
         high=1.57,
         relative=False,
     ),
+    # A collision's blame (author 2026-11-28): 1 - aspect / 2 on the same curve with its own
+    # angles (full blame inside the inner angle, half beyond the outer).
     scaled(
-        "vision_range",
-        "vision range",
+        "blame_inner_angle",
+        "collision blame: full inside",
         H,
-        "vision_range_scale",
-        lambda: 1.0 / card.VISION_RANGE,
-        kind="length",
-        low=0.3,
-        high=3.0,
-    ),
-    # The sight ellipse (author 2026-11-25; core.sighted_by_enemy): the vision range is the side
-    # reach; ahead it is vision range / (1 - e), behind vision range / (1 + e). 0 is the circle.
-    scaled(
-        "vision_eccentricity",
-        "vision eccentricity (0 circle; reach ahead p/(1-e), behind p/(1+e))",
-        H,
+        unit="rad",
         low=0.0,
-        high=0.9,
+        high=1.4,
         relative=False,
     ),
+    scaled(
+        "blame_outer_angle",
+        "collision blame: half beyond",
+        H,
+        unit="rad",
+        low=0.05,
+        high=1.57,
+        relative=False,
+    ),
+    # Sight (author 2026-11-28; core.sight_pairs): an egg in the observer's frame, the front half
+    # an ellipse of semi-axes (ahead, side), the rear half one of (behind, side).
+    scaled("vision_ahead", "vision ahead", H, kind="length", low=0.3, high=3.0),
+    scaled("vision_side", "vision to the side", H, kind="length", low=0.3, high=3.0),
+    scaled("vision_behind", "vision behind", H, kind="length", low=0.3, high=3.0),
 )
 del P, A, T, N, G, H
 
@@ -768,8 +773,11 @@ P51D_VALUES = dict(
     shield_recharge_delay=3.0,
     nose_inner_angle=math.radians(30.0),
     nose_outer_angle=math.radians(45.0),
-    vision_range=1500.0,  # author 2026-11-25: two-circle fights reach ~1,260 m apart
-    vision_eccentricity=0.0,  # the circle until the author has tested the ellipse (2026-11-25)
+    blame_inner_angle=0.0,  # author 2026-11-28: full blame dead-on, half from 45 deg
+    blame_outer_angle=math.radians(45.0),
+    vision_ahead=1500.0,  # author 2026-11-28: the sight egg
+    vision_side=850.0,
+    vision_behind=850.0,
 )
 # The P-51D airframe with a 2,200 hp engine (author 2026-11-24 night: late-war and post-war
 # engines, P-51H about 2,200 hp): the documents fit the airframe to the flight test at 1,630
@@ -1863,8 +1871,11 @@ CARD_TIME_POWERS = dict(
     shield_recharge_delay_scale=0,
     nose_inner_angle=0,
     nose_outer_angle=0,
-    vision_range_scale=0,
-    vision_eccentricity=0,
+    blame_inner_angle=0,
+    blame_outer_angle=0,
+    vision_ahead=0,
+    vision_side=0,
+    vision_behind=0,
     critical_speed=-1,
     drag_rise_exponent=0,
     separation_drag=0,

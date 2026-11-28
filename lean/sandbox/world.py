@@ -235,8 +235,8 @@ class HitRange(World):
     tick both poses are
     overwritten (before and after the step, so bullets leave the pinned muzzle and the frame
     shows the pinned poses); everything else is the real step: the guns, bullet flight, the hit
-    test, the egg, damage. The target is refilled when it dies. Statistics over a rolling window
-    of ticks: damage, real shots fired and hits."""
+    test, the deflector circle, damage. The target is refilled when it dies. Statistics over a
+    rolling window of ticks: damage, real shots fired and hits."""
 
     WINDOW_SECONDS = 10.0
     SIGMAS = 2.0  # the spreads are reported as 2 sigma (about 95 %)
@@ -324,9 +324,9 @@ class HitRange(World):
         ticks; a contact makes it CONTACTED and it flies on): its path (tick-end points), `contact`
         the index of the point where it first touched the target (None while it has not), a: the
         signed miss distance of its straight launch line from the target's centre, b: the same
-        for the post-turn line (`_after_egg`). The game's shot_outcome (1 hit an enemy, 0 missed
-        at the end of the life) reports it once; that is when its numbers go to `spreads` (only
-        real bullets: a ghost reports too). At the end of its life the flight is moved to
+        for the post-turn line (`_after_deflector`). The game's shot_outcome (1 hit an enemy, 0
+        missed at the end of the life) reports it once; that is when its numbers go to `spreads`
+        (only real bullets: a ghost reports too). At the end of its life the flight is moved to
         `finished`: [points, contact index]. `finished_hits` lists this tick's real first hits."""
         s = self.state
         life = s.bullet_x.shape[2]
@@ -342,7 +342,7 @@ class HitRange(World):
                 contact=None,
                 reported=False,
                 a=a,
-                b=self._after_egg(sx, sy, dx, dy, a),
+                b=self._after_deflector(sx, sy, dx, dy, a),
                 range=math.hypot(sx, sy),
             )
         for k, path in list(self.paths.items()):
@@ -363,27 +363,22 @@ class HitRange(World):
         while self.kill_log and self.kill_log[0][0] <= horizon:
             self.kill_log.popleft()
 
-    def _after_egg(self, x: float, y: float, dx: float, dy: float, straight: float) -> float:
+    def _after_deflector(self, x: float, y: float, dx: float, dy: float, straight: float) -> float:
         """The signed miss distance b' of the bullet's post-turn straight line from the target's
-        centre (same sign convention as the straight line's `straight`): the game's own egg on
-        the bullet's straight path from (x, y) along (dx, dy): `core.egg_entry` finds the entry,
-        `core.egg_turn` the turn (cos, sin) of the direction there; the line through the entry
-        point along the turned direction, extended. A path that never enters the egg keeps its
-        straight miss."""
+        centre (same sign convention as the straight line's `straight`): the game's own
+        deflector circle on the bullet's straight path from (x, y) along (dx, dy):
+        `core.circle_entry` finds the entry, `core.circle_turn` the turn (cos, sin) of the
+        direction there; the line through the entry point along the turned direction, extended.
+        A path that never enters the circle keeps its straight miss."""
         t = lambda v: torch.tensor(float(v), dtype=torch.float64)  # noqa: E731
-        far = 2.0 * (math.hypot(x, y) + self.constant("egg_front", 1)) + 100.0
+        far = 2.0 * (math.hypot(x, y) + self.constant("deflector_radius", 1)) + 100.0
         mx, my = far * dx, far * dy
-        heading = self.target_heading
-        inverse_half = self.constant("inverse_egg_half_width", 1)
-        entry = core.egg_entry(
-            t(x), t(y), t(mx), t(my), t(math.cos(heading)), t(math.sin(heading)),
-            self.constant("inverse_egg_front", 1), self.constant("inverse_egg_rear", 1),
-            inverse_half,
-        )  # fmt: skip
+        inverse_radius = self.constant("inverse_deflector_radius", 1)
+        entry = core.circle_entry(t(x), t(y), t(mx), t(my), inverse_radius)
         if not bool(entry < torch.inf):
             return straight
-        turn = core.egg_turn(
-            t(x), t(y), t(mx), t(my), entry, inverse_half, t(self.constant("deflector_turn", 1))
+        turn = core.circle_turn(
+            t(x), t(y), t(mx), t(my), entry, inverse_radius, t(self.constant("deflector_turn", 1))
         )
         cos, sin = float(turn.cos), float(turn.sin)
         px, py = x + float(entry) * mx, y + float(entry) * my
@@ -399,11 +394,10 @@ class HitRange(World):
     def spread_readout(self) -> dict:
         """2 sigma (SIGMAS) of the signed miss distance at the target over the window, in metres
         and in milliradians (each miss over its own range at the shot): `straight` the line before
-        any egg turn, `turned` the miss b' of the post-turn line (`_after_egg`). `width`
-        the target's apparent half-width from the shooter: half the game's hit width
-        (core.hit_width over the
-        constants' hit_widths row, the agent's own) at the cosine of the bullets' path (due
-        east) off the target's nose; `radius` the hit radius with no egg."""
+        any deflector turn, `turned` the miss b' of the post-turn line (`_after_deflector`).
+        `width` the target's apparent half-width from the shooter: half the game's hit width
+        (the constants' hit_width row, the agent's own; the same from every aspect); `radius`
+        the hit radius with no deflector."""
         out = {}
         n = self.SIGMAS
         for name, index in (("straight", 1), ("turned", 2)):
@@ -411,9 +405,7 @@ class HitRange(World):
             sigma = self._sigma([m for m, _ in rows])
             angle = self._sigma([m / max(d, 1.0) for m, d in rows])
             out[name] = None if sigma is None else dict(metres=n * sigma, mrad=n * angle * 1000.0)
-        widths = torch.as_tensor(self.state.constants["hit_widths"])[0, :, 1]
-        hit_cos = torch.tensor(-math.cos(self.target_heading))
-        half = 0.5 * float(core.hit_width(widths, hit_cos))
+        half = 0.5 * self.constant("hit_width", 1)
         distance = max(math.hypot(*self.shooter_xy), 1.0)
         out["width"] = dict(metres=half, mrad=1000.0 * half / distance)
         radius = self.constant("hit_radius", 1)
@@ -448,7 +440,8 @@ class HitRange(World):
             spreads=self.spread_readout(),
         )
 
-    def egg(self) -> dict:
-        """The target's egg and circle rows as the game holds them (core.HIT_MODEL names)."""
-        names = ("egg_front", "egg_rear", "egg_half_width", "hit_radius", "core_radius")
+    def deflector(self) -> dict:
+        """The target's deflector circle and hit circles as the game holds them (core.HIT_MODEL
+        names)."""
+        names = ("deflector_radius", "hit_radius", "core_radius")
         return {n: self.constant(n, 1) for n in names}

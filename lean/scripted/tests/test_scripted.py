@@ -404,18 +404,16 @@ def test_turns_toward_an_enemy_on_its_left():
 
 
 def test_fires_at_a_tail_in_range_and_never_inside_his_nose_cone():
-    """Dead astern in range, nose on: it fires. Nose to nose: with the nose cone's damage rule
-    on it holds fire, even at an empty shield (inside the nose cone a hit does nothing; author
-    2026-11-25); with the rule off (the default since 2026-11-27) it fires there too."""
+    """Dead astern in range, nose on: it fires. Nose to nose: with the nose armour's rule on
+    (the default again since 2026-11-28) it holds fire, even at an empty shield (inside the
+    nose cone a hit does nothing; author 2026-11-25); with the rule off it fires there too."""
     distance = 0.5 * card_values()["gun_range"]
     astern = placed(ship(), ship(x=distance))
     assert float(choice_of(astern).fire[0, 0]) > 0.5
     nose_to_nose = placed(ship(), ship(x=distance, heading=math.pi), shields=[100.0, 0.0])
-    assert float(choice_of(nose_to_nose).fire[0, 0]) > 0.5
-    cone = nose_to_nose.replace(
-        constants=core.with_hit_model(nose_to_nose.constants, nose_cone=1.0)
-    )
-    assert float(choice_of(cone).fire[0, 0]) == 0.0
+    assert float(choice_of(nose_to_nose).fire[0, 0]) == 0.0
+    off = nose_to_nose.replace(constants=core.with_hit_model(nose_to_nose.constants, nose_cone=0.0))
+    assert float(choice_of(off).fire[0, 0]) > 0.5
 
 
 def test_the_trigger_weighs_the_hit_chance():

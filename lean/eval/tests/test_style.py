@@ -237,11 +237,12 @@ def target_ahead(target_heading):
 
 
 @pytest.mark.parametrize(
-    "heading, tail", [(0.0, 1.0), (math.pi, 0.0)], ids=["from behind", "from the front"]
+    "heading, tail", [(0.0, 1.0), (0.5 * math.pi, 0.0)], ids=["from behind", "from the beam"]
 )
 def test_a_real_bullet_hit_is_a_bullet_hit_and_a_tail_hit_only_from_behind(heading, tail):
-    """The target flying away from the shooter (the shooter in its rear cone) or facing it (the
-    nose cone is off by default: the bullet still does its damage)."""
+    """The target flying away from the shooter (the shooter in its rear cone) or across its
+    path (beside its nose: beyond the nose armour, the bullet does its damage, not a tail
+    hit)."""
     out, rows = counters_after(target_ahead(heading))
     assert float(out.bullet_damage[0, 0, 1]) > 0.0
     assert float(out.collision_damage.abs().sum()) == 0.0
@@ -250,6 +251,15 @@ def test_a_real_bullet_hit_is_a_bullet_hit_and_a_tail_hit_only_from_behind(headi
     assert (got["hits"], got["bullet_hits"], got["collision_hits"]) == (1.0, 1.0, 0.0)
     assert got["tail_hits"] == tail
     assert float(rows[0, 1, COLUMN["bullet_hits"]]) == 0.0  # the target hit nothing
+
+
+def test_a_hit_on_the_nose_armour_is_no_hit():
+    """The target facing the shooter: the bullet lands inside the nose armour (on by default
+    since 2026-11-28), does no damage and is not counted as a hit."""
+    out, rows = counters_after(target_ahead(math.pi))
+    assert float(out.bullet_damage[0, 0, 1]) == 0.0
+    got = {name: float(rows[0, 0, COLUMN[name]]) for name in style.SUMS}
+    assert (got["hits"], got["bullet_hits"], got["tail_hits"]) == (0.0, 0.0, 0.0)
 
 
 def test_the_rear_cone_edge_is_the_named_angle():

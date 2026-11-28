@@ -4,12 +4,14 @@ bullet, GHOST (no damage; labels the hit head), REAL or CONTACTED (it touched a 
 contact, damage or label; it flies on). Each bullet reports its outcome once: at its first
 contact, or a miss on its last tick."""
 
+import math
+
 import pytest
 import torch
 
 from lean.contract import BULLET_SLOTS, CONTACTED, GHOST, POWERS, REAL, STICKS
 from lean.game import core
-from lean.game.tests.test_deflector import EGG, OFF, SLOT, crossing, run
+from lean.game.tests.test_deflector import CIRCLE, OFF, SLOT, crossing, run
 
 torch.set_num_threads(1)
 DEVICE = torch.device("cpu")
@@ -104,9 +106,10 @@ def test_start_of_episode_slots_produce_no_labels():
 
 
 def _hitting_bullet(config, state_value):
-    """A slow bullet of the shooter at the nearly still target's centre: it is within the hit
-    radius on every tick of its life. Fired on tick SLOT; the state's tick is SLOT + 1."""
-    state = crossing(config, [0.0], [0.0], start_x=-2.0, target_speed=1.0)
+    """A slow bullet of the shooter at the nearly still target's centre, from astern (beyond the
+    nose armour): it is within the hit radius on every tick of its life. Fired on tick SLOT; the
+    state's tick is SLOT + 1."""
+    state = crossing(config, [0.0], [math.pi], start_x=-2.0, target_speed=1.0)
     bullets = state.bullets.clone()
     bullets[:, core.BULLET_SPEED, 0, SLOT] = 1.0
     bullet_state = state.bullet_state.clone()
@@ -114,7 +117,7 @@ def _hitting_bullet(config, state_value):
     return state.replace(bullets=bullets, bullet_state=bullet_state)
 
 
-@pytest.mark.parametrize("config", [OFF, EGG], ids=["off", "egg"])
+@pytest.mark.parametrize("config", [OFF, CIRCLE], ids=["off", "circle"])
 def test_a_contacted_bullet_never_damages_or_labels_again_and_flies_on(config):
     """A real bullet inside the target's hit radius on every tick hits once (label 1, damage,
     state CONTACTED), then never damages or labels again and flies on to its K-th tick with its

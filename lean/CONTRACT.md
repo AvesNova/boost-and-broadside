@@ -40,7 +40,12 @@ odd right and even left. Power: 0 coast, 1 dive, 2 climb. Fire: 0 or 1.
 `constants.lift`). A value equal for the whole lineup is a Python number; one that differs by
 ship type is a row of the card's table `(C, T)` (one column per ship type), read through each
 slot's type (`Constants.ship_type`, the state's `type`): `(E, N)`, an action table `(E, width,
-N)`. The table is shared, never copied per slot. `lean.game.core.ship_constants` builds it.
+N)`. The table is shared, never copied per slot. `lean.game.core.ship_constants` builds it. Rule
+constants other packages read by name (2026-11-28): `hit_width` (one per ship: the deflector
+circle's band of hitting aim offsets, the same from every aspect), the aspect curve's
+`nose_inner_sin` / `inverse_nose_width` (bullet armour) and `blame_inner_sin` /
+`inverse_blame_width` (collision blame) for `core.aspect_factor(hit_cos, hit_sin, ...)`, and
+the sight egg's `vision_ahead` / `vision_side` / `vision_behind` with `tracking_range`.
 
 **`State`**: the whole game state, packed by block so per-field work is one operation per block.
 Every quantity named in the `*_COLUMNS` tuples reads by name as a view, `state.x` being `(E, N)`

@@ -10,14 +10,12 @@ import torch
 import triton
 import triton.language as tl
 
-from lean.game.core import HIT_WIDTH_POINTS
-
 # On: the kernel runs on CUDA; off: the plain twin everywhere (read at trace time).
 USE_KERNEL = True
 # Per-ship constants the pair stage reads, in this order (columns of `constants`).
 CONSTANTS = (
     "hit_radius",
-    "nose_inner_cos",
+    "nose_inner_sin",
     "inverse_nose_width",
     "inverse_max_energy",
     "gun_range",
@@ -29,10 +27,8 @@ CONSTANTS = (
     "inverse_collision_speed",
     "corner_speed",
     "nose_cone",
+    "hit_width",
 )
-# After CONSTANTS in each ship's row: the game's hit widths by aspect (core.hit_widths, the
-# deflector), WIDTH_POINTS of them, read with core.hit_width's interpolation.
-WIDTH_POINTS = tl.constexpr(HIT_WIDTH_POINTS)
 # The path fields per candidate and point, in this order (axis -2 of `paths`).
 FIELDS = (
     "x",
@@ -71,8 +67,6 @@ PARAMETERS = (
 )
 # The column where the time weights start in `parameters`.
 TIMES = tl.constexpr(len(PARAMETERS))
-# The column where the hit widths start in `constants`.
-WIDTHS_AT = tl.constexpr(len(CONSTANTS))
 TINY = 1e-6
 # My candidates per pass of a program (his all at once): a tile of BLOCK_A x 32.
 BLOCK_A = 4
@@ -93,7 +87,7 @@ def _gun(
     bullet_y,
     target_nose_x,
     target_nose_y,
-    target_widths,
+    target_half_width,
     target_inner,
     target_width,
     target_cone,
@@ -107,10 +101,10 @@ def _gun(
     blur_time,
     half_size,
 ):
-    """`opponent.gun_solution`: aim at the lead point within half the target's hit width at the
-    bullet's aspect (core.hit_width on his widths row, `target_widths` a pointer), range band,
-    kinetic worth, the nose cone's rule weighted by `target_cone` (the same arithmetic, with
-    reciprocals for divisions)."""
+    """`opponent.gun_solution`: aim at the lead point within half the target's hit width
+    (`target_half_width`, core.hit_widths: the same from every aspect), range band, kinetic
+    worth, the nose armour's rule weighted by `target_cone` (core.aspect_factor on the sine: the
+    same arithmetic, with reciprocals for divisions)."""
     reach = tl.minimum(distance, lead_reach)
     flight = (tl.exp(drag * reach) - 1.0) * index * inverse_drag_launch
     lead_x = rel_x + velocity_x * flight
@@ -118,22 +112,15 @@ def _gun(
     inverse_lead = tl.rsqrt(lead_x * lead_x + lead_y * lead_y + 1e-6)
     off = 1.0 - (nose_x * lead_x + nose_y * lead_y) * inverse_lead
     hit_cos = -(bullet_x * target_nose_x + bullet_y * target_nose_y)
-    position = tl.minimum(
-        tl.maximum((1.0 - hit_cos) * (0.5 * (WIDTH_POINTS - 1)), 0.0), WIDTH_POINTS - 1.0
-    )
-    low = tl.minimum(tl.floor(position), WIDTH_POINTS - 2.0)
-    fraction = position - low
-    low_index = low.to(tl.int32)
-    below = tl.load(target_widths + low_index)
-    above = tl.load(target_widths + low_index + 1)
-    half_width = 0.5 * (below + (above - below) * fraction)
-    tolerance = tl.maximum(half_width * inverse_distance + blur_time, half_size)
+    hit_sin = tl.abs(bullet_x * target_nose_y - bullet_y * target_nose_x)
+    tolerance = tl.maximum(target_half_width * inverse_distance + blur_time, half_size)
     inverse_tolerance = 1.0 / tolerance
     aligned = tl.exp(-off * inverse_tolerance * inverse_tolerance)
     band = tl.minimum(tl.maximum((distance * inverse_range - 0.8) * 2.5, 0.0), 1.0)
     in_range = 1.0 - band * band * (3.0 - 2.0 * band)
     kinetic = explosive + kinetic_scale * tl.exp(-2.0 * drag * distance)
-    t = tl.minimum(tl.maximum((target_inner - hit_cos) * target_width, 0.0), 1.0)
+    t = tl.minimum(tl.maximum((hit_sin - target_inner) * target_width, 0.0), 1.0)
+    t = tl.where(hit_cos < 0.0, 1.0, t)
     cone = t * t * t * (t * (6.0 * t - 15.0) + 10.0)
     aspect = 1.0 + target_cone * (cone - 1.0)
     return aligned * in_range * kinetic * aspect
@@ -204,8 +191,8 @@ def _pairs(
     his_corner = tl.load(constants + him * Q + 11)
     my_cone = tl.load(constants + me * Q + 12)
     his_cone = tl.load(constants + him * Q + 12)
-    my_widths = constants + me * Q + WIDTHS_AT
-    his_widths = constants + him * Q + WIDTHS_AT
+    my_half_width = 0.5 * tl.load(constants + me * Q + 13)
+    his_half_width = 0.5 * tl.load(constants + him * Q + 13)
     threat_weight = tl.load(parameters + me * W + 0)
     angles_weight = tl.load(parameters + me * W + 1)
     energy_weight = tl.load(parameters + me * W + 2)
@@ -359,7 +346,7 @@ def _pairs(
                 mby[:, None],
                 h_nose_x[None, :],
                 h_nose_y[None, :],
-                his_widths,
+                his_half_width,
                 his_inner,
                 his_width,
                 his_cone,
@@ -386,7 +373,7 @@ def _pairs(
                 hby[None, :],
                 m_nose_x[:, None],
                 m_nose_y[:, None],
-                my_widths,
+                my_half_width,
                 my_inner,
                 my_width,
                 my_cone,
@@ -465,8 +452,7 @@ def pair_scores(
     """The collapsed pair scores and the cover, (pairs, C) float32 each. paths: (P, E, views x
     slots, FIELDS, C) contiguous, every ship's candidate paths in FIELDS' order, the own view's
     slots first and the enemies' view (as seen) after them when views is 2 (one view: both
-    are the same); constants (ships, Q) in CONSTANTS' order, then the WIDTH_POINTS hit
-    widths; parameters (ships, W): PARAMETERS'
+    are the same); constants (ships, Q) in CONSTANTS' order; parameters (ships, W): PARAMETERS'
     order, then the P time weights, then the P discounts; times (P,) seconds; his_ship (pairs,)
     int32 the enemy's ship index (environment x slots + slot; pairs = ships x enemies, pair p
     belongs to ship p // enemies; ships = environments x slots); now (pairs, 2) him minus me

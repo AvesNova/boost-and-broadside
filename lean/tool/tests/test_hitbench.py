@@ -1,5 +1,5 @@
 """The hit-model workbench (lean.tool.hitbench) reads the step: with no turn its effective
-radius is the graze's closed form, and with the egg its hit width is the game's hit widths
+radius is the graze's closed form, and with the deflector circle its hit width is the game's
 (core.hit_widths), from the code's own numbers."""
 
 import math
@@ -24,15 +24,17 @@ def test_no_turn_is_the_graze_closed_form():
         assert torch.allclose(measured, expected, atol=0.3), aspect
 
 
-def test_the_egg_hit_width_is_the_games_table():
-    """With the egg the band of damaging offsets equals core.hit_widths at that aspect (a still
-    ship there; the target's move at cruise shifts it by a few tenths of a metre)."""
-    bench = hitbench.measure("egg")
-    widths = core.hit_widths(torch.tensor([bench.inputs["hit_radius"]]), bench.inputs)[0]
-    for aspect in (0, 90, 180):
-        table = float(core.hit_width(widths, torch.tensor(math.cos(math.radians(aspect)))))
+def test_the_circle_hit_width_is_the_games_and_the_nose_armour_holds():
+    """With the circle the band of damaging offsets equals core.hit_widths beyond the nose
+    armour, from the side and astern (a still ship there; the target's move at cruise shifts it
+    by a few tenths of a metre); head-on, inside the armour's inner angle, no offset does
+    damage."""
+    bench = hitbench.measure("circle")
+    width = float(core.hit_widths(torch.tensor([bench.inputs["hit_radius"]]), bench.inputs)[0])
+    for aspect in (90, 180):
         measured = hitbench.hit_width(bench)[hitbench.ASPECTS_DEG.index(aspect)]
-        assert bool(((measured - table).abs() < 0.6).all()), (aspect, measured, table)
+        assert bool(((measured - width).abs() < 0.6).all()), (aspect, measured, width)
+    assert bool((hitbench.hit_width(bench)[hitbench.ASPECTS_DEG.index(0)] == 0.0).all())
 
 
 def test_a_set_input_reaches_the_step():

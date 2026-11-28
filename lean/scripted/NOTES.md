@@ -68,10 +68,10 @@ label is a function of the observation. The sandbox flies against it (`World(opp
    speed), dropped past `roam_cutoff` arena radii of roam, weight 1 - roam / cutoff.
 5. Pair tables per enemy, 7 x 7 at each point (`pair_tables` / the kernel): my gun on him
    (nose against the drag-law lead point in my medium, tolerance his angular size (half the
-   game's hit width at the bullet's aspect, `core.hit_width` on the `hit_widths` column: the
-   egg deflector) plus `aim_blur` x t, a smoothstep range band 0.8 to 1.2 gun
-   ranges, the hit's kinetic worth, his nose cone by `core.aspect_factor` weighted by the hit
-   model's `nose_cone`, 0 by default), his gun on me (mirrored), angles ((cos ATA_me - cos
+   game's hit width, the constants' `hit_width`: the deflector circle, the same from every
+   aspect) plus `aim_blur` x t, a smoothstep range band 0.8 to 1.2 gun ranges, the hit's
+   kinetic worth, his nose armour by `core.aspect_factor` (on the sine of the bullet's path
+   off his nose) weighted by the hit model's `nose_cone`, 1 by default since 2026-11-28), his gun on me (mirrored), angles ((cos ATA_me - cos
    ATA_him) / 2) and energy (speed^2 / 2 + store, in my full stores) both times a closeness 1 /
    (1 + (d / (3 gun ranges))^2), predicted contacts (closest approach on each straight
    segment, exp(-(d / (2 summed hit radii))^2) x closing speed in collision-damage units,
@@ -92,18 +92,17 @@ label is a function of the observation. The sandbox flies against it (`World(opp
    shot on the next tick (review 2026-11-28 finding 4): aimed (`aim`), ranged and lined up from
    `after_pending`'s pose against the enemies one tick on (straight), the gun read at that tick
    (aim gate
-   at the lead point in target sizes x `fire_tolerance`, the size from the game's hit width at
-   the predicted aspect; range gate; the expected hit (damage x hit chance) worth `fire_worth`
+   at the lead point in target sizes x `fire_tolerance`, the size from the game's hit width; range gate; the expected hit (damage x hit chance) worth `fire_worth`
    ticks of shield recharge or his whole shield; never through a team-mate; the gun ready).
-   The hit chance (with the egg a centred shot always does full damage, so the worth must
+   The hit chance (with the deflector a centred shot always does full damage, so the worth must
    weigh the chance of landing within the narrow width) = erf(half width / (sqrt 2 sigma)),
    sigma = flight time x sqrt(spread^2 + (`lead_error` x 0.5 x his sustained turn
    acceleration x flight time)^2); `lead_error` 0.25 is a reasoned choice, not tuned.
    `store_crowd` (the default, 1 with `store_weight` 0.5; 0 is off) scales the store weight
    by (1 + k) / (1 + k x the scored enemies within 2 gun ranges). The hit's worth,
    here and in the pair tables' gun, is the game's hit model through one call
-   (`hit_worth` -> `core.hit_damage`: kinetic at the distance, the target's nose cone, dead
-   centre), so a change of the hit model in the game reaches the agent without edits (the
+   (`hit_worth` -> `core.hit_damage`: kinetic at the distance, the target's nose armour at
+   the predicted aspect, dead centre), so a change of the hit model in the game reaches the agent without edits (the
    Triton kernel has its own copy of the gun's worth; the kernel-against-twin test flags a
    difference). Joint = stick (7) x power (3) x fire (2).
 
