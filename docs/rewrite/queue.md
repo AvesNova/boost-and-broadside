@@ -239,3 +239,4 @@ scripted delay is a bug; next-state and hit on all visible ships; the pairwise h
 - ~23:10 item 16 done: BC 100.7M ticks, exit 0, bc_kl 0.33; student score vs the teacher: 4v4 0.100 (EMA) / 0.116 (live), 1v1 0.379, 16v16 0.000 (bar 0.4: met only at 1v1); gap is gunnery (hits per minute half the teacher's). RL dry run (item 17) started from bc.pt anyway (coordinator's judgement; written up in dry-run-2026-11-28.md).
 - ~00:00 author: go-ahead for the trigger redesign (item 20), at a sensible time (RL runs to completion first); signing off.
 - ~00:46 RL dry run at update 45: win rate vs the scripted teacher 0.51-0.55 in its league games (BC end: 0.10-0.12), teacher term off, 8,500-8,620 steps/s. Item 20: trigger built (CPU), its measurements wait for the GPU (watcher launches bnb-20-step1 when RL ends).
+- ~01:46 RL dry run at update 75: win rate vs the scripted teacher 0.89-0.90 in league games, 8,520-8,650 steps/s.
