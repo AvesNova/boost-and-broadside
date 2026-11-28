@@ -13,6 +13,7 @@ from .core import (
     step,
     take_deal,
     tick,
+    train_angle,
     visible_rows,
 )
 
@@ -25,6 +26,7 @@ __all__ = [
     "geometry_record",
     "observe",
     "pair_geometry",
+    "train_angle",
     "reset",
     "step",
     "take_deal",

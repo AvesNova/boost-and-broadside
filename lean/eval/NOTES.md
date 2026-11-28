@@ -41,7 +41,23 @@ then `ensure([(a, b, (4, 4), games)])`, `adaptive(pairings, target_error=0.02)`,
   enemy both turning at least 0.25 sustained rates, `style.TURNING_FLOOR`) and the share of
   that in two-circle flow (same turn sense; the rest one-circle); mean store fraction; mean speed in corner speeds; real shots per ship-minute; hits and
   mean range at hits (shooter to target at the hit tick's start, gun ranges); share of time
-  climbing and diving (power applied). `python -m lean.eval styles STORE [AGENT ...]` prints the
+  climbing and diving (power applied).
+  Hit counters (2026-11-28): the game's `StepOut.hit_damage` lumps real bullets and collisions
+  (neither was missing: `hits` counted both together), so `StepOut` now also carries its parts,
+  `bullet_damage` and `collision_damage` (E, N, N), both already computed in the step (no new
+  work, one extra output). `hits` is unchanged (damaging hits on enemies, either cause);
+  `bullet_hits` and `collision_hits` count each cause (shooter, target, tick; a collision hits
+  both ships, each credited to the other; a pair with both in one tick counts once in each, so
+  `hits` is at most their sum). `tail_hits` counts the bullet hits whose shooter is in the
+  target's rear cone: the target's train angle to the shooter (`lean.game.train_angle`, the one
+  `pair_geometry` computes, from the target's nose to the line to the shooter, geometry at the
+  start of the hit's tick) beyond `style.TAIL_CHASE_ANGLE` (120 degrees, either side: the
+  shooter inside the 120-degree cone behind the tail, the target's nose more than 120 degrees
+  from the shooter). Tail-chase share = tail_hits / bullet_hits (the `styles` view's
+  `tail_share`; collisions have no shooter and are not in it). The geometry is at the tick
+  start, so a bullet in flight is judged by where its shooter is when it lands, not when it
+  was fired. Stores from before: the missing columns are added as NULL and the `styles` view is
+  made again. `python -m lean.eval styles STORE [AGENT ...]` prints the
   view: per agent and conditions, means weighted by ship-minutes (two-circle by turning-fight
   time, hit range by hits). Games stored before the counters have NULL style.
 - `rating.py`: `standard_error`, `allocate`, `bradley_terry` (Newton, a 1000-Elo Gaussian prior

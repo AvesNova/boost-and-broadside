@@ -16,7 +16,8 @@ streams of the scripted search.
   and `b_...`; NULL for games stored before the style counters or where undefined). Counts
   are a view (`counts`); a pairing is read in both orientations. `styles` is a view of each
   agent's style per conditions over all its games (either seat): means weighted by
-  ship-minutes, two_circle by turning-fight time, hit_range by hits.
+  ship-minutes, two_circle by turning-fight time, hit_range by hits; the hit counts
+  (hits, bullet_hits, collision_hits, tail_hits) are sums, tail_share = tail_hits / bullet_hits.
 - sobol: a scrambled Sobol sequence per name: dimension, seed, points used.
 """
 
@@ -71,15 +72,26 @@ def _style_select(where: tuple[str, str] = ("", "")) -> str:
     weighted = ", ".join(
         f"SUM({name} * minutes) / SUM(minutes) AS {name}"
         for name in MEASURES
-        if name not in ("minutes", "two_circle", "hits", "hit_range")
+        if name
+        not in (
+            "minutes",
+            "two_circle",
+            "hits",
+            "bullet_hits",
+            "collision_hits",
+            "tail_hits",
+            "hit_range",
+        )
     )
     return (
         "SELECT conditions, agent, COUNT(*) AS games, "
         "SUM(minutes) AS minutes, " + weighted + ", "
         "SUM(two_circle * turning * minutes) / SUM(CASE WHEN two_circle IS NOT NULL THEN turning * "
         "minutes END) "
-        "AS two_circle, SUM(hits) AS hits, SUM(hit_range * hits) / SUM(CASE WHEN hit_range IS NOT "
-        "NULL THEN hits END) "
+        "AS two_circle, SUM(hits) AS hits, SUM(bullet_hits) AS bullet_hits, "
+        "SUM(collision_hits) AS collision_hits, SUM(tail_hits) AS tail_hits, "
+        "SUM(tail_hits) * 1.0 / NULLIF(SUM(bullet_hits), 0) AS tail_share, "
+        "SUM(hit_range * hits) / SUM(CASE WHEN hit_range IS NOT NULL THEN hits END) "
         f"AS hit_range FROM ({seats}) GROUP BY {'agent' if where[0] else 'conditions, agent'}"
     )
 
@@ -199,11 +211,15 @@ class Store:
         self.connection.execute("PRAGMA journal_mode=WAL")
         self.connection.execute("PRAGMA synchronous=NORMAL")
         # Stores from before the style counters: their games take the style columns as NULL.
+        # Or from before a counter was added: any missing style column is added (NULL), and the
+        # `styles` view is made again to read them.
         columns = {row[1] for row in self.connection.execute("PRAGMA table_info(games)")}
-        if columns and "a_minutes" not in columns:
+        if columns:
             with self.connection:
                 for column in STYLE_COLUMNS:
-                    self.connection.execute(f"ALTER TABLE games ADD COLUMN {column} REAL")
+                    if column not in columns:
+                        self.connection.execute(f"ALTER TABLE games ADD COLUMN {column} REAL")
+                self.connection.execute("DROP VIEW IF EXISTS styles")
         self.connection.executescript(SCHEMA)
 
     def add_agent(self, agent) -> str:
