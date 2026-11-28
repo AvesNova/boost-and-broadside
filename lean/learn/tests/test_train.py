@@ -1,8 +1,13 @@
 """lean.train end to end at smoke size: the BC stage hands its averaged weights to RL."""
 
+import json
+import os
 import re
 import shutil
+import signal
+import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 import torch
@@ -34,7 +39,9 @@ def checkpoint_name(steps: int) -> str:
 
 
 def run(monkeypatch, *arguments):
-    monkeypatch.setattr(sys, "argv", ["lean.train", "--smoke", "--device", "cpu", *arguments])
+    monkeypatch.setattr(
+        sys, "argv", ["lean.train", "--smoke", "--device", "cpu", "--wandb", "off", *arguments]
+    )
     train.main()
 
 
@@ -104,7 +111,9 @@ def test_checkpoints_every_period_and_a_resume_gives_the_same_next_updates(
     shutil.copytree(
         straight / "snapshots", resumed / "snapshots"
     )  # the checkpoint names its snapshots
-    monkeypatch.setattr(sys, "argv", ["lean.train", "--device", "cpu", "--resume", str(resumed)])
+    monkeypatch.setattr(
+        sys, "argv", ["lean.train", "--device", "cpu", "--wandb", "off", "--resume", str(resumed)]
+    )
     train.main()
     second = capsys.readouterr().out.splitlines()
 
@@ -216,3 +225,102 @@ def test_start_without_the_rl_stage_is_refused(monkeypatch, tmp_path):
         run(monkeypatch, "--stage", "bc", "--start", str(tmp_path / "bc.pt"))
     with pytest.raises(SystemExit):
         run(monkeypatch, "--start", str(tmp_path / "bc.pt"))
+
+
+ROOT = Path(__file__).resolve().parents[3]
+STOP_UPDATES = 6
+
+
+def train_process(*arguments) -> subprocess.Popen:
+    """lean.train at smoke size in its own process (eager, the CPU, 2 threads, no W&B)."""
+    environment = dict(os.environ, CUDA_VISIBLE_DEVICES="", OMP_NUM_THREADS="2")
+    return subprocess.Popen(
+        [sys.executable, "-m", "lean.train", "--device", "cpu", "--threads", "2", *arguments],
+        cwd=ROOT,
+        env=environment,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+
+
+def signalled(process: subprocess.Popen, signals: int) -> list[str]:
+    """The process's lines; `signals` SIGTERMs sent, the first once update 0 is printed, the
+    second once the first is acknowledged (two pending SIGTERMs merge into one)."""
+    lines = []
+    for line in process.stdout:
+        lines.append(line.rstrip("\n"))
+        if signals > 0 and line.startswith("rl update 0 steps"):
+            process.send_signal(signal.SIGTERM)
+        if signals > 1 and line.startswith("SIGTERM: stopping"):
+            process.send_signal(signal.SIGTERM)
+    process.wait(timeout=600)
+    return lines
+
+
+def test_sigterm_finishes_the_update_writes_a_checkpoint_and_a_resume_continues_exactly(tmp_path):
+    """The graceful stop (lean.train's docstring): SIGTERM during an update, the run finishes
+    it, writes a checkpoint, says so and exits 0; resuming from the directory gives the same
+    later updates as a run that never stopped. A second signal ends the process at once."""
+    smoke = ("--smoke", "--stage", "rl", "--updates", str(STOP_UPDATES), "--wandb", "off")
+    straight = train_process(*smoke, "--out", str(tmp_path / "straight"))
+    first = signalled(straight, 0)
+    assert straight.returncode == 0, first
+
+    stopped = train_process(*smoke, "--out", str(tmp_path / "stopped"))
+    lines = signalled(stopped, 1)
+    assert stopped.returncode == 0, lines
+    assert any(line.startswith("SIGTERM: stopping after the update") for line in lines)
+    (stop_line,) = [line for line in lines if line.startswith("rl: stopped after update ")]
+    last = int(stop_line.split()[4])
+    assert last < STOP_UPDATES - 1  # it stopped early
+    path = tmp_path / "stopped" / "checkpoints" / checkpoint_name((last + 1) * PER_UPDATE)
+    assert path.exists() and str(path) in stop_line
+    assert not (tmp_path / "stopped" / "rl.pt").exists()  # the stage did not end
+    assert not any(line.startswith(f"rl update {last + 1} ") for line in lines)
+    checkpoint = load_checkpoint(path)
+    assert checkpoint["updates"] == last + 1 and checkpoint["steps"] == (last + 1) * PER_UPDATE
+
+    resumed = train_process("--resume", str(tmp_path / "stopped"), "--wandb", "off")
+    second = signalled(resumed, 0)
+    assert resumed.returncode == 0, second
+    after = tuple(range(last + 1, STOP_UPDATES))
+    assert len(without_timing(second, after)) == len(after)
+    assert without_timing(first, after) == without_timing(second, after)
+    a = load_checkpoint(tmp_path / "straight" / "rl.pt")
+    b = load_checkpoint(tmp_path / "stopped" / "rl.pt")
+    for name, value in a["live"].items():
+        assert torch.allclose(value, b["live"][name], rtol=1e-5, atol=1e-6), name
+
+    twice = train_process(*smoke, "--out", str(tmp_path / "twice"))
+    lines = signalled(twice, 2)
+    assert twice.returncode == -signal.SIGTERM, lines
+    assert any(line.startswith("SIGTERM again: exiting now") for line in lines)
+    assert not any(line.startswith("rl: stopped") for line in lines)
+
+
+def test_wandb_offline_keeps_one_run_id_that_a_resume_continues(monkeypatch, tmp_path):
+    """W&B offline (lean.wandb_log): the run is named for the directory and stage, its id kept
+    in DIR/wandb.json, and a resume logs to the same id."""
+    monkeypatch.setenv("WANDB_SILENT", "true")
+    out = tmp_path / "logged" / "rl"
+    arguments = ["--stage", "rl", "--updates", "2", "--out", str(out)]
+    monkeypatch.setattr(
+        sys, "argv", ["lean.train", "--smoke", "--device", "cpu", "--wandb", "offline", *arguments]
+    )
+    train.main()
+    ids = json.loads((out / "wandb.json").read_text())
+    assert set(ids) == {"rl"}
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["lean.train", "--device", "cpu", "--wandb", "offline", "--resume", str(out)],
+    )
+    train.main()
+    assert json.loads((out / "wandb.json").read_text()) == ids
+    runs = sorted((out / "wandb").glob("offline-run-*"))
+    assert len(runs) == 2 and all(run.name.endswith(ids["rl"]) for run in runs)
+    from lean import wandb_log
+
+    assert wandb_log.run_name(out, "rl") == "logged-rl"
+    assert wandb_log.run_name(tmp_path / "logged", "rl") == "logged-rl"

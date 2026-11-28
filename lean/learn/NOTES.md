@@ -11,6 +11,7 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
     python -m lean.train --stage rl --start DIR/bc.pt --out DIR   # RL from the hand-off: DIR/rl.pt
     python -m lean.train --resume DIR [--updates N]        # DIR's latest checkpoint (or a file)
     python -m lean.train --smoke --device cpu [--stage bc|rl]     # tiny, eager
+    python -m lean.train ... --wandb online|offline|off    # W&B (default online; off without --out)
 
 ## Modules
 
@@ -45,7 +46,9 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
   sizing off). The critic's support (`returns.value_support`) is built on the device once per
   process (cached per ranges, bins and device) and passed into the graphs; the next-state support is a policy buffer (a table made
   with torch.tensor inside a graph is a pageable copy at every call).
-- `lean/train.py`: the stages, checkpoints, `--resume`.
+- `lean/train.py`: the stages, checkpoints, `--resume`, the graceful stop (`StopRequest`).
+- `lean/wandb_log.py`: W&B logging (`WandbLog`, `update_record`, the run's name and kept id);
+  the backfill from a train.log is docs/rewrite/sections/ops-19/backfill.py.
 
 ## The recipe
 
@@ -180,6 +183,32 @@ until the author decides; numbers in docs/rewrite/sections/league-pool/progress.
   and the generators' states. Each snapshot's weights are written once to `DIR/snapshots/`.
   `--resume` continues with the checkpoint's settings and plan, giving the same updates as a run
   that never stopped (to rounding; `test_train.py`).
+- Stop and pause (item 19, author 2026-11-28 ~19:55): SIGTERM or SIGINT asks the run to stop; it
+  finishes the update in progress, writes a checkpoint like the periodic ones (off the 10M
+  schedule: `DIR/checkpoints/<stage>_<steps>.pt`), prints `<stage>: stopped after update N ...`
+  and exits 0; a second signal ends the process by that signal (no checkpoint; the last one stays
+  whole). Pause = stop + `--resume DIR`. The stop waits for an update boundary (a checkpoint
+  mid-update would have to keep the partial store and the league's mid-collect tallies), so the
+  wait is up to one update (~120 s on the laptop at ~8,700 steps/s, more with the gradient
+  diagnostic) plus the write, longer than systemd's default 90 s stop timeout: start training
+  units with `systemd-run --user -p TimeoutStopSec=300 -p KillMode=mixed ...` (mixed: SIGTERM to
+  the trainer only; W&B's service and compile workers are killed after it exits, not before).
+  The check and the logging are host code between updates, outside every compiled graph.
+- W&B (item 19): one W&B run per stage in v2's project `boost-and-broadside-v2`, named
+  `<DIR>-<stage>` (`<parent>-<stage>` when DIR is named for the stage, e.g.
+  runs/dry-2026-11-28/bc -> dry-2026-11-28-bc), grouped by the base name, id kept in
+  `DIR/wandb.json` so `--resume` continues the same W&B run (resume="allow"). The x-axis is
+  `environment_steps` (the stage's); each update logs every metric `update` returns (the shown
+  ones, the range and KL monitors, per-epoch KL, advantage shares, the gradient decomposition's
+  `gradient/...` when measured), the league's numbers (`league_slots/<kind>`,
+  `league_win_rates/<i>` by present member, scripted_win_rate, scripted_dealt, ...),
+  steps_per_second and peak memory. Config: LearnConfig, ModelConfig, GameConfig, seed, commit
+  (`-dirty` when the tree has uncommitted changes), stage, plan (paths as directory names).
+  Online without credentials, or a failed online start (60 s), falls back to offline (files in
+  `DIR/wandb`, `wandb sync` later); any W&B failure is a warning and training goes on. W&B's
+  git, code, console and system metadata (host, user name, command line) are off. A resume from
+  a checkpoint before the last logged update logs those updates again (a graceful stop leaves
+  none).
 
 ## Numbers (laptop RTX 4070, performance profile, 2,048 x 4 x 128, compiled, bf16, core game)
 
@@ -260,7 +289,9 @@ All run the real game, scripted agent and model at tiny sizes (`tests/setting.py
 `test_recipe.py` (the teacher's compact record, its BC loss equal to the whole joint record's
 within float16 rounding, the scripted calls without the teacher and the weight-0 update, soft cross-entropy, BC ignores the advantages, the teacher
 term's decay and gate, averages, checkpoints, optimiser, warm-up, KL monitor, advantage shares),
-`test_train.py` (BC then RL, checkpoints, an exact resume with the league's slots and debts),
+`test_train.py` (BC then RL, checkpoints, an exact resume with the league's slots and debts,
+SIGTERM in a subprocess: the update finished, a checkpoint, exit 0, the resume equal to a run
+that never stopped, a second signal exits at once; W&B offline keeps one run id through a resume),
 `test_league.py` (level 2's slot draws, PFSP, level 1's loads and duplicates, drain, share
 tracking over a simulated run, personas per row, routing, state round trip, schedule and
 retention), `test_learn.py` (also the chunked live-policy step equals one call, the critic's
