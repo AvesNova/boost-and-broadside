@@ -20,3 +20,10 @@ Queue item 15: re-measure the learner's supports and scales under the core rules
   prior 0.9863 / 0.0109 / 0.0028; feature scales unchanged. Table: calibrate-15/table.md.
   Running: quick tier (bnb-15-quick). Next: slow learn, compile check, smoke. ETA 20:20
   (worst 21:00).
+- 19:45 worked: quick tier lean/learn, model, game, eval, scripted 362 passed (one hand-made
+  bin test updated to the new supports, recomputed by hand); slow lean/learn 6 passed; ruff
+  clean; compile check (load 2.3, performance) 6 graphs, 11,477 traced operations, 0 graph
+  breaks, cold 160.6 s, within the baseline (budget 175 s). Smoke `lean.train --stage all
+  --bc-updates 2 --updates 1` (load 3.2): EXIT 0, no recompile; BC 6,283 / 8,897 steps/s, RL
+  8,557; `narrow_outcome` on BC update 0 and RL update 0, not on BC update 1 (explained in
+  table.md: a fresh critic's lambda-return). Done.

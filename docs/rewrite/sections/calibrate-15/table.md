@@ -103,3 +103,16 @@ lean/game/NOTES.md "Feature scales"). Noted, not changed: the angle of attack (l
 rad) reaches 3.2 at the 99th percentile (4.0 max) with the post-stall levels; the boundary
 scalar sits at its clip (1,000 m inside) in most rows until the zone closes in (p1 0.18 at 4v4);
 constant columns (gun cooldown, field band, the zone centres, the next radius) are as designed.
+
+## The smoke's value-support warning
+
+`lean.train --stage all --bc-updates 2 --updates 1` (2026-11-28 19:31, load 3.2): EXIT 0, no
+recompile; `narrow_outcome` on BC update 0 and RL update 0 (whose critic is the hand-off EMA
+of two BC updates, nearly the fresh weights), not on BC update 1; no clamped warning on any
+level. Not a support problem: a near-untrained critic reads about 0 everywhere, so the
+outcome's lambda-return target is 10 (gamma lambda)^k = 10 x 0.9703^k at k ticks before a game
+end and about 0 elsewhere. It leaves the middle bin (|target| > 0.18) only within about 130
+ticks of an end (a tenth of a median 4v4 game of 1,301 ticks), and the bins far from 0 each
+take only a tick or two of that, below the monitor's 0.1% per bin, so the count of occupied
+bins sits near the monitor's threshold of 8. The perfect critic's targets (Monte Carlo above)
+fill 30 bins at 4v4, 36 at 1v1; the warning should stop once the critic reads the outcome.
