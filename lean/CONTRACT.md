@@ -20,7 +20,9 @@ def join_action(action): ...  # (..., 3) long -> (...,) long
 
 NO_PENDING = JOINT  # Obs.pending of a row whose pending action is not observed
 LEVEL_NAMES = ("damage", "kill_death", "objective_progress", "objective", "outcome")
-LEVELS = 5
+OWN_LEVEL_NAMES = ("damage", "kill_death")  # each ship's own; the rest are team-wide
+OBJECTIVE_LEVEL_NAMES = ("objective_progress", "objective")
+def level_names(objective_levels): ...  # the levels that train: all five, or without the objectives
 SHIP_FEATURES, GLOBAL_FEATURES, FIELD_FEATURES  # 18 scalars + 4 flags + type one-hot; 3; 3
 BULLET_SLOTS = 12  # also every bullet's life in ticks: the ring (slot tick mod 12) is its clock
 GHOST, REAL, CONTACTED = 0, 1, 2  # State.bullet_state
@@ -113,7 +115,7 @@ chaser_act(state, team, chaser=None) -> Tensor   # the memoryless floor
 ModelConfig(); Policy(config)
 Policy.initial_carry(envs, slots, device) -> Tensor        # (blocks, E, 1 + N, 4, width)
 Policy.step(obs, carry, position_offset=None, reset=None) -> (logits, value_logits, carry)
-    # logits (E, N, 42), value_logits (E, N, LEVELS, BINS)
+    # logits (E, N, 42), value_logits (E, N, value_levels, BINS)
 Policy.sequence(obs, carry, reset, position_offset=None, pairs=None) -> Sequence
     # obs fields have a leading T, reset (T, E) bool; a Sequence (NamedTuple): logits,
     # value_logits, next-state logits (T, E, N, 6, BINS), hit logits (T, E, N, 3), the final
@@ -137,7 +139,9 @@ update(config, policy, optimiser, data, *, teacher_weight, cloning, step_index, 
 Evaluator(Store(path), GameConfig())     # ensure / adaptive / report / elo (lean/eval/NOTES.md)
 ```
 
-The reward levels are `lean.contract.LEVEL_NAMES`; hit classes 0 missed, 1 enemy, 2 team-mate. The
+The reward levels are `lean.contract.LEVEL_NAMES`; those that train are
+`LearnConfig.level_names` (`level_names(LearnConfig.objective_levels)`, the objective levels off by
+default), and `ModelConfig.value_levels` is their count (lean.train sets it); hit classes 0 missed, 1 enemy, 2 team-mate. The
 BC teacher is `lean.scripted.decide`'s `Choice.joint`, its distribution over the 42 joint actions
 (flight x fire), recorded as it is.
 

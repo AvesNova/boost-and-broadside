@@ -367,15 +367,16 @@ def update(
     the stage's own returns).
 
     Every term is a mean over its valid tokens in the minibatch: the learner's living ships
-    (`own`) for surrogate, entropy, bc and value (value also averaged over levels, so it is
-    nats per softmax group); bc is the cross-entropy of the policy's 42-way distribution
+    (`own`) for surrogate, entropy, bc and value (value also averaged over the levels that
+    train, LearnConfig.level_names, so it is nats per softmax group); bc is the cross-entropy of the policy's 42-way distribution
     against the scripted teacher's full distribution (Rollout.teacher, the joint of its
     factors; with its weight 0 in RL the record is neither copied nor read: a zero record of
     the same shape goes into the same graph); `next_valid` rows
     and their columns for the next-state head's HL-Gauss cross-entropy (nats per column,
     lean.model.policy.next_state_cross_entropy; a head whose columns differ from the
-    recorded target's raises ValueError); the hit head's cross-entropy (nats) over the `own`
-    rows that have a hit label.
+    recorded target's raises ValueError); the hit head's cross-entropy (nats) over the
+    `observed` rows that have a hit label (the store unlabels the rows whose bullet could not
+    report a miss, store.unresolved_rows).
 
     A minibatch is a random set of views (one seat's whole segment each), run as
     micro-batches of config.micro_batch_views views through Policy.sequence from the stored
