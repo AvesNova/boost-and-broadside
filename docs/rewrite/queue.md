@@ -152,6 +152,13 @@ port), 3 (docs cleanup), 7 (correctness review): see the Log.
    Rules overnight: fix bugs found on the way, note every change and choice in the Log and in
    docs/rewrite/sections/dry-run-2026-11-28.md; no major redesign without the author.
 
+18. After 17, until the author is back (no hard deadline; author ~18:30): keep the GPU busy
+   with long, low-token experiments chosen by the coordinator from what 16-17 show, one at a
+   time, each rated and written up. Candidates, in order: extend RL (`--resume --updates`) while
+   it is still improving; a second seed of BC -> RL (run-to-run spread); one-arm ablations
+   (geometry heads off; value 0.05 vs 0.25); power modes' steady speed. No redesign; every run
+   traced to committed settings.
+
 ## Waiting on the author (not in the queue)
 
 - After R3: the five persona decisions (yardstick = robust centre with crowd rows on?, persona
@@ -206,3 +213,4 @@ scripted delay is a bug; next-state and hit on all visible ships; the pairwise h
 - ~17:50 item 12 done (`rules-12` 0c07a97b, merged into core). Nose armour on; aspect function on the sine (armour 0 / 0 / 0 / 0 / 0.547 / 1 at 0 / 10 / 22.5 / 30 / 37.5 / 45 deg; blame 1 / 0.951 / 0.712 / 0.577 / 0.511 / 0.5); circle deflector 24 m (hit width 4.75 m from every aspect); sight egg 1,500 / 850 / 850 m. GPU tick 0.738 -> 0.735 ms (noise); compile 11,439 ops, cold 166.4 s (budget 175). Behaviour (mirror games, fields + fog): centre under core rules 1v1: tail-chase share 4.9%, collision deaths 4.0%, mutual 6.6% of fatal collisions, 1.00 kills/min; yardstick under the new rules: 1v1 tail-chase 75.7%, collision deaths 0.7%, 0.43 kills/min, 37.0% end by elimination; 4v4 tail-chase 53.4%, collision deaths 3.1%, 5.68 kills/min. The round-3 centre breaks under the new rules (collision deaths 21.0% at 1v1, 41.5% of fatal collisions mutual). The degeneracy shows in the tail-chase share. Replays data/replays-2026-11-28-rules12/. Quick tier 408 passed + the fixed style test (merged tree: eval + game + scripted 197 passed); slow learn 6; ruff clean. Stale under the new rules: the hit-class prior, feature scales. Item 13 started (`zone-13`).
 - ~18:00 author (leaving until ~10:00 tomorrow): after 13, calibrate (15), then BC dry run (16) and RL from its checkpoint (17); one teacher / one persona; loss weights by the literature, watched with the gradient diagnostics; coordinator's judgement for loose ends, every change noted.
 - ~18:15 author: value 0.25; BC success = 0.4 win rate vs the teacher within 100M ticks; the scripted agent must see the actual (current) edge; compile 166 s fine; the coordinator may close the author's browser and other programs; if thermals are high, try the power modes (performance / balanced / power-saver) or power limits and measure steady speed in each, at the coordinator's judgement.
+- ~18:30 author: no hard deadline; after the RL dry run keep the GPU busy with long low-token experiments by the coordinator's judgement until the author returns (item 18).
