@@ -3,12 +3,7 @@ levels, the hit head, team-size draws, self-play and the league."""
 
 from dataclasses import dataclass
 
-from lean.contract import LEVELS
-
-# Indices of v2's reward levels (src/bnb/contracts/trajectory.py at 4cfd1e86), lean.contract's
-# order.
-DAMAGE, KILL_DEATH, OBJECTIVE_PROGRESS, OBJECTIVE, OUTCOME = range(LEVELS)
-
+from lean.contract import LEVEL_NAMES, level_names
 
 # Placeholder league personas (LearnConfig.league_personas): round 1's spread-1 personas by
 # label, every sampled row (skill.json's values to 4 significant figures).
@@ -63,6 +58,14 @@ class LearnConfig:
     (v2 src/bnb/learn/ppo.py:172-173 at 4cfd1e86). A different tick rate `f` would use
     `discount ** (30 / f)`.
     """
+
+    # The objective levels (lean.contract.OBJECTIVE_LEVEL_NAMES) in training: their value
+    # bins, value loss, returns, rewards and store rows. Off (author 2026-11-28): no mode pays
+    # them yet, so they cost work and train nothing (with them, the value loss averaged over
+    # two zero-target levels too); on for zones later. Every per-level setting below holds
+    # all five levels in LEVEL_NAMES order; `per_level` picks the levels that train
+    # (`level_names`), and the model's value head has that many (ModelConfig.value_levels).
+    objective_levels: bool = False
 
     # Returns, per level in LEVEL_NAMES order.
     discounts: tuple[float, ...] = (0.982, 0.990, 0.995, 0.999, 0.9997)
@@ -254,6 +257,20 @@ class LearnConfig:
     league_decay: float = 0.99  # each game decays its member's win tallies by this first
     # Checkpoints to disk (lean.train): every this many environment steps, none deleted.
     checkpoint_every: int = 10_000_000
+
+    @property
+    def level_names(self) -> tuple[str, ...]:
+        """The levels that train, in LEVEL_NAMES order (lean.contract.level_names)."""
+        return level_names(self.objective_levels)
+
+    def per_level(self, values: tuple) -> tuple:
+        """A per-level setting (all five levels, LEVEL_NAMES order) on the levels that train."""
+        return tuple(values[LEVEL_NAMES.index(name)] for name in self.level_names)
+
+    def level(self, name: str) -> int:
+        """A level's index on the levels that train (the value head's and the returns' last
+        axis)."""
+        return self.level_names.index(name)
 
 
 def learning_rate(config: LearnConfig, step: int) -> float:

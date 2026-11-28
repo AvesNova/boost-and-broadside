@@ -7,15 +7,16 @@ from typing import NamedTuple
 import torch
 from torch import Tensor
 
-from lean.contract import LEVEL_NAMES
+from lean.contract import OWN_LEVEL_NAMES
 from lean.learn.config import LearnConfig
 from lean.model.scan import linear_scan
 from lean.model.value import buffered_centres, symlog
 
 
 def value_knees(config: LearnConfig, device=None) -> Tensor:
-    """The critic levels' symlog knees, (LEVELS,) float32 in return units (0 linear)."""
-    return torch.tensor(config.value_knee, dtype=torch.float32, device=device)
+    """The critic levels' symlog knees, (LEVELS,) float32 in return units (0 linear), on the
+    levels that train (LearnConfig.level_names; LEVELS their count, here and below)."""
+    return torch.tensor(config.per_level(config.value_knee), dtype=torch.float32, device=device)
 
 
 def value_centres(config: LearnConfig, bins: int, device=None) -> Tensor:
@@ -23,7 +24,10 @@ def value_centres(config: LearnConfig, bins: int, device=None) -> Tensor:
     (value_knees): config.value_low to config.value_high of each level (the measured range)
     plus the buffer columns (lean.model.value.buffered_centres)."""
     return buffered_centres(
-        torch.tensor(config.value_low), torch.tensor(config.value_high), value_knees(config), bins
+        torch.tensor(config.per_level(config.value_low)),
+        torch.tensor(config.per_level(config.value_high)),
+        value_knees(config),
+        bins,
     ).to(device)
 
 
@@ -43,9 +47,9 @@ def value_support(config: LearnConfig, bins: int, device=None) -> ValueSupport:
     collect or an update makes no pageable copy for it. Read-only: callers never write into
     it."""
     return _support(
-        tuple(config.value_low),
-        tuple(config.value_high),
-        tuple(config.value_knee),
+        config.per_level(config.value_low),
+        config.per_level(config.value_high),
+        config.per_level(config.value_knee),
         bins,
         torch.device("cpu" if device is None else device),
     )
@@ -90,8 +94,12 @@ def generalised_advantages(
 
 
 def fallen_team_values(value: Tensor, own: Tensor, fallen: Tensor) -> Tensor:
-    """A fallen ship's value for the returns (author 2026-11-28, option C): its living
-    team-mates' mean value at the same tick and level.
+    """A fallen ship's value for the returns (option C on the team-wide levels, author
+    2026-11-28 ~04:05 and ~13:30): on the team-wide levels (the outcome, and the objective
+    levels when they train) its living team-mates' mean value at the same tick and level; on
+    each ship's own levels (lean.contract.OWN_LEVEL_NAMES: damage, kill_death, the leading
+    ones) zero, as `value` has it outside `own`: a team-mate's value there holds that
+    team-mate's own future damage and kills, not the fallen ship's.
 
     value (..., N, LEVELS), zero outside `own`; own (..., N) bool, the view's living ships;
     fallen (..., N) bool, the view's team's dead ships still in the match (no respawn: it is
@@ -100,9 +108,11 @@ def fallen_team_values(value: Tensor, own: Tensor, fallen: Tensor) -> Tensor:
     ended). A perfect critic on every team-mate predicts the same match outcome, so the
     outcome reaches a ship's ticks before its death at the discount (gamma^k), not at
     (gamma lambda)^k as through zero values. Its death penalty is paid as before."""
+    own_levels = len(OWN_LEVEL_NAMES)
+    team = value[..., own_levels:]
     weight = own.to(value.dtype)[..., None]
-    mean = (value * weight).sum(-2, keepdim=True) / weight.sum(-2, keepdim=True).clamp(min=1.0)
-    return torch.where(fallen[..., None], mean, value)
+    mean = (team * weight).sum(-2, keepdim=True) / weight.sum(-2, keepdim=True).clamp(min=1.0)
+    return torch.cat([value[..., :own_levels], torch.where(fallen[..., None], mean, team)], -1)
 
 
 def join_segments(records: Tensor, segments: int) -> Tensor:
@@ -223,12 +233,13 @@ def usage_flags(counts: Tensor, paid: Tensor, config: LearnConfig) -> Tensor:
     )
 
 
-def usage_metrics(rows: list[list[float]]) -> dict[str, float]:
-    """usage_flags read back (a list of 4 rows of LEVELS numbers) as named metrics, per level:
+def usage_metrics(rows: list[list[float]], names: tuple[str, ...]) -> dict[str, float]:
+    """usage_flags read back (a list of 4 rows of LEVELS numbers) as named metrics, per level
+    of `names` (LearnConfig.level_names):
     `range_clamped_<level>`, `range_bins_<level>`, `range_warning_clamped_<level>` and
     `range_warning_narrow_<level>` (the warnings 1.0 or 0.0)."""
     metrics: dict[str, float] = {}
-    for level, name in enumerate(LEVEL_NAMES):
+    for level, name in enumerate(names):
         metrics[f"range_clamped_{name}"] = rows[0][level]
         metrics[f"range_bins_{name}"] = rows[1][level]
         metrics[f"range_warning_clamped_{name}"] = rows[2][level]

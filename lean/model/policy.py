@@ -104,6 +104,9 @@ class ModelConfig:
     hit_classes: the hit head's outcomes for the bullet a ship emits on a tick, in
     lean.contract's StepOut.shot_outcome order (0 missed, 1 hit an enemy, 2 hit a team-mate);
     hit_class_frequencies: their measured shares, the hit head's initial biases (log).
+    value_levels: the critic's levels, `bins` each: the learner's levels that train
+    (lean.learn.LearnConfig.level_names; a run sets it from its LearnConfig, lean.train). The
+    default is LearnConfig's default (the objective levels off): 3.
     """
 
     width: int = 128
@@ -114,6 +117,7 @@ class ModelConfig:
     mlp_ratio: int = 4
     head_hidden: int = 256
     bins: int = COLUMNS  # 57 across the measured range, 3 buffer columns each end
+    value_levels: int = len(contract.level_names(objective_levels=False))
     hit_classes: int = 3  # the hit head: miss, enemy, team-mate
     # Shares of the outcomes of every bullet that ended (ghosts included), 1.6M bullets of
     # the scripted yardstick against itself, 4v4 under the training game, 48 environments x
@@ -503,7 +507,7 @@ class Policy(nn.Module):
         self.heads = HeadGroup(
             config.width,
             config.head_hidden,
-            (contract.JOINT, contract.LEVELS * config.bins),
+            (contract.JOINT, config.value_levels * config.bins),
             config,
         )
         # The learner's auxiliary heads, one group: next state (a categorical per column), hit
@@ -541,7 +545,7 @@ class Policy(nn.Module):
         previous call. position_offset: optional (E, 2) metres added to positions in the
         token code only (see draw_position_offset). reset: optional (E,) bool, zero the
         carry of those environments before this tick.
-        Returns policy logits (E, N, 42), value logits (E, N, LEVELS, BINS) and the new
+        Returns policy logits (E, N, 42), value logits (E, N, value_levels, BINS) and the new
         carry. Outputs of rows with key_mask False are meaningless and their carry is zero.
         """
         logits, value_logits, _, _, carry, *_ = self._forward(
@@ -571,7 +575,7 @@ class Policy(nn.Module):
         0. reset: (T, E) bool, zero the carry before that tick. position_offset: optional
         (E, 2) or (T, E, 2) metres.
         pairs: the pairs the pairwise head evaluates (lean.model.geometry.PairQuery), or None.
-        Returns a Sequence: policy logits (T, E, N, 42), value logits (T, E, N, LEVELS,
+        Returns a Sequence: policy logits (T, E, N, 42), value logits (T, E, N, value_levels,
         BINS), next-state logits (T, E, N, NEXT_STATE, BINS) (a categorical per column of
         next_state_target, over the bins of next_state_centres), hit logits (T, E, N,
         HIT_CLASSES) (the outcome of the bullet each ship emits on that tick), the carry
@@ -657,7 +661,9 @@ class Policy(nn.Module):
 
         ships = tokens[:, :, 1:]
         logits, value_logits = self.heads(ships)
-        value_logits = value_logits.view(ticks, envs, slots, contract.LEVELS, self.config.bins)
+        value_logits = value_logits.view(
+            ticks, envs, slots, self.config.value_levels, self.config.bins
+        )
         next_state = hit_logits = edge_logits = pair_logits = field_logits = None
         if with_auxiliary:
             next_state, hit_logits, *edge = self.auxiliary_heads(ships)

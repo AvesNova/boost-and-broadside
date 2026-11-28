@@ -473,7 +473,10 @@ def main() -> None:
     compiled = plan["compiled"]
 
     torch.manual_seed(plan["seed"])
-    fresh = model.ModelConfig.for_arena(game_config.arena_radius)
+    # The critic's levels are the learner's (LearnConfig.level_names).
+    fresh = model.ModelConfig.for_arena(
+        game_config.arena_radius, value_levels=len(config.level_names)
+    )
     policy = model.Policy(fresh if resumed is None else resumed["model_config"]).to(device)
     stages = {"all": ("bc", "rl"), "bc": ("bc",), "rl": ("rl",)}[plan["stage"]]
     planned = {"bc": plan["bc_updates"], "rl": plan["updates"]}
@@ -483,6 +486,12 @@ def main() -> None:
         checkpoint = load_checkpoint(Path(plan["start"]), device)
         policy = model.Policy(checkpoint["model_config"]).to(device)
         policy.load_state_dict(policy_weights(checkpoint, config.handoff))
+    if policy.config.value_levels != len(config.level_names):
+        raise ValueError(
+            f"the policy's critic has {policy.config.value_levels} levels, the learner trains "
+            f"{config.level_names} (LearnConfig.objective_levels): a checkpoint from before "
+            "the objective levels were optional has 5"
+        )
 
     for name in stages:
         if resumed is not None and name == resumed["stage"]:

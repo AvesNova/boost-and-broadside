@@ -1,7 +1,7 @@
 """The learner: rewards, rollout collection, returns, the update of the BC stage and of RL,
 weight averages and checkpoints."""
 
-from lean.contract import LEVEL_NAMES, LEVELS
+from lean.contract import LEVEL_NAMES
 from lean.learn.config import LearnConfig, learning_rate
 from lean.learn.pool import League
 from lean.learn.returns import (
@@ -26,7 +26,6 @@ from lean.learn.weights import WeightAverages, load_checkpoint, policy_weights, 
 
 __all__ = [
     "CollectCarry",
-    "LEVELS",
     "LEVEL_NAMES",
     "LearnConfig",
     "League",

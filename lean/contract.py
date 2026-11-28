@@ -34,9 +34,23 @@ FIELD_FEATURES = 3
 NO_PENDING = JOINT  # Obs.pending of a row whose pending action is not observed
 
 # The reward levels (v2's, in v2's order): one critic target per level, so the model's value
-# head has LEVELS outputs of BINS each. The learner owns the rewards and their supports.
+# head has one output of BINS per level in training (ModelConfig.value_levels). The learner
+# owns the rewards, their supports and which levels train (level_names). Each ship's own
+# levels first (its damage and kills), then the team-wide ones (the objectives and the
+# outcome: one value for the whole team).
 LEVEL_NAMES = ("damage", "kill_death", "objective_progress", "objective", "outcome")
-LEVELS = len(LEVEL_NAMES)
+OWN_LEVEL_NAMES = ("damage", "kill_death")
+# The objective levels: no mode pays them yet (zones later), so off by default
+# (LearnConfig.objective_levels).
+OBJECTIVE_LEVEL_NAMES = ("objective_progress", "objective")
+
+
+def level_names(objective_levels: bool) -> tuple[str, ...]:
+    """The levels that train, in LEVEL_NAMES order: all five, or without the objective
+    levels. The own levels lead either way (OWN_LEVEL_NAMES), then the team-wide ones."""
+    return tuple(
+        name for name in LEVEL_NAMES if objective_levels or name not in OBJECTIVE_LEVEL_NAMES
+    )
 
 
 def split_joint(joint: Tensor) -> Tensor:

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
-from lean.contract import JOINT, LEVEL_NAMES
+from lean.contract import JOINT
 from lean.learn.config import LearnConfig, learning_rate
 from lean.learn.geometry import draw_keys, geometry_losses, observed_rows, pair_query
 from lean.learn.returns import (
@@ -296,11 +296,11 @@ def target_pass(
     value stored at collection; an episode end cuts as anywhere else.
     Returns, on the device, the targets' range measures, usage_flags (4, LEVELS), and the
     advantages' tallies before scaling (returns.advantage_sums, for each level's share)."""
-    levels = len(config.discounts)
+    levels = len(config.level_names)
     advantage, target = store.targets(levels)
     support = value_support(config, policy.config.bins, store.device)
-    discounts = to_device(torch.tensor(config.discounts), store.device)
-    lambdas = to_device(torch.tensor(config.gae_lambdas), store.device)
+    discounts = to_device(torch.tensor(config.per_level(config.discounts)), store.device)
+    lambdas = to_device(torch.tensor(config.per_level(config.gae_lambdas)), store.device)
     names = store.observation_names + TARGET_NAMES if values is not None else STORED_TARGET_NAMES
     counts = paid = sums = None
     for batch in store.batches(names, index):
@@ -543,7 +543,7 @@ def update(
     optimiser.found_inf = None
 
     names = list(totals)
-    levels = len(config.discounts)
+    levels = len(config.level_names)
     read = torch.cat(
         [
             torch.stack([totals[name] for name in names]),
@@ -561,9 +561,9 @@ def update(
     )
     position = len(names)
     rows = [read[position + row * levels : position + (row + 1) * levels] for row in range(4)]
-    metrics.update(usage_metrics(rows))
+    metrics.update(usage_metrics(rows, config.level_names))
     position += 4 * levels
-    for level, name in enumerate(LEVEL_NAMES):
+    for level, name in enumerate(config.level_names):
         metrics[f"advantage_share_{name}"] = read[position + level]
     metrics["advantage_std"] = read[position + levels]
     position += levels + 1

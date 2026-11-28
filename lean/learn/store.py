@@ -39,6 +39,14 @@ over its U x T ticks, bootstrapped only from the last segment's stored bootstrap
 (episode ends still cut). The hit labels of a segment's last ticks come from the next
 segment (`end_segment`'s `previous_hit_label`). Training sequences stay one view each.
 
+Unresolved hit labels (author 2026-11-28 ~13:30). A bullet reports once: at its first
+contact (a hit) or on its last tick (a miss, BULLET_SLOTS - 1 ticks after it left the gun).
+A bullet still in flight when its episode ends (a fresh deal's slots never report) or when
+the update's collected window ends never reports, so on those rows hits are labelled and
+misses are not. `end_segment` unlabels (-1) every row whose bullet's last tick falls after
+its episode's end or after the update's last tick (`unresolved_rows`): the
+BULLET_SLOTS - 1 rows before each such end, labelled or not.
+
 Reading. `ready` makes the host wait once per update for the copies written so far (the
 host reads the pinned arrays itself). `batches` gathers each micro-batch's views on the
 host (index_select into a pinned staging buffer) and copies it to the device on the copy
@@ -57,7 +65,7 @@ import time
 import torch
 from torch import Tensor
 
-from lean.contract import EPISODE_CONSTANT, SEAT_AXIS, Obs
+from lean.contract import BULLET_SLOTS, EPISODE_CONSTANT, SEAT_AXIS, Obs
 from lean.learn.geometry import pair_counts
 
 # Per-tick records kept on the device: one byte per token, counted and indexed there.
@@ -91,6 +99,23 @@ def stored(name: str, value: Tensor) -> Tensor:
     if name == "deal_row":
         return value.to(torch.int32)
     return value
+
+
+def unresolved_rows(done: Tensor, closed: bool, life: int = BULLET_SLOTS) -> Tensor:
+    """(W, ...) bool: the rows whose bullet could not report a miss. done (W, ...) bool, a
+    seat's episode ends over W consecutive ticks (row r's bullet left the gun on tick r).
+    A bullet that left on row r misses on row r + life - 1, so the row is unresolved when an
+    episode ends on one of rows r to r + life - 2 (the end's own tick still reports), or,
+    `closed` (nothing is collected after the window), when r + life - 1 lies beyond it.
+    Static shapes, no host read."""
+    window, reach = done.shape[0], life - 1
+    padded = torch.cat([done, done.new_zeros((reach,) + done.shape[1:])])
+    unresolved = torch.zeros_like(done)
+    for offset in range(reach):
+        unresolved |= padded[offset : offset + window]
+    if closed:
+        unresolved[max(0, window - reach) :] = True
+    return unresolved
 
 
 def widened(value: Tensor) -> Tensor:
@@ -257,7 +282,11 @@ class RolloutStore:
         ended), the bootstrap values (S, N, LEVELS) and the critic's support (LEVELS, BINS).
         `previous_hit_label` (T, S, N): the labels of segment - 1's rows from bullets that
         ended in this segment, merged into that segment's (a row's bullet ends once, so at
-        most one of the two labels a row; the other is -1)."""
+        most one of the two labels a row; the other is -1). Then the unresolved rows
+        (`unresolved_rows`, module docstring) of both segments are unlabelled: an episode end
+        in this segment reaches back into segment - 1's last rows, and the last segment's
+        last rows have no later segment. A row still open (its bullet may end in the next
+        segment) is decided there, as segment - 1."""
         columns = self._columns(segment)
         if self.bootstrap is None or self.bootstrap.shape[1:] != bootstrap.shape[1:]:
             self.bootstrap = torch.zeros(
@@ -269,10 +298,24 @@ class RolloutStore:
             self.resident["hit_label"] = self._resident(
                 "hit_label", hit_label.shape[2:], torch.int8
             )
-        self.resident["hit_label"][:, columns] = stored("hit_label", hit_label)
-        if previous_hit_label is not None and segment > 0:
-            earlier = self.resident["hit_label"][:, self._columns(segment - 1)]
-            earlier.copy_(torch.maximum(earlier, stored("hit_label", previous_hit_label)))
+        labels = self.resident["hit_label"]
+        done = self.resident["done"]
+        last = segment == self.segments - 1
+        if segment == 0:
+            unresolved = unresolved_rows(done[:, columns], last)
+        else:
+            # A row of segment - 1 is decided now (its bullet ends by this segment's end when
+            # a segment is at least a bullet's life; otherwise assemble_hit_labels dropped
+            # it); this segment's rows stay open unless it is the last.
+            earlier_columns = self._columns(segment - 1)
+            window = torch.cat([done[:, earlier_columns], done[:, columns]])
+            closed = unresolved_rows(window, True)
+            earlier = labels[:, earlier_columns]
+            if previous_hit_label is not None:
+                earlier.copy_(torch.maximum(earlier, stored("hit_label", previous_hit_label)))
+            earlier.masked_fill_(closed[: self.ticks, :, None], -1)
+            unresolved = (closed if last else unresolved_rows(window, False))[self.ticks :]
+        labels[:, columns] = stored("hit_label", hit_label).masked_fill(unresolved[..., None], -1)
 
     @classmethod
     def of(cls, rollout, stream: bool = False) -> RolloutStore:

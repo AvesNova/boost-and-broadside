@@ -7,7 +7,7 @@ import pytest
 import torch
 
 from lean import contract
-from lean.contract import FIELD_FEATURES, GLOBAL_FEATURES, JOINT, LEVELS, SHIP_FEATURES
+from lean.contract import FIELD_FEATURES, GLOBAL_FEATURES, JOINT, SHIP_FEATURES
 from lean.game import GameConfig
 from lean.model import ModelConfig, Policy, decode_value, hl_gauss_targets, value_bin_centres
 from lean.model.geometry import PairQuery
@@ -341,7 +341,7 @@ def test_same_weights_run_at_any_ship_and_field_count():
         with torch.no_grad():
             logits, values, carry = policy.step(obs, policy.initial_carry(2, slots, "cpu"))
         assert logits.shape == (2, slots, JOINT)
-        assert values.shape == (2, slots, LEVELS, config.bins)
+        assert values.shape == (2, slots, config.value_levels, config.bins)
         assert carry.shape == (config.blocks, 2, 1 + slots, 4, config.width)
         assert torch.isfinite(logits).all() and torch.isfinite(values).all()
 
@@ -533,7 +533,9 @@ def training_batch(ticks=8, envs=4, slots=10, fields=5):
     config = ModelConfig()
     targets = SimpleNamespace(
         actions=torch.randint(0, JOINT, (ticks, envs, slots), generator=generator),
-        bins=torch.randint(0, config.bins, (ticks, envs, slots, LEVELS), generator=generator),
+        bins=torch.randint(
+            0, config.bins, (ticks, envs, slots, config.value_levels), generator=generator
+        ),
         next_state=torch.randn(ticks, envs, slots, config.next_state_size, generator=generator)
         * 0.1,
         hit=torch.randint(0, config.hit_classes, (ticks, envs, slots), generator=generator),
@@ -919,8 +921,8 @@ def all_supports():
 
     config, learn = ModelConfig(), LearnConfig()
     columns = config.next_state_columns
-    low = torch.tensor([*learn.value_low] + [c.low for c in columns])
-    high = torch.tensor([*learn.value_high] + [c.high for c in columns])
+    low = torch.tensor([*learn.per_level(learn.value_low)] + [c.low for c in columns])
+    high = torch.tensor([*learn.per_level(learn.value_high)] + [c.high for c in columns])
     knee = torch.cat([value_knees(learn), next_state_knees(config)])
     centres = torch.cat([value_centres(learn, config.bins), next_state_centres(config)])
     return low, high, knee, centres
@@ -1052,3 +1054,14 @@ def test_the_pairwise_head_reads_only_its_two_ships_and_the_order():
                 one[:, :, 1], two[:, :, 0]
             )
             assert not torch.allclose(one[:, :, 0], one[:, :, 1])
+
+
+def test_the_critics_levels_are_the_learners():
+    """Catches the value head and the learner disagreeing on the levels: the default critic
+    has one level per level the default learner trains (the objective levels off), and a
+    learner with them on trains all five."""
+    from lean.contract import LEVEL_NAMES
+    from lean.learn import LearnConfig
+
+    assert ModelConfig().value_levels == len(LearnConfig().level_names) == 3
+    assert LearnConfig(objective_levels=True).level_names == LEVEL_NAMES

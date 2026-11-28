@@ -383,7 +383,8 @@ def test_chained_targets_equal_one_gae_pass_over_the_concatenated_ticks(fresh_va
     else:
         value = store.data["value"]
     value = fallen_team_values(value, store.resident["own"], store.resident["fallen"])
-    discounts, lambdas = torch.tensor(config.discounts), torch.tensor(config.gae_lambdas)
+    discounts = torch.tensor(config.per_level(config.discounts))
+    lambdas = torch.tensor(config.per_level(config.gae_lambdas))
     advantage, target = generalised_advantages(
         seat_major(store.data["reward"], segments, seats),
         seat_major(value, segments, seats),

@@ -17,8 +17,11 @@ from lean.learn import (
     update,
 )
 from lean.learn import rollout as rollout_module
-from lean.learn.config import LEVELS, OUTCOME
 from lean.learn.tests.setting import SMALL, add_snapshots, small
+
+CONFIG = LearnConfig()
+LEVELS = len(CONFIG.level_names)  # the levels that train (the objective levels off)
+OUTCOME = CONFIG.level("outcome")
 
 
 def test_gae_matches_hand_computed_case_and_stops_at_termination():
@@ -44,8 +47,8 @@ def test_gae_scan_equals_the_tick_by_tick_recursion():
     value = torch.randn(ticks, envs, slots, LEVELS, generator=generator)
     bootstrap = torch.randn(envs, slots, LEVELS, generator=generator)
     done = torch.rand(ticks, envs, generator=generator) < 0.02
-    config = LearnConfig()
-    discounts, lambdas = torch.tensor(config.discounts), torch.tensor(config.gae_lambdas)
+    discounts = torch.tensor(CONFIG.per_level(CONFIG.discounts))
+    lambdas = torch.tensor(CONFIG.per_level(CONFIG.gae_lambdas))
     expected = torch.zeros_like(reward)
     running, next_value = torch.zeros_like(bootstrap), bootstrap
     for tick in range(ticks - 1, -1, -1):
@@ -60,10 +63,13 @@ def test_gae_scan_equals_the_tick_by_tick_recursion():
 
 def perfect_critic_targets(before_end: int, fill: bool) -> tuple[float, float, float]:
     """Two team-mates and one enemy, a +10 outcome on the last of 512 ticks, a perfect
-    outcome critic on the living rows, ship 1 dead for the last `before_end` ticks. Returns
-    (survivor's target, the fallen ship's target, both at its last living tick; the ideal
-    10 gamma^k)."""
-    ticks, discount, lam = 512, 0.9997, 0.97
+    outcome critic on the living rows (the own levels zero), ship 1 dead for the last
+    `before_end` ticks. Returns (survivor's target, the fallen ship's target, both at its
+    last living tick on the outcome level; the ideal 10 gamma^k)."""
+    ticks = 512
+    discounts = torch.tensor(CONFIG.per_level(CONFIG.discounts), dtype=torch.float64)
+    lambdas = torch.tensor(CONFIG.per_level(CONFIG.gae_lambdas), dtype=torch.float64)
+    discount = discounts[OUTCOME].item()
     death = ticks - before_end
     perfect = 10.0 * discount ** (ticks - 1 - torch.arange(ticks, dtype=torch.float64))
     own = torch.ones(ticks, 1, 3, dtype=torch.bool)
@@ -71,23 +77,19 @@ def perfect_critic_targets(before_end: int, fill: bool) -> tuple[float, float, f
     own[death:, 0, 1] = False
     fallen = torch.zeros_like(own)
     fallen[death:, 0, 1] = True
-    value = perfect[:, None, None, None].expand(ticks, 1, 3, 1) * own[..., None]
+    value = torch.zeros(ticks, 1, 3, LEVELS, dtype=torch.float64)
+    value[..., OUTCOME] = perfect[:, None, None] * own
     if fill:
         value = fallen_team_values(value, own, fallen)
-    reward = torch.zeros(ticks, 1, 3, 1, dtype=torch.float64)
-    reward[-1, 0, :2] = 10.0
-    reward[-1, 0, 2] = -10.0
+    reward = torch.zeros(ticks, 1, 3, LEVELS, dtype=torch.float64)
+    reward[-1, 0, :2, OUTCOME] = 10.0
+    reward[-1, 0, 2, OUTCOME] = -10.0
     done = torch.zeros(ticks, 1, dtype=torch.bool)
     done[-1] = True
     _, target = generalised_advantages(
-        reward,
-        value,
-        torch.zeros(1, 3, 1, dtype=torch.float64),
-        done,
-        torch.tensor([discount], dtype=torch.float64),
-        lam,
+        reward, value, torch.zeros(1, 3, LEVELS, dtype=torch.float64), done, discounts, lambdas
     )
-    row = target[death - 1, 0, :, 0]
+    row = target[death - 1, 0, :, OUTCOME]
     return row[0].item(), row[1].item(), 10.0 * discount ** (ticks - death)
 
 
@@ -105,17 +107,28 @@ def test_a_fallen_ship_keeps_the_outcome_at_the_discount(before_end):
     assert unfilled_fallen < 0.5 * ideal
 
 
-def test_fallen_team_values_fill_only_fallen_rows_with_the_living_mean():
+@pytest.mark.parametrize("objective_levels", [False, True])
+def test_fallen_team_values_fill_only_the_team_levels_of_fallen_rows(objective_levels):
+    """Option C on the team-wide levels only (author 2026-11-28 ~13:30): a fallen row takes
+    its living team-mates' mean on the outcome (and the objective levels when they train);
+    on damage and kill_death, each ship's own, its value stays 0; other rows unchanged."""
+    config = LearnConfig(objective_levels=objective_levels)
+    names = config.level_names
     generator = torch.Generator().manual_seed(0)
     ticks, envs, slots = 5, 3, 4
     own = torch.rand(ticks, envs, slots, generator=generator) < 0.5
     fallen = ~own & (torch.rand(ticks, envs, slots, generator=generator) < 0.5)
-    value = torch.randn(ticks, envs, slots, LEVELS, generator=generator) * own[..., None]
+    value = torch.randn(ticks, envs, slots, len(names), generator=generator) * own[..., None]
     filled = fallen_team_values(value, own, fallen)
     assert torch.equal(filled[~fallen], value[~fallen])
     count = own.sum(-1, keepdim=True).clamp(min=1)[..., None]
     mean = (value.sum(-2, keepdim=True) / count).expand_as(value)
-    assert torch.allclose(filled[fallen], mean[fallen])
+    team = [config.level(name) for name in names if name not in ("damage", "kill_death")]
+    assert len(team) == (3 if objective_levels else 1)
+    assert torch.allclose(filled[fallen][:, team], mean[fallen][:, team])
+    for name in ("damage", "kill_death"):
+        assert (filled[fallen][:, config.level(name)] == 0).all()
+    assert fallen.any() and (mean[fallen][:, config.level("damage")] != 0).any()
 
 
 def test_normalised_advantages_keep_their_mean_and_have_unit_standard_deviation():

@@ -4,7 +4,8 @@ Levels, in this order: damage, kill_death, objective_progress, objective, outcom
 zero-sum between the teams as v2's is: every event a team earns pairs with the same amount
 charged to the other team. A ledger per environment holds each attacker's damage to each
 target that has not healed; recharge charges it back, and a kill is shared by it (assists).
-The objective levels are zero until a mode with objectives exists; their columns are kept.
+The objective levels are zero until a mode with objectives exists; they have columns only
+with LearnConfig.objective_levels (off by default: the rewards have the levels that train).
 
 v2 splits each level into an offence and a defence part (ten critic parts). Lean keeps
 the five levels (one critic target each, the author's decision); the parts' sum is the
@@ -208,7 +209,8 @@ def damage_reward(
 def reward_step(
     config: LearnConfig, ledger: Ledger, events: TickEvents, team: Tensor
 ) -> tuple[Tensor, Ledger]:
-    """Rewards of one tick, (E, N, LEVELS) float32 for every ship of both teams, weighted
+    """Rewards of one tick, (E, N, LEVELS) float32 for every ship of both teams on the levels
+    that train (LearnConfig.level_names), weighted
     (damage per `damage_unit` points), and the ledger after the tick (v2's reward_step).
     A slot out of the match is rewarded nothing."""
     raw, present = events.raw, events.present
@@ -244,9 +246,17 @@ def reward_step(
     outcome = outcome_reward(team, events.win_loss, events.done)
 
     zero = torch.zeros_like(outcome)
-    levels = (damage / config.damage_unit, kill_death, zero, zero, outcome)
+    levels = {
+        "damage": damage / config.damage_unit,
+        "kill_death": kill_death,
+        "objective_progress": zero,
+        "objective": zero,
+        "outcome": outcome,
+    }
+    weights = config.per_level(config.reward_weights)
     reward = torch.stack(
-        [weight * level for weight, level in zip(config.reward_weights, levels, strict=True)], -1
+        [weight * levels[name] for weight, name in zip(weights, config.level_names, strict=True)],
+        -1,
     )
     reward = torch.where(present[..., None], reward, 0.0)
     # A death makes the damage done to the ship stick; a finished match starts afresh. A
