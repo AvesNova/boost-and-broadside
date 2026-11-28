@@ -14,7 +14,7 @@ core when sensible (author 2026-11-27).
 
 ## Running
 
-(nothing: the queue is empty; see Waiting on the author)
+- 12 Armour, circle deflector, collision blame, egg vision (`rules-12`, lean/game + scripted + tool).
 
 ## Done
 
@@ -98,6 +98,20 @@ port), 3 (docs cleanup), 7 (correctness review): see the Log.
    - Then the diagnostic: a few BC updates (and early RL) with it on, at fresh weights and after
      a few BC updates; report per-term trunk shares and cosines with the policy.
 
+12. Game rules (author 2026-11-28 ~16:30, after the replays showed duels degenerate into nose-to-nose
+   fire and mutual collisions), one branch:
+   - Nose-cone armour back on for bullets: no damage within 30 deg of the target's nose, a taper
+     to full at 45 deg (as before). Visuals (an "absorbed" flash) later.
+   - The shared aspect function on the sine of the angle off the nose (|cross(nose, n)|, no
+     trig; contacts behind the beam count as beyond the cone), same smootherstep, two angle
+     pairs: bullet armour 30-45 deg; collision blame 0-45 deg (full blame dead-on, half by 45).
+   - The deflector a circle (radius 24 m, the egg's side and rear) instead of the egg, same
+     early-hump turn; scripted gun model, hit-range tool and tests follow.
+   - Vision an egg with three settings, ahead / side / behind: defaults 1,500 / 850 / 850 m
+     (replaces the ellipse's eccentricity).
+   - Then: scripted Elo new rules vs today's (1v1 / 4v4 / 16v16), collision-death share,
+     mutual-kill share, tail-chase share; new replays. A persona re-run is proposed separately.
+
 ## Waiting on the author (not in the queue)
 
 - After R3: the five persona decisions (yardstick = robust centre with crowd rows on?, persona
@@ -147,3 +161,4 @@ scripted delay is a bug; next-state and hit on all visible ships; the pairwise h
 - ~15:30 author: entropy 0.003 in BC too; port v2's gradient tools to lean and run the gradient diagnostic. Item 11 started (`gradients-11`).
 - ~16:09 item 11 done (`gradients-11` 51320307, merged into core). Entropy 0.003 in BC; lean.learn.gradients (v2's decomposition: norms, shares, trunk cosines, agreement, coherent fraction, actor share; --gradient-diagnostics-every N, off by default; ~30 s per measured update); fixed geometry.draw_keys treating cuda / cuda:0 as different devices (GPU pair keys came from the default generator). Diagnostic, fresh weights, 6 BC + 3 RL updates, first minibatch, raw gradients: BC trunk shares bc 0.93, value 0.008, next_state 0.010, pair 0.004, field 0.054, edge -0.003, entropy -0.002; RL teacher 0.82, next_state 0.08, value 0.05, pair 0.03, edge 0.03, field 0.01, surrogate -0.02 (40x smaller norm than the teacher, coherent fraction ~0: noise this early). No auxiliary over 50% in any update; in BC pair and field point against bc (cosine negative in 6/6 and 5/6 updates). Quick tier 199 passed, slow learn 6 passed, ruff clean, compile 168.6 s at load 6.6 (budget 175), graphs unchanged.
 - ~16:10 author (replays): the round-3 centre and league personas are degenerate in duels: nose to nose, firing, colliding (often both die; inside-egg shots get through). Discussing front armour by hit angle with an "absorbed" visual and collision damage; nothing built yet.
+- ~16:30 author: nose-cone armour back; shared aspect function on the sine (armour 30-45, collision blame 0-45); circle deflector 24 m; egg vision 1,500 / 850 / 850 m. Item 12 started (`rules-12`).
