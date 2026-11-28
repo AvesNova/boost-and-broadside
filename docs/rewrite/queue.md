@@ -14,11 +14,11 @@ core when sensible (author 2026-11-27).
 
 ## Running
 
-- 10 Fixes from the morning decisions (`fixes-10`, lean/learn + contract).
+(nothing: the queue is empty; see Waiting on the author)
 
 ## Done
 
-R1 persona round 2, R2 two-level league, R3 persona round 3, 8a correctness fixes, 8b scripted delay, 8c heads, items 4 (second training review), 5 (speed wins), 6 (teacher), 9 (eval counters), 1 (merge + compile baselines), 2 (hit-range
+R1 persona round 2, R2 two-level league, R3 persona round 3, 8a correctness fixes, 8b scripted delay, 8c heads, items 4 (second training review), 5 (speed wins), 6 (teacher), 9 (eval counters), 10 (morning fixes), 1 (merge + compile baselines), 2 (hit-range
 port), 3 (docs cleanup), 7 (correctness review): see the Log.
 
 ## Queue (in order)
@@ -133,3 +133,4 @@ scripted delay is a bug; next-state and hit on all visible ships; the pairwise h
 - ~10:11 item 9 done (`counters-9` 9c3a589e, merged into core; merged tree quick tier lean/learn + scripted + model 179 passed). The old `hits` lumped bullets and collisions (StepOut.hit_damage is their sum); StepOut now also gives bullet_damage and collision_damage; eval style gains bullet_hits, collision_hits, tail_hits (shooter in the target's rear cone, |train angle| > TAIL_CHASE_ANGLE 120°, new core.train_angle) and the styles view a tail_share. Agent's CPU sanity run (yardstick mirror 4v4, 192 games, mean 44.8 s): bullet hits 20.1 per ship-minute, collision hits 1.03, tail share 0.434. Game version hash changed (new eval conditions). The queue is empty; the rest waits on the author.
 - ~13:35 author: option C on the global levels only; objective levels optional, off by default; hit-label bias masked; worktrees merged into core pruned (76; two agent worktrees under main/.claude kept: uncommitted files). Item 10 started (`fixes-10`).
 - ~14:00 author: compile budget 175 s (item 10 sets it); league K 12 / R 4 kept; fire_tolerance / lead_error re-check not needed now; loss-balance literature check running.
+- ~15:00 item 10 done (`fixes-10` 7c2703d2, merged into core). Option C on the outcome only (dead ships' damage / kill_death values 0 again); objective levels off by default (LearnConfig.objective_levels; value head 3 levels; pre-item-10 checkpoints need value_levels=5 + objective_levels=True); hit labels of the last 11 rows before an episode or update end masked (exact rule; core's RL hit share was +2.3 / +8.5 / +5.4% high, the branch's equal near and away from the ends); compile budget 175 s. Back-to-back BC (both at load ~4.5-6, the author's browser open): core 108.7 / 110.9 s per update (8,756 / 8,612 steps/s), branch 106.4 / 106.5 s (8,967 / 8,946); store 2,601.5 -> 2,409.4 MiB; peak 1.16 -> 1.06 GiB; end_segment +0.1 ms. An earlier +8-11% branch slowdown was the busy machine. Cold compile 189.6 s at load 7.0 (fails 175 s; core 170.3 s at load 6.8): to re-measure quiet. Quick tier 222 passed, slow learn 6 passed, ruff clean.
