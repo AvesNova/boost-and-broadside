@@ -1,16 +1,17 @@
 """The hit-model workbench (proposal 2026-11-27): what a hit model does to one bullet, measured
 with the game's own step on synthetic bullets, on the CPU, in seconds.
 
-    PYTHONPATH=. uv run --no-sync python -m lean.tool.hitbench [--presets egg off]
+    PYTHONPATH=. uv run --no-sync python -m lean.tool.hitbench [--presets circle off]
         [--set hit_radius=14 deflector_turn_deg=30 bullet_spread=10 ...] [--sigma 2] [--out DIR]
 
 For each preset (card.DEFLECTOR_PRESETS, with the `--set` inputs of core.HIT_MODEL on top), a few
 ticks of core.step on E synthetic environments: a target at the origin flying straight at its
-cruise speed, and one of the shooter's bullets placed outside the target's egg on a straight
-relative line that would pass the target's centre at a given offset, at a given aspect (the
+cruise speed, and one of the shooter's bullets placed outside the target's deflector circle on a
+straight relative line that would pass the target's centre at a given offset, at a given aspect (the
 bullet's path off the target's nose, 0 head-on) and range (the bullet's speed is the launch
 speed, cruise plus muzzle, slowed by the game's drag over the range). The damage is the steps'
-summed `hit_damage` (the deflector turns the bullet at the egg as in play). From it:
+summed `hit_damage` (the deflector turns the bullet at the circle as in play; the nose armour
+holds a hit within its inner angle to no damage). From it:
 
 - the hit width: the band of offsets that do damage; the effective hit radius: the integral of
   damage over the offset over twice the full damage at that range (a centred hit from astern
@@ -84,8 +85,8 @@ def _place(config, inputs, aspects, ranges, offsets):
     relative_y = -cruise * nose_y
     length = torch.sqrt(relative_x**2 + relative_y**2)
     across_x, across_y = -relative_y / length, relative_x / length
-    # Back along the relative line from the pass, beyond the egg.
-    back = max(float(inputs["egg_front"]), float(inputs["egg_rear"])) + 20.0
+    # Back along the relative line from the pass, beyond the deflector circle.
+    back = float(inputs["deflector_radius"]) + 20.0
     start_x = o * across_x - back * relative_x / length
     start_y = o * across_y - back * relative_y / length
     zeros, ones = torch.zeros(envs), torch.ones(envs)
@@ -137,7 +138,7 @@ def measure(name: str, overrides: dict | None = None) -> Bench:
     """One preset (with `overrides`, core.HIT_MODEL names) measured on the step."""
     inputs = {**card.DEFLECTOR_PRESETS[name], **(overrides or {})}
     # The deflector's code on for every preset ("off": no turn, as the skipped code).
-    config = dataclasses.replace(CONFIG, deflector="egg")
+    config = dataclasses.replace(CONFIG, deflector="circle")
     probe = core.reset(config, 1, torch.tensor([[1, 1]]), None, "cpu")
     reach = core.with_hit_model(probe.constants, **inputs)
     radius = _value(reach, "hit_radius")

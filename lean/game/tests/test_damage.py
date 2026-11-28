@@ -1,4 +1,4 @@
-"""Damage: the nose cone, and StepOut's damage detail (for the reward ledger)."""
+"""Damage: the nose armour, the aspect curve and StepOut's damage detail (the reward ledger)."""
 
 import math
 
@@ -12,21 +12,29 @@ torch.set_num_threads(1)
 CPU = torch.device("cpu")
 
 
-def test_the_nose_cone_is_none_inside_the_inner_angle_full_beyond_the_outer():
-    """The aspect factor (core.aspect_factor) in the hit angle's cosine: 0 up to the card's
-    inner angle, 1 from its outer angle on round to dead astern, the smootherstep in the cosine
-    between (half-way in the cosine, half the damage); the same on either side."""
+@pytest.mark.parametrize("pair", ["nose", "blame"])
+def test_the_aspect_curve_is_0_inside_the_inner_angle_1_beyond_the_outer(pair):
+    """The aspect curve (core.aspect_factor) on the sine of the angle off the nose, for both
+    angle pairs of the card (the nose armour, the collision blame): 0 up to the inner angle, 1
+    from the outer angle on, the smootherstep in the sine between (half-way in the sine, one
+    half); behind the beam (a negative cosine) 1 even where the sine is small; the same on
+    either side (the sine's sign)."""
     c = core.ship_constants(core.GameConfig(), torch.tensor([[0]]))
-    inner, outer = card.CARD["nose_inner_angle"][0], card.CARD["nose_outer_angle"][0]
-    middle = math.acos(0.5 * (math.cos(inner) + math.cos(outer)))
-    angles = [0.0, 0.999 * inner, middle, 1.001 * outer, 0.5 * math.pi, math.pi]
-    hit_cos = torch.tensor([math.cos(angle) for angle in angles])
-    aspect = core.aspect_factor(
-        hit_cos, c["nose_inner_cos"].flatten(), c["inverse_nose_width"].flatten()
-    )
-    assert aspect.tolist()[:2] == [0.0, 0.0]
-    assert abs(float(aspect[2]) - 0.5) < 1e-5
-    assert aspect.tolist()[3:] == [1.0, 1.0, 1.0]
+    inner, outer = card.CARD[f"{pair}_inner_angle"][0], card.CARD[f"{pair}_outer_angle"][0]
+    middle = math.asin(0.5 * (math.sin(inner) + math.sin(outer)))
+    angles = [0.0, 0.999 * inner, middle, 1.001 * outer, 0.5 * math.pi, 0.75 * math.pi, math.pi]
+    for side in (1.0, -1.0):
+        hit_cos = torch.tensor([math.cos(angle) for angle in angles])
+        hit_sin = torch.tensor([abs(side * math.sin(angle)) for angle in angles])
+        aspect = core.aspect_factor(
+            hit_cos,
+            hit_sin,
+            torch.as_tensor(c[f"{pair}_inner_sin"]).flatten(),
+            torch.as_tensor(c[f"inverse_{pair}_width"]).flatten(),
+        )
+        assert aspect.tolist()[:2] == [0.0, 0.0]
+        assert abs(float(aspect[2]) - 0.5) < 1e-5
+        assert aspect.tolist()[3:] == [1.0] * 4
 
 
 def shot_at(heading_off_nose: float, side: float = 1.0, deflector: str = "off", nose_cone=1.0):
@@ -58,10 +66,10 @@ def shot_at(heading_off_nose: float, side: float = 1.0, deflector: str = "off", 
 
 @pytest.mark.parametrize("deflector", list(card.DEFLECTOR_PRESETS))
 def test_a_bullet_inside_the_nose_cone_does_nothing_and_beyond_it_full_damage(deflector):
-    """Through the step (author 2026-11-25), with the nose cone's rule on (nose_cone 1; off by
-    default since 2026-11-27): a bullet 29 degrees off the target's nose does no damage, at 46
-    degrees as much as from dead astern, on either side, with the deflector on or off (a centred
-    shot is never turned). Off (the default), the same bullets all do the
+    """Through the step (author 2026-11-25; on by default again 2026-11-28), with the nose
+    armour's rule on (nose_cone 1, the default): a bullet 29 degrees off the target's nose does
+    no damage, at 46 degrees as much as from dead astern, on either side, with the deflector on
+    or off (a centred shot is never turned). Off (nose_cone 0), the same bullets all do the
     full damage."""
     full = shot_at(math.pi, deflector=deflector)
     for angle in (0.0, 29.0, 46.0):

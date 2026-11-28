@@ -145,8 +145,10 @@ def simulate(config: core.GameConfig, seed: int, sizes=(4, 4), persona: dict | N
         "team": team,
         "exists": exists,
         "fields": state.fields[0].numpy(),  # rows x, y, radius, band, target ln n
-        "vision_range": per_slot("vision_range"),
-        "vision_eccentricity": per_slot("vision_eccentricity"),
+        "vision_ahead": per_slot("vision_ahead"),
+        "vision_side": per_slot("vision_side"),
+        "vision_behind": per_slot("vision_behind"),
+        "tracking_range": per_slot("tracking_range"),
         "tracking": config.fog and config.fog_tracking,
         "deaths": deaths,
         "collisions": collisions,
@@ -220,12 +222,14 @@ def _fade(colour, amount):
     return tuple(int(c + (b - c) * amount) for c, b in zip(colour, BACKGROUND))
 
 
-def sight_outline(x, y, heading, vision_range, eccentricity, points=72) -> list:
-    """The sight ellipse's outline in metres (core.sighted_by_enemy): the observer at the focus,
-    reach vision_range / (1 - e cos a) at angle a off the nose."""
+def sight_outline(x, y, heading, ahead, side, behind, points=72) -> list:
+    """The sight egg's outline in metres (core.sight_pairs): in the observer's frame the front
+    half an ellipse of semi-axes (ahead, side), the rear half one of (behind, side)."""
     angles = np.linspace(0.0, 2.0 * math.pi, points, endpoint=False)
-    reach = vision_range / (1.0 - eccentricity * np.cos(angles))
-    return list(zip(x + reach * np.cos(heading + angles), y + reach * np.sin(heading + angles)))
+    along = np.where(np.cos(angles) >= 0.0, ahead, behind) * np.cos(angles)
+    across = side * np.sin(angles)
+    cos, sin = math.cos(heading), math.sin(heading)
+    return list(zip(x + along * cos - across * sin, y + along * sin + across * cos))
 
 
 class Painter:
@@ -281,31 +285,30 @@ class Painter:
 
         team, alive = r["team"], r["alive"][t] & r["exists"]
         xs, ys = r["x"], r["y"]
-        # Sight ellipses, faint (fields' cores still block lines inside them).
+        # Sight eggs, faint (fields' cores still block lines inside them).
         if self.draw_vision:
             for i in np.nonzero(alive)[0]:
                 outline = sight_outline(
                     xs[t, i],
                     ys[t, i],
                     r["heading"][t, i],
-                    r["vision_range"][i],
-                    r["vision_eccentricity"][i],
+                    r["vision_ahead"][i],
+                    r["vision_side"][i],
+                    r["vision_behind"][i],
                 )
                 draw.polygon(
                     [to_pixels(px, py) for px, py in outline],
                     outline=_fade(TEAM_COLOURS[team[i]], 0.75),
                     width=s,
                 )
-            # The tracking circle (core.sight_pairs), p / (1 - e) about each observer, while its
-            # team holds an enemy visible on the frame before (a tracked target).
+            # The tracking circle (core.sight_pairs), the longest reach about each observer,
+            # while its team holds an enemy visible on the frame before (a tracked target).
             if r["tracking"] and r["seen"] is not None and t > 0:
                 held = r["seen"][t - 1] & r["exists"]
                 for i in np.nonzero(alive)[0]:
                     if not (held & (team != team[i])).any():
                         continue
-                    reach = r["vision_range"][i] / (1.0 - r["vision_eccentricity"][i])
-                    if reach <= r["vision_range"][i]:
-                        continue  # e = 0: the circle is the outline already drawn
+                    reach = r["tracking_range"][i]
                     ox, oy = to_pixels(xs[t, i] - reach, ys[t, i] + reach)
                     ex, ey = to_pixels(xs[t, i] + reach, ys[t, i] - reach)
                     draw.ellipse(
@@ -533,25 +536,15 @@ def encode(record: dict, title: str, path: Path, draw_vision: bool = False) -> N
         raise RuntimeError(f"ffmpeg failed for {path}")
 
 
-def set_vision_range(metres: float) -> None:
-    """Every type's vision range set to `metres` in this process's card (card.CARD, derived
-    or read from the cache first), before the first deal builds the ship card. Nothing on disk
-    changes."""
-    rows = card.CARD  # the process's card so far (an eccentricity set first is kept)
-    scale = metres / card.VISION_RANGE
-    card.CARD = {**rows, "vision_range_scale": tuple(scale for _ in rows["vision_range_scale"])}
-
-
-def set_vision_eccentricity(eccentricity: float) -> None:
-    """Every type's vision eccentricity (the sight ellipse, core.sighted_by_enemy) set to
-    `eccentricity` in this process's card, as set_vision_range."""
-    if not 0.0 <= eccentricity < 1.0:
-        raise ValueError(f"vision eccentricity {eccentricity}: 0 <= e < 1")
-    rows = card.CARD  # the process's card so far (a vision range set first is kept)
-    card.CARD = {
-        **rows,
-        "vision_eccentricity": tuple(eccentricity for _ in rows["vision_eccentricity"]),
-    }
+def set_vision(ahead=None, side=None, behind=None) -> None:
+    """Every type's sight egg reaches (metres; None keeps the card's) set in this process's card
+    (card.CARD, derived or read from the cache first), before the first deal builds the ship
+    card. Nothing on disk changes."""
+    rows = dict(card.CARD)
+    for name, metres in (("vision_ahead", ahead), ("vision_side", side), ("vision_behind", behind)):
+        if metres is not None:
+            rows[name] = tuple(float(metres) for _ in rows[name])
+    card.CARD = rows
 
 
 def main() -> None:
@@ -566,24 +559,18 @@ def main() -> None:
         default=[],
         help="also save these frames (ticks) as PNG, for checking",
     )
-    parser.add_argument(
-        "--vision-range",
-        type=float,
-        default=None,
-        help="vision range in metres for every type, this render only (default: the card's)",
-    )
-    parser.add_argument(
-        "--vision-eccentricity",
-        type=float,
-        default=None,
-        help="the sight ellipse's eccentricity e (0 <= e < 1) for every type, this render only "
-        "(default: the card's): vision range p to the side, p/(1-e) ahead, p/(1+e) behind; "
-        "draws each ship's sight ellipse",
-    )
+    for name, what in (("ahead", "ahead"), ("side", "to the side"), ("behind", "behind")):
+        parser.add_argument(
+            f"--vision-{name}",
+            type=float,
+            default=None,
+            help=f"the sight egg's reach {what} in metres for every type, this render only "
+            "(default: the card's); draws each ship's sight outline",
+        )
     parser.add_argument(
         "--draw-vision",
         action="store_true",
-        help="draw each ship's sight outline faintly (on by itself with --vision-eccentricity)",
+        help="draw each ship's sight outline faintly (on by itself with a --vision-* flag)",
     )
     parser.add_argument(
         "--tracking",
@@ -628,18 +615,16 @@ def main() -> None:
     if arguments.tracking == "off":
         config = dataclasses.replace(config, fog_tracking=False)
         stem += "_trackoff"
-    if arguments.vision_range is not None:
-        set_vision_range(arguments.vision_range)
-        stem += f"_vision{arguments.vision_range:g}"
-    if arguments.vision_eccentricity is not None:
-        set_vision_eccentricity(arguments.vision_eccentricity)
-        stem += f"_ellipse{arguments.vision_eccentricity:g}"
-    draw_vision = arguments.draw_vision or arguments.vision_eccentricity is not None
+    reaches = (arguments.vision_ahead, arguments.vision_side, arguments.vision_behind)
+    set_by_flag = any(value is not None for value in reaches)
+    if set_by_flag:
+        set_vision(*reaches)
+        stem += "_vision" + "-".join("card" if v is None else f"{v:g}" for v in reaches)
+    draw_vision = arguments.draw_vision or set_by_flag
     uniform = core.ship_card(config).uniform
-    side, eccentricity = uniform["vision_range"], uniform["vision_eccentricity"]
+    sight = [uniform[f"vision_{name}"] for name in ("ahead", "side", "behind")]
     print(
-        f"vision range: {side:.1f} m to the side, {side / (1.0 - eccentricity):.1f} m ahead, "
-        f"{side / (1.0 + eccentricity):.1f} m behind (eccentricity {eccentricity:g})",
+        f"sight egg: {sight[0]:.1f} m ahead, {sight[1]:.1f} m to the side, {sight[2]:.1f} m behind",
         flush=True,
     )
     for number, seed in enumerate(arguments.seeds, 1):
@@ -653,10 +638,8 @@ def main() -> None:
             title += ", no fields"
         if arguments.no_fog:
             title += ", fog off"
-        if arguments.vision_eccentricity is not None:
-            title += f", sight ellipse e {arguments.vision_eccentricity:g}"
-        if arguments.vision_range is not None:
-            title += f", vision {arguments.vision_range:g} m"
+        if set_by_flag:
+            title += ", sight egg {:.0f}/{:.0f}/{:.0f} m".format(*sight)
         title += ", tracking " + arguments.tracking
         painter = Painter(record, title, draw_vision)
         print(

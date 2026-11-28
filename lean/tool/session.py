@@ -13,7 +13,7 @@ from lean.tool import flight_config
 
 def frame(world: World) -> dict:
     """What the browser draws: poses, bullets and the player's readouts; per ship its sight
-    (vision range p to the side, eccentricity e: core.sight_pairs) and whether the other ship
+    (the egg's reaches ahead, to the side and behind: core.sight_pairs) and whether the other ship
     knows it this tick: in its sight (or held by its tracking circle), or revealed by a shot or a
     hit (fog off: always)."""
     s = world.state
@@ -28,8 +28,9 @@ def frame(world: World) -> dict:
                 alive=bool(s.alive[0, i]),
                 angle=float(s.angle[0, i]),
                 speed=float(s.speed[0, i]),
-                vision_range=world.constant("vision_range", i),
-                vision_eccentricity=world.constant("vision_eccentricity", i),
+                vision_ahead=world.constant("vision_ahead", i),
+                vision_side=world.constant("vision_side", i),
+                vision_behind=world.constant("vision_behind", i),
                 tracking_radius=_tracking_radius(world, i),
                 seen=bool(seen[i]),
             )
@@ -58,7 +59,9 @@ def frame(world: World) -> dict:
                 )
     extra = {}
     if isinstance(world, HitRange):
-        extra = dict(range=world.range_readout(), egg=world.egg(), finished=world.finished)
+        extra = dict(
+            range=world.range_readout(), deflector=world.deflector(), finished=world.finished
+        )
     return dict(
         type="frame",
         tick=world.tick,
@@ -74,14 +77,12 @@ def frame(world: World) -> dict:
 
 
 def _tracking_radius(world: World, slot: int) -> float | None:
-    """The tracking circle's radius p / (1 - e) (core.sight_pairs: a ship seen on the tick before
-    is held within the observer's forward reach all round) from the game's own rows; None when
-    the game has tracking off (GameConfig.fog_tracking) or fog off."""
+    """The tracking circle's radius (core.sight_pairs: a ship seen on the tick before is held
+    within the observer's longest sight reach all round, the constants' tracking_range); None
+    when the game has tracking off (GameConfig.fog_tracking) or fog off."""
     if not (world.config.fog and world.config.fog_tracking):
         return None
-    return world.constant("vision_range", slot) / (
-        1.0 - world.constant("vision_eccentricity", slot)
-    )
+    return world.constant("tracking_range", slot)
 
 
 def _finite(values: dict) -> dict:

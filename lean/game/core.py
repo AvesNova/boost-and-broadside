@@ -2322,7 +2322,8 @@ def collisions(
     blame 1 - aspect / 2 at my nose against n (aspect_factor on the card's blame pair, the sine
     |nose x n|: 1 dead-on, 0.5 beyond the outer angle, 45 deg, and behind the beam). I take
     max shield x (|w| / tick) / (2 x cruise) x graze(b; R_core, R) x blame: linear in the
-    closing speed, a full shield's worth head-on at cruise with full blame; full closeness when the cores would meet, a graze when only the hit radii do."""
+    closing speed, a full shield's worth head-on at cruise with full blame; full closeness when
+    the cores would meet, a graze when only the hit radii do."""
     c = state.constants
     N = end_x.shape[1]
     x, y = state.x, state.y

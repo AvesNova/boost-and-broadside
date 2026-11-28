@@ -9,7 +9,7 @@ export UV_PROJECT_ENVIRONMENT=/home/vizia/avesnova/boost-and-broadside/v2-rules1
 cd "$TREE"
 echo "start $(date +%H:%M:%S) power $(powerprofilesctl get) load $(cut -d' ' -f1-3 /proc/loadavg) tree $(git rev-parse --short HEAD)"
 for size in 1 4 16; do
-  case $size in 1) envs=2048;; 4) envs=1024;; 16) envs=256;; esac
+  case $size in 1) envs=4096;; 4) envs=2048;; 16) envs=512;; esac
   for agent in centre yardstick; do
     [ -f "$OUT/${agent}_${size}v${size}.json" ] && continue
     PYTHONPATH=. uv run --no-sync python "$SCRIPT" --agent $agent --size $size --envs $envs --out "$OUT" || echo "FAILED $agent $size"

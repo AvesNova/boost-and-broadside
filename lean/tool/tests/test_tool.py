@@ -102,7 +102,7 @@ def test_sandbox_socket_advances_a_world():
     assert [f["tick"] for f in frames] == [1, 2, 3, 4, 5]
     assert frames[-1]["readout"]["speed"] > 0
     ship = frames[-1]["ships"][0]
-    assert ship["vision_range"] > 0 and 0 <= ship["vision_eccentricity"] < 1
+    assert ship["vision_ahead"] > 0 and ship["vision_side"] > 0 and ship["vision_behind"] > 0
     assert isinstance(ship["seen"], bool)
 
 
@@ -147,11 +147,11 @@ def test_the_sandbox_changes_the_hit_model_live():
         setup = socket.receive_json()
         assert [e["name"] for e in setup["hit_model"]] == [e.name for e in core.HIT_MODEL]
         assert setup["deflector_presets"] == card.DEFLECTOR_PRESETS
-        socket.send_json({"hit_model": {"egg_rear": 30.0, "hit_radius": 15.0}})
+        socket.send_json({"hit_model": {"deflector_radius": 30.0, "hit_radius": 15.0}})
         while (message := socket.receive_json())["type"] != "hit_model":
             pass
         values = {e["name"]: e["value"] for e in message["hit_model"]}
-        assert values["egg_rear"] == 30.0 and values["hit_radius"] == 15.0
+        assert values["deflector_radius"] == 30.0 and values["hit_radius"] == 15.0
         socket.send_json({"stop": True})
 
 
@@ -597,10 +597,12 @@ def test_hit_range_mode_streams_range_readouts_and_damage():
     last = frames[-1]
     assert abs(last["range"]["distance"] - 200.0) < 1e-3
     assert last["range"]["aspect"] < 1.0  # dead astern
-    assert last["egg"]["egg_front"] > last["egg"]["egg_rear"] > 0
+    assert last["deflector"]["deflector_radius"] > last["deflector"]["hit_radius"] > 0
     assert last["range"]["hits"] > 0 and last["range"]["damage_per_second"] > 0
     assert last["range"]["implied_time_to_kill"] > 0
-    assert last["ships"][0]["tracking_radius"] >= last["ships"][0]["vision_range"]
+    ship = last["ships"][0]
+    reaches = (ship["vision_ahead"], ship["vision_side"], ship["vision_behind"])
+    assert ship["tracking_radius"] == max(reaches)
     assert last["range"]["spreads"]["straight"]["metres"] > 0
     assert last["range"]["spreads"]["width"]["metres"] > 0
     assert any(f["finished"] for f in frames)
