@@ -24,7 +24,7 @@ from lean.learn.returns import (
     usage_metrics,
     value_support,
 )
-from lean.learn.rollout import Rollout
+from lean.learn.rollout import TEACHER_WIDTH, Rollout, own_slots, teacher_joint
 from lean.learn.store import RolloutStore
 from lean.model.agent import precision
 from lean.model.policy import next_state_cross_entropy
@@ -182,6 +182,8 @@ def minibatch_loss(
     the whole minibatch's count, `denominators` = (own tokens, next_valid tokens, labelled
     observed tokens, observed tokens, ship pairs, ship-field pairs; RolloutStore.counts), so
     the micro-batches' losses and gradients add up to the minibatch's.
+    teacher (T, B, M, TEACHER_WIDTH) the teacher's record on each view's own rows
+    (Rollout.teacher; zeros when its weight is 0 and nothing was copied, `update`).
     weights = (surrogate, entropy bonus, teacher cross-entropy) coefficients. weights and
     denominators are tensors so that a compiled graph does not take each new value as a
     constant. `support` (returns.value_support) the critic's support on the device, else
@@ -214,8 +216,12 @@ def minibatch_loss(
     clipped = ratio.clamp(1.0 - config.clip, 1.0 + config.clip)
     surrogate = masked_sum(-torch.minimum(ratio * advantage, clipped * advantage), own) / own_count
     entropy = masked_sum(-(log_policy.exp() * log_policy).sum(-1), own) / own_count
-    teacher_cross, teacher_entropy = teacher_cross_entropy(log_policy, teacher)
-    bc = masked_sum(teacher_cross, own) / own_count
+    # The teacher's rows are the own rows in own_slots' order (Rollout.teacher).
+    slots = own_slots(own, teacher.shape[-2])
+    log_own = log_policy.gather(-2, slots[..., None].expand(*slots.shape, log_policy.shape[-1]))
+    teacher_own = own.gather(-1, slots)
+    teacher_cross, teacher_entropy = teacher_cross_entropy(log_own, teacher_joint(teacher))
+    bc = masked_sum(teacher_cross, teacher_own) / own_count
 
     if support is None:
         support = value_support(config, value_logits.shape[-1], value_logits.device)
@@ -268,7 +274,7 @@ def minibatch_loss(
             "field": field,
             "edge": edge,
             "bc": bc,
-            "bc_kl": masked_sum(teacher_cross - teacher_entropy, own) / own_count,
+            "bc_kl": masked_sum(teacher_cross - teacher_entropy, teacher_own) / own_count,
             "approximate_kl": masked_sum(ratio - 1.0 - log_ratio, own) / own_count,
             "clip_fraction": masked_sum(((ratio - 1.0).abs() > config.clip).float(), own)
             / own_count,
@@ -363,7 +369,9 @@ def update(
     Every term is a mean over its valid tokens in the minibatch: the learner's living ships
     (`own`) for surrogate, entropy, bc and value (value also averaged over levels, so it is
     nats per softmax group); bc is the cross-entropy of the policy's 42-way distribution
-    against the scripted teacher's full distribution (Rollout.teacher); `next_valid` rows
+    against the scripted teacher's full distribution (Rollout.teacher, the joint of its
+    factors; with its weight 0 in RL the record is neither copied nor read: a zero record of
+    the same shape goes into the same graph); `next_valid` rows
     and their columns for the next-state head's HL-Gauss cross-entropy (nats per column,
     lean.model.policy.next_state_cross_entropy; a head whose columns differ from the
     recorded target's raises ValueError); the hit head's cross-entropy (nats) over the `own`
@@ -430,6 +438,16 @@ def update(
     target_index = store.chain_index(size)
     counts = store.counts()
     loss_names = store.observation_names + LOSS_NAMES
+    # The teacher's record only where its term weighs (audit finding 6): otherwise a zero
+    # record of its shape (the same graph), and nothing copied.
+    blank_teacher = None
+    if not cloning and teacher_weight == 0.0:
+        loss_names = tuple(name for name in loss_names if name != "teacher")
+        blank_teacher = torch.zeros(
+            (store.ticks, size, min(config.team_size_maximum, store.resident["own"].shape[-1]))
+            + (TEACHER_WIDTH,),
+            device=device,
+        )
 
     totals = {
         name: torch.zeros((), device=device)
@@ -492,7 +510,7 @@ def update(
                 batch["log_probability"],
                 advantage.index_select(1, views_now),
                 target.index_select(1, views_now),
-                batch["teacher"],
+                batch["teacher"] if blank_teacher is None else blank_teacher,
                 batch["next_state"],
                 batch["next_valid"],
                 batch["hit_label"],

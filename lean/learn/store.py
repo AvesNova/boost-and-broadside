@@ -77,7 +77,8 @@ FLOAT32 = frozenset(
     )
 )
 # Small integers stored as int8: joint actions (< 42; the observation's pending action, up to
-# 42 for none) and hit labels (-1 to 2). The teacher's distribution is float16.
+# 42 for none) and hit labels (-1 to 2). The teacher's record (flight and fire factors on the
+# seat's own rows, lean.learn.rollout.TEACHER_WIDTH) is float16.
 INT8 = frozenset(("action", "pending", "hit_label"))
 
 
@@ -166,6 +167,12 @@ class RolloutStore:
         sizes["deal_table"] = sum(tensor.nbytes for tensor in self.constants.values())
         sizes["carry"] = self.carry.nbytes
         return sizes
+
+    def drop(self, name: str) -> None:
+        """Free a large record no later update reads (the teacher's once the teacher term is
+        off for good, lean.train), with the staging buffers that copy it."""
+        self.data.pop(name, None)
+        self._staging = {key: slots for key, slots in self._staging.items() if name not in key[0]}
 
     # ---------------------------------------------------------------- writing
 
@@ -274,7 +281,11 @@ class RolloutStore:
         ticks = rollout.done.shape[0]
         store.begin_segment(0, ticks, rollout.initial_carry, rollout.deal_table)
         for tick in range(ticks):
-            records = {name: getattr(rollout, name)[tick] for name in rollout.TICK_FIELDS}
+            records = {
+                name: getattr(rollout, name)[tick]
+                for name in rollout.TICK_FIELDS
+                if getattr(rollout, name) is not None
+            }
             records["observation"] = _tick(rollout.observation, tick)
             store.write_tick(0, tick, records)
         store.end_segment(0, rollout.hit_label, rollout.bootstrap_value, rollout.value_centres)

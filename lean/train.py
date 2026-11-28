@@ -236,6 +236,11 @@ def run_stage(
     while stage.index < stage.updates:
         index = stage.index
         began = time.perf_counter()
+        # The scripted teacher runs and is recorded only while its term can weigh (BC; RL
+        # until the term is off for good): then only the league's scripted games need it.
+        teacher = stage.name == "bc" or not stage.teacher.off
+        if not teacher:
+            store.drop("teacher")
         for segment in range(config.segments_per_update):
             rollout = collect(
                 config,
@@ -249,6 +254,7 @@ def run_stage(
                 compiled=compiled,
                 store=store,
                 segment=segment,
+                teacher=teacher,
             )
             stage.state, stage.carry = rollout.state, rollout.carry
         del rollout

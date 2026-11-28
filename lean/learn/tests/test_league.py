@@ -99,7 +99,9 @@ def test_both_sides_of_a_self_play_game_are_the_live_policy(monkeypatch):
             if environment < ENVS // 2:
                 other = split_joint(rollout.action[tick, ENVS + environment])
             else:
-                other = decided[tick][environment]  # the scripted agent's decision on that tick
+                # The scripted agent's decision on that tick: its second call (the self-play
+                # half's teacher first, then the league half, rollout.scripted_moves).
+                other = decided[2 * tick + 1][environment - ENVS // 2]
             assert torch.equal(applied[environment][~live], other[~live])
 
 
@@ -439,7 +441,7 @@ def test_routing_gives_each_environment_its_own_members_step():
     ]
     assert [entry[0] for entry in table.slots] == networks
     views = (game.observe(game_config, state, 0), game.observe(game_config, state, 1))
-    scripted_action = torch.full((16, state.exists.shape[1], 3), 1)
+    scripted_action = torch.full((8, state.exists.shape[1], 3), 1)  # the league environments
     action, new_carry = network_actions(config, league, views, carry, scripted_action, generator)
     first = 8
     view = seat_view(views, torch.arange(first, 16), 1 - carry.learner_team[first:])
@@ -492,7 +494,7 @@ def test_skipping_the_empty_slots_changes_no_move():
         skipped.count,
     )
     views = (game.observe(game_config, state, 0), game.observe(game_config, state, 1))
-    scripted_action = torch.full((16, state.exists.shape[1], 3), 1)
+    scripted_action = torch.full((8, state.exists.shape[1], 3), 1)  # the league environments
 
     def seeded(network_, slot, positions, views, carry, generator):
         generator.manual_seed(int(slot))
@@ -604,7 +606,7 @@ def test_a_dropped_snapshot_finishes_its_running_games_with_its_old_weights():
     # The draining slot still plays: its games' next moves are the old network's.
     league.prepare(4, carry.slot)
     views = (game.observe(game_config, state, 0), game.observe(game_config, state, 1))
-    scripted_action = torch.zeros(8, state.exists.shape[1], 3, dtype=torch.long)
+    scripted_action = torch.zeros(4, state.exists.shape[1], 3, dtype=torch.long)  # league envs
     _, new_carry = network_actions(config, league, views, carry, scripted_action, generator)
     view = seat_view(views, torch.arange(4, 8), 1 - carry.learner_team[4:])
     _, _, expected = old.step(view, carry.opponent, carry.position_offset[4:])

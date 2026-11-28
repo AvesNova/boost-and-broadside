@@ -26,6 +26,8 @@ from lean.learn.rollout import (
     draw_next_episodes,
     league_actions,
     merge_league,
+    scripted_actions,
+    scripted_moves,
     self_play_count,
     slot_actions,
 )
@@ -175,10 +177,14 @@ def test_the_league_tick_compiles_fullgraph_so_it_never_reads_the_host():
     first_half = torch.compile(act, fullgraph=True, dynamic=True)
     routing = torch.compile(slot_actions, fullgraph=True, dynamic=True)
     second_half = torch.compile(advance, fullgraph=True, dynamic=True)
+    compiled_scripted = torch.compile(scripted_actions, fullgraph=True, dynamic=True)
     for _ in range(4):  # a game ends on the third tick: re-deals draw slots within capacity
         decision = first_half(config, game_config, policy, opponent, state, carry, None)
+        scripted_action, _ = scripted_moves(
+            config, opponent, state, carry, decision, True, None, compiled_scripted
+        )
         league_move = league_actions(
-            config, opponent, decision.views, carry, decision.scripted.action, None, routing
+            config, opponent, decision.views, carry, scripted_action, None, routing
         )
         state, carry, _ = second_half(
             config, game_config, policy, opponent, state, carry, decision, league_move, None
@@ -193,7 +199,8 @@ def test_the_league_tick_is_static_through_loads_unloads_and_duplicates():
     the EMA and the personas, and serve every later table unchanged: snapshots joining (loads
     into free slots), targets moving so that slots unload (drain) and members hold several
     slots (duplicates), a snapshot dropped by retention (its slots drain), the network slots
-    run growing and shrinking."""
+    run growing and shrinking; the scripted agent's call (one graph for the league and the
+    self-play environments) through the teacher switching off (only the league call left)."""
     torch._dynamo.reset()
     torch.manual_seed(0)
     config = LearnConfig(
@@ -215,23 +222,28 @@ def test_the_league_tick_is_static_through_loads_unloads_and_duplicates():
     # Its own graphs: graphs() is per process.
     first_half, second_half = compile_graph(act, "static"), compile_graph(advance, "static")
     routing, merge = compile_graph(slot_actions, "static"), compile_graph(merge_league, "static")
+    scripted_call = compile_graph(scripted_actions, "static")
     slots = state.exists.shape[1]
     calls, duplicated, drained = [], False, False
 
     @torch.no_grad()  # as collect: the tick's carries never require grad
-    def ticks(state, carry, count):
+    def ticks(state, carry, count, teacher=True):
         league.prepare(8, carry.slot)
         calls.append(0 if league.table is None else len(league.table.slots))
         deals = draw_next_episodes(config, game_config, policy, opponent, 16, slots, None, "cpu")
         carry = dataclasses.replace(carry, next_episodes=deals)
         for _ in range(count):
             decision = first_half(config, game_config, policy, opponent, state, carry, None)
+            scripted_action, record = scripted_moves(
+                config, opponent, state, carry, decision, teacher, None, scripted_call
+            )
+            assert (record is None) != teacher
             league_move = league_actions(
                 config,
                 opponent,
                 decision.views,
                 carry,
-                decision.scripted.action,
+                scripted_action,
                 None,
                 routing,
                 merge,
@@ -253,6 +265,7 @@ def test_the_league_tick_is_static_through_loads_unloads_and_duplicates():
             league.held()[m] >= 2 for m in range(1, league.first_persona)
         )
         drained |= DRAINING in league.slot_state
-        state, carry = ticks(state, carry, 3)  # a recompile here would raise
+        # A recompile here would raise; the teacher off from the third table on.
+        state, carry = ticks(state, carry, 3, teacher=index < 2)
     assert duplicated and drained and league.taken == 5 and league.snapshots == 2
     assert len(set(calls)) > 1  # the network slots run changed from table to table

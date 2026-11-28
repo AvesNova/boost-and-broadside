@@ -9,7 +9,7 @@ import math
 import pytest
 import torch
 
-from lean import model
+from lean import model, scripted
 from lean.contract import JOINT, LEVEL_NAMES
 from lean.learn import (
     LearnConfig,
@@ -24,9 +24,17 @@ from lean.learn import (
     update,
 )
 from lean.learn.returns import advantage_shares, advantage_sums
-from lean.learn.rollout import TEACHER_WIDTH
+from lean.learn.rollout import (
+    TEACHER_WIDTH,
+    act,
+    own_slots,
+    scripted_moves,
+    scripted_rows,
+    seats,
+    teacher_joint,
+)
 from lean.learn.tests.setting import small
-from lean.learn.training import teacher_cross_entropy
+from lean.learn.training import masked_sum, teacher_cross_entropy
 
 
 def rollout_of(ticks: int = 8, **overrides):
@@ -39,14 +47,91 @@ def rollout_of(ticks: int = 8, **overrides):
 
 
 def test_the_rollout_records_the_teachers_full_distribution():
-    """Rollout.teacher holds the scripted agent's joint distribution over the 42 actions for
-    every ship of the seat's environment; on own rows a proper distribution."""
-    _, _, rollout, _ = rollout_of()
-    assert rollout.teacher.shape[-1] == TEACHER_WIDTH == JOINT
-    own = rollout.observation.own
-    joint = rollout.teacher[own].float()
-    assert torch.allclose(joint.sum(-1), torch.ones(joint.shape[0]), atol=1e-5)
-    assert (joint.max(-1).values < 0.99).all()  # soft targets: no action certain
+    """Rollout.teacher holds the scripted agent's distribution as flight (21) and fire (1)
+    factors on the seat's own rows (own_slots' order, team_size_maximum rows): on each own
+    row its joint over the 42 actions is a proper distribution, past them zero."""
+    config, _, rollout, _ = rollout_of()
+    ticks, seat_count, slots = rollout.observation.own.shape
+    assert rollout.teacher.shape == (ticks, seat_count, config.team_size_maximum, TEACHER_WIDTH)
+    assert rollout.teacher.dtype == torch.float16
+    own = rollout.observation.own.gather(-1, own_slots(rollout.observation.own, 2))
+    joint = teacher_joint(rollout.teacher)
+    assert joint.shape[-1] == JOINT and own.any()
+    assert torch.allclose(joint[own].sum(-1), torch.ones(int(own.sum())), atol=2e-3)
+    assert (joint[own].max(-1).values < 0.99).all()  # soft targets: no action certain
+    assert not joint[~own].any()
+
+
+def test_the_compact_teacher_gives_the_bc_loss_of_the_whole_joint_record():
+    """The BC cross-entropy from the compact record (float16 factors on own rows) equals the
+    one from the previous record (float16 joint over 42 on every slot, from one scripted call
+    over every ship) within float16 rounding, on a fresh tick of a rollout."""
+    config, game_config, policy, opponent, state, carry, generator = small(envs=8)
+    rollout = collect(config, game_config, policy, opponent, state, carry, 8, generator)
+    state, carry = rollout.state, rollout.carry
+    decision = act(config, game_config, policy, opponent, state, carry, generator)
+    _, record = scripted_moves(config, opponent, state, carry, decision, True, generator)
+    self_play = state.exists.shape[0] - carry.member.shape[0]
+    seat_environment, _ = seats(carry.learner_team, self_play)
+    uniforms = scripted.draw_uniforms(*state.exists.shape, generator, "cpu")
+    _, choice = scripted.decide(
+        opponent.scripted_config, state, None, scripted_rows(opponent, state, carry), uniforms
+    )
+    whole = choice.joint.half().index_select(0, seat_environment).float()  # the old record
+    own = decision.observation.own
+    log_policy = torch.log_softmax(torch.randn(own.shape + (JOINT,), generator=generator), -1)
+    old, _ = teacher_cross_entropy(log_policy, whole)
+    slots = own_slots(own, record.shape[-2])
+    new, _ = teacher_cross_entropy(
+        log_policy.gather(-2, slots[..., None].expand(*slots.shape, JOINT)), teacher_joint(record)
+    )
+    old_loss = masked_sum(old, own) / own.sum()
+    new_loss = masked_sum(new, own.gather(-1, slots)) / own.sum()
+    assert own.sum() > 8
+    assert torch.allclose(new_loss, old_loss, rtol=1e-3), (new_loss, old_loss)
+    assert torch.allclose(teacher_joint(record)[own.gather(-1, slots)], whole[own], atol=1e-3)
+
+
+def test_without_the_teacher_the_scripted_agent_runs_on_the_league_environments_only():
+    """collect without `teacher` records no teacher, and an RL update at teacher weight 0
+    copies none (a zero record in its place): its loss and step equal the update of the same
+    rollout recorded with the teacher, also at weight 0."""
+    calls = []
+    original = scripted.decide
+
+    def counted(config, state, *arguments):
+        calls.append(state.exists.shape[0])
+        return original(config, state, *arguments)
+
+    scripted.decide = counted
+    try:
+        config, game_config, policy, opponent, state, carry, generator = small(envs=4)
+        collect(config, game_config, policy, opponent, state, carry, 2, generator)
+        assert calls == [2, 2, 2, 2]  # self-play and league halves, every tick
+        calls.clear()
+        rollout = collect(
+            config, game_config, policy, opponent, state, carry, 2, generator, teacher=False
+        )
+        assert calls == [2, 2] and rollout.teacher is None  # the league half only
+    finally:
+        scripted.decide = original
+    with_teacher = collect(config, game_config, policy, opponent, state, carry, 8, generator)
+    without = dataclasses.replace(with_teacher, teacher=None)
+    twins = [copy.deepcopy(policy) for _ in range(2)]
+    results = [
+        update(
+            config,
+            twin,
+            make_optimiser(config, twin),
+            data,
+            teacher_weight=0.0,
+            generator=torch.Generator().manual_seed(4),
+        )
+        for twin, data in zip(twins, (with_teacher, without), strict=True)
+    ]
+    assert results[0]["loss"] == results[1]["loss"] and results[0]["bc"] == 0.0
+    for first, second in zip(twins[0].parameters(), twins[1].parameters(), strict=True):
+        assert torch.equal(first, second)
 
 
 def test_the_bc_loss_is_the_cross_entropy_on_the_soft_targets():
