@@ -55,6 +55,18 @@ def pair_counts(observed: Tensor, fields: int) -> tuple[Tensor, Tensor]:
     return 0.5 * count * (count - 1.0), count * fields
 
 
+def same_device(first, second) -> bool:
+    """Whether two devices are one, a CUDA device without an index being the current one."""
+
+    def resolved(device) -> torch.device:
+        device = torch.device(device)
+        if device.type == "cuda" and device.index is None:
+            return torch.device("cuda", torch.cuda.current_device())
+        return device
+
+    return resolved(first) == resolved(second)
+
+
 def draw_keys(
     samples: int,
     field_samples: int,
@@ -67,8 +79,9 @@ def draw_keys(
 ) -> tuple[Tensor | None, Tensor | None]:
     """The pair draw's uniform keys of one micro-batch, (T, B, N (N - 1) / 2) and (T, B, N F)
     float32, each None where K covers every pair (no draw). Drawn on `device` from `generator`
-    when it lives there, else from the device's default generator."""
-    if generator is not None and generator.device != torch.device(device):
+    when it lives there (a device without an index is the current one: "cuda" and "cuda:0"
+    are one device), else from the device's default generator."""
+    if generator is not None and not same_device(generator.device, device):
         generator = None
     keywords = random_keywords(generator, device)
     pairs, field_count = slots * (slots - 1) // 2, slots * fields
@@ -137,13 +150,15 @@ def geometry_losses(
     ships: Sampled,
     field_sample: Sampled | None,
     denominators: Tensor,
-) -> tuple[Tensor, Tensor, Tensor]:
+    by_column: bool = False,
+) -> tuple[Tensor, ...]:
     """The pair, field and map-edge losses of one micro-batch, each nats per column summed over
     its valid rows and divided by the minibatch's count (`denominators` = (observed rows, ship
     pairs, ship-field pairs)): the sampled pairs weighted by Sampled.weight. outputs: the
     policy's Sequence for `query`; geometry (T, B, N, GEOMETRY_COLUMNS) the record. Targets of
     rows that do not train are set to 0 before the loss (the spare view's zero record gives
-    0 / 0 in the time of flight)."""
+    0 / 0 in the time of flight). `by_column` (the gradient diagnostic, lean.learn.gradients)
+    also returns the pair loss's part from each of `pair_columns` (a list summing to it)."""
     config = policy.config
     sigma = config.next_state_sigma
     observed_count, pair_count, field_count = denominators.clamp(min=1.0).unbind()
@@ -174,6 +189,7 @@ def geometry_losses(
     forward = game.pair_geometry(*first_rows, second_rows[0], second_rows[2])
     reverse = None
     pair_total = edge.new_zeros(())
+    column_totals = []
     for column, logits in zip(config.pair_columns, outputs.pairs, strict=True):
         if column.both_orders:
             if reverse is None:
@@ -187,7 +203,10 @@ def geometry_losses(
         cross = column_cross_entropy(
             column, logits, torch.where(valid, values, 0.0), policy.geometry_centres(column), sigma
         )
-        pair_total = pair_total + (cross * weight).sum() / orders
+        column_total = (cross * weight).sum() / orders
+        pair_total = pair_total + column_total
+        if by_column:
+            column_totals.append(column_total)
     pair = pair_total / (pair_count * len(config.pair_columns))
 
     field = edge.new_zeros(())
@@ -208,4 +227,7 @@ def geometry_losses(
             sigma,
         )
         field = (cross * field_sample.weight).sum() / field_count
+    if by_column:
+        scale = pair_count * len(config.pair_columns)
+        return pair, field, edge, [total / scale for total in column_totals]
     return pair, field, edge

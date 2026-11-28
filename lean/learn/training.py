@@ -176,7 +176,8 @@ def minibatch_loss(
     weights: Tensor,
     denominators: Tensor,
     support: ValueSupport | None = None,
-) -> tuple[Tensor, dict[str, Tensor]]:
+    parts: bool = False,
+) -> tuple[Tensor, dict[str, Tensor]] | tuple[Tensor, dict[str, Tensor], dict[str, Tensor]]:
     """One micro-batch's share of its minibatch's loss (see `update`) and of its measures,
     all 0-d tensors: every term is a sum over this micro-batch's valid tokens divided by
     the whole minibatch's count, `denominators` = (own tokens, next_valid tokens, labelled
@@ -189,7 +190,11 @@ def minibatch_loss(
     constant. `support` (returns.value_support) the critic's support on the device, else
     built here. geometry (T, B, N, GEOMETRY_COLUMNS) the geometry record, pair_keys and
     field_keys the pair draw (lean.learn.geometry.draw_keys); all unused without the
-    policy's geometry heads."""
+    policy's geometry heads. `parts` (the gradient diagnostic, lean.learn.gradients; never
+    compiled) also returns the loss's weighted terms, with their graphs, summing to the loss:
+    surrogate, teacher (the teacher cross-entropy: bc in the BC stage), entropy (the bonus,
+    negative), value_<level>, next_state_<column>, hit and with the geometry heads
+    pair_<column>, field and edge."""
     own = observation.own
     observed = observed_rows(observation)
     own_count, next_count, labelled_count = denominators[:3].clamp(min=1.0).unbind()
@@ -246,10 +251,20 @@ def minibatch_loss(
     hit, _ = hit_loss(hit_logits, hit_label, observed, labelled_count)
 
     pair = field = edge = torch.zeros((), device=logits.device)
+    pair_columns = []
     if geometry_heads:
-        pair, field, edge = geometry_losses(
-            policy, outputs, observation, geometry, query, ships, field_sample, denominators[3:]
+        pair, field, edge, *by_column = geometry_losses(
+            policy,
+            outputs,
+            observation,
+            geometry,
+            query,
+            ships,
+            field_sample,
+            denominators[3:],
+            by_column=parts,
         )
+        pair_columns = by_column[0] if by_column else []
 
     loss = (
         surrogate_weight * surrogate
@@ -279,7 +294,29 @@ def minibatch_loss(
             "clip_fraction": masked_sum(((ratio - 1.0).abs() > config.clip).float(), own)
             / own_count,
         }
-    return loss, {name: measure.detach() for name, measure in measures.items()}
+    measures = {name: measure.detach() for name, measure in measures.items()}
+    if not parts:
+        return loss, measures
+    terms = {
+        "surrogate": surrogate_weight * surrogate,
+        "teacher": teacher_weight * bc,
+        "entropy": -entropy_weight * entropy,
+    }
+    value_scale = config.value_coefficient / (own_count * cross_entropy.shape[-1])
+    for level, name in enumerate(config.level_names):
+        terms[f"value_{name}"] = value_scale * masked_sum(cross_entropy[..., level], own)
+    next_scale = config.next_state_coefficient / (next_count * next_cross_entropy.shape[-1])
+    for index, column in enumerate(policy.config.next_state_columns):
+        terms[f"next_state_{column.name}"] = next_scale * masked_sum(
+            next_cross_entropy[..., index], next_valid
+        )
+    terms["hit"] = config.hit_coefficient * hit
+    if geometry_heads:
+        for column, part in zip(policy.config.pair_columns, pair_columns, strict=True):
+            terms[f"pair_{column.name}"] = config.pair_coefficient * part
+        terms["field"] = config.field_coefficient * field
+        terms["edge"] = config.edge_coefficient * edge
+    return loss, measures, terms
 
 
 @torch.no_grad()
@@ -343,6 +380,46 @@ def target_pass(
     return usage_flags(counts, paid, config), sums
 
 
+def loss_inputs(
+    config: LearnConfig, policy, store: RolloutStore, batch: dict, blank_teacher, generator
+) -> tuple:
+    """minibatch_loss's arguments from `observation` to `field_keys` for one micro-batch of
+    store.batches (the advantages and targets from the store's current ones): the pair draw's
+    keys from `generator` (draw_keys), the teacher's record or `blank_teacher` when not None."""
+    views = batch["views"]
+    observation, offset = store.observation(batch)
+    pair_keys, field_keys = None, None
+    if policy.config.geometry_heads:
+        ticks, width, slots = observation.key_mask.shape
+        pair_keys, field_keys = draw_keys(
+            config.pair_samples,
+            config.field_pair_samples,
+            ticks,
+            width,
+            slots,
+            observation.field_pos.shape[-2],
+            generator,
+            store.device,
+        )
+    return (
+        observation,
+        batch["carry"],
+        batch["reset"],
+        offset,
+        batch["action"],
+        batch["log_probability"],
+        store.advantage.index_select(1, views),
+        store.target.index_select(1, views),
+        batch["teacher"] if blank_teacher is None else blank_teacher,
+        batch["next_state"],
+        batch["next_valid"],
+        batch["hit_label"],
+        batch["geometry"],
+        pair_keys,
+        field_keys,
+    )
+
+
 def update(
     config: LearnConfig,
     policy,
@@ -354,6 +431,7 @@ def update(
     step_index: int = 0,
     generator=None,
     compiled: bool = False,
+    gradients: bool = False,
 ) -> dict[str, float]:
     """One update on the views of `data` (a RolloutStore, or one collected Rollout). Returns
     means over all minibatches as floats.
@@ -362,9 +440,11 @@ def update(
         loss = surrogate - entropy_coefficient * entropy + teacher_weight * bc
                + value_coefficient * value + next_state_coefficient * next_state
                + hit_coefficient * hit
-    The BC stage (`cloning` True): no surrogate and no entropy bonus, the teacher's
-    cross-entropy with weight bc_coefficient, the other terms as in RL (the critics learn
-    the stage's own returns).
+    The BC stage (`cloning` True): no surrogate, the teacher's cross-entropy with weight
+    bc_coefficient, the other terms as in RL, the entropy bonus included (author
+    2026-11-24, on for the whole run; the critics learn the stage's own returns).
+    `gradients` adds the gradient decomposition's measures (lean.learn.gradients, on the
+    first minibatch before its step; eager, the training's results unchanged).
 
     Every term is a mean over its valid tokens in the minibatch: the learner's living ships (`own`)
     for surrogate, entropy, bc and value (value also averaged over the levels that train,
@@ -416,7 +496,7 @@ def update(
     else:
         loss_of, values = minibatch_loss, minibatch_values
     if cloning:
-        weights = (0.0, 0.0, config.bc_coefficient)
+        weights = (0.0, config.entropy_coefficient, config.bc_coefficient)
     else:
         weights = (1.0, config.entropy_coefficient, teacher_weight)
     device = store.device
@@ -470,8 +550,23 @@ def update(
         else:
             usage.append(usage[-1])
             shares.append(shares[-1])
-        advantage, target = store.advantage, store.target
         index, owners = store.batch_index(orders[epoch], size, config.minibatches)
+        if gradients and epoch == 0:
+            from lean.learn.gradients import decompose
+
+            diagnosis = decompose(
+                config,
+                policy,
+                store,
+                index,
+                owners,
+                counts,
+                loss_names,
+                blank_teacher,
+                weights,
+                support,
+                cloning,
+            )
         index_device = to_device(index, device)
         epoch_steps.append(len(set(owners)))
         for row, batch in enumerate(store.batches(loss_names, index)):
@@ -485,39 +580,10 @@ def update(
                     row : row + owners.count(part)
                 ].flatten()  # a minibatch's rows are consecutive
                 denominators = counts.index_select(0, members).sum(0)
-            views_now = batch["views"]
-            observation, offset = store.observation(batch)
-            pair_keys, field_keys = None, None
-            if policy.config.geometry_heads:
-                ticks, width, slots = observation.key_mask.shape
-                pair_keys, field_keys = draw_keys(
-                    config.pair_samples,
-                    config.field_pair_samples,
-                    ticks,
-                    width,
-                    slots,
-                    observation.field_pos.shape[-2],
-                    generator,
-                    device,
-                )
             loss, measures = loss_of(
                 config,
                 policy,
-                observation,
-                batch["carry"],
-                batch["reset"],
-                offset,
-                batch["action"],
-                batch["log_probability"],
-                advantage.index_select(1, views_now),
-                target.index_select(1, views_now),
-                batch["teacher"] if blank_teacher is None else blank_teacher,
-                batch["next_state"],
-                batch["next_valid"],
-                batch["hit_label"],
-                batch["geometry"],
-                pair_keys,
-                field_keys,
+                *loss_inputs(config, policy, store, batch, blank_teacher, generator),
                 weights,
                 denominators,
                 support,
@@ -576,4 +642,6 @@ def update(
     metrics["teacher_weight"] = config.bc_coefficient if cloning else teacher_weight
     metrics["learning_rate"] = rate
     metrics["adam_steps"] = steps
+    if gradients:
+        metrics.update(diagnosis)
     return metrics
