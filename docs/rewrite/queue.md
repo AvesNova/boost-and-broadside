@@ -112,6 +112,24 @@ port), 3 (docs cleanup), 7 (correctness review): see the Log.
    - Then: scripted Elo new rules vs today's (1v1 / 4v4 / 16v16), collision-death share,
      mutual-kill share, tail-chase share; new replays. A persona re-run is proposed separately.
 
+13. Shrinking zone (author 2026-11-28 ~17:40), after item 12 (same game core):
+   - The arena radius per game shrinks linearly from spawn, 4,200 m at 35 m/s: 0 at 120 s, and on
+     past 0 to minus the ramp (-300 m at ~129 s) so everyone takes full boundary damage. No clock
+     end: every game ends by elimination (one team or both). The longest possible game is derived
+     (full damage from ~129 s, max shield / net boundary damage rate after recharge and any
+     boundary healing) and asserted, not set by hand.
+   - Observation laid out for staged zones later: the super token reads the current circle
+     (centre, radius), the next circle (centre, radius) and the time to the stage's end (here:
+     the same centre, the radius at the end of the stage); per-ship signed distance to the
+     current edge. Check the map-centre reference and position codes with a moving centre.
+   - Spawns clear of the shrinking band; the scripted agent's boundary term reads the current
+     zone; tests; replays.
+   - Later (not now): battle-royale stages (hold, then shrink to a random circle inside the
+     current one, repeat until gone).
+14. Later: a more resilient scripted agent: a sensitivity study that also varies the game's own
+   settings (field strengths, ship parameters), so small rule changes don't need hours of
+   re-tuning.
+
 ## Waiting on the author (not in the queue)
 
 - After R3: the five persona decisions (yardstick = robust centre with crowd rows on?, persona
@@ -162,3 +180,4 @@ scripted delay is a bug; next-state and hit on all visible ships; the pairwise h
 - ~16:09 item 11 done (`gradients-11` 51320307, merged into core). Entropy 0.003 in BC; lean.learn.gradients (v2's decomposition: norms, shares, trunk cosines, agreement, coherent fraction, actor share; --gradient-diagnostics-every N, off by default; ~30 s per measured update); fixed geometry.draw_keys treating cuda / cuda:0 as different devices (GPU pair keys came from the default generator). Diagnostic, fresh weights, 6 BC + 3 RL updates, first minibatch, raw gradients: BC trunk shares bc 0.93, value 0.008, next_state 0.010, pair 0.004, field 0.054, edge -0.003, entropy -0.002; RL teacher 0.82, next_state 0.08, value 0.05, pair 0.03, edge 0.03, field 0.01, surrogate -0.02 (40x smaller norm than the teacher, coherent fraction ~0: noise this early). No auxiliary over 50% in any update; in BC pair and field point against bc (cosine negative in 6/6 and 5/6 updates). Quick tier 199 passed, slow learn 6 passed, ruff clean, compile 168.6 s at load 6.6 (budget 175), graphs unchanged.
 - ~16:10 author (replays): the round-3 centre and league personas are degenerate in duels: nose to nose, firing, colliding (often both die; inside-egg shots get through). Discussing front armour by hit angle with an "absorbed" visual and collision damage; nothing built yet.
 - ~16:30 author: nose-cone armour back; shared aspect function on the sine (armour 30-45, collision blame 0-45); circle deflector 24 m; egg vision 1,500 / 850 / 850 m. Item 12 started (`rules-12`).
+- ~17:40 author: shrinking zone as item 13 (linear 35 m/s from spawn, past 0, no clock; stages later; observation laid out for stages); a resilient scripted agent as a later item 14. Item 12's behaviour check trimmed (new rules with the default yardstick at 1v1 / 4v4; old rules with the centre at 1v1 as the baseline).
