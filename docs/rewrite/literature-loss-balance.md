@@ -401,7 +401,7 @@ inferences marked in each section.
 - The value loss is the mean over reward levels (divided by own_count x levels).
 - k in teacher_decay ** k is the RL update index (one update = 1,048,576 environment ticks): a
   half-life of 13.5 updates (~14M ticks); the weight falls below teacher_cutoff 0.005 at
-  update ~45 (0.5 x 0.95^45 = 0.0050), unless the win-rate gate closes it earlier. The cutoff is
+  update ~90 (0.5 x 0.95^90 = 0.0049, ~94M ticks), unless the win-rate gate closes it earlier. The cutoff is
   on the coefficient, as read.
 - Because every head averages over its columns (and pairs), section 5's c x sqrt(k) .. c x k
   becomes c / sqrt(k) .. c on the trunk gradient: a head's coefficient is an upper bound on its
