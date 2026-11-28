@@ -3284,9 +3284,7 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
         return (living & mask).sum(-1) / (exists & mask).sum(-1).clamp_min(1)
 
     enemy_living = counted if config.fog else alive
-    zone = torch.cat(
-        [centre_x, centre_y, radius, next_x, next_y, next_radius], -1
-    ) / ZONE_SCALE
+    zone = torch.cat([centre_x, centre_y, radius, next_x, next_y, next_radius], -1) / ZONE_SCALE
     globals_ = torch.cat(
         [
             zone,
