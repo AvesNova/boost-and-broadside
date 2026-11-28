@@ -24,3 +24,8 @@ Started 17:53 (power performance, load 1.3). ETA 20:00 (worst 20:50).
 - Quick tier (game, scripted, model, eval, tool, learn) 410 passed, 3 skipped; ruff clean.
   One learn test changed: it relied on the clock's tie-break for wins at a 6-tick test clock;
   a test-clock end is now a draw (wins are covered by test_rewards).
+- 18:32 slow learn: the fullgraph league-tick test failed: observe's math.isfinite on the
+  stage's end breaks the graph under dynamic shapes. Fixed (a check of the shrink speed).
+- 18:38 recheck on the fixed tree (919209e1), quiet (load 1.4): compile check within the
+  baseline, 11,477 traced operations, 0 graph breaks, cold 161.3 s (budget 175 s); slow learn
+  6 passed. Done 18:47.
