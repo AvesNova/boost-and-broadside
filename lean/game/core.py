@@ -129,14 +129,14 @@ class GameConfig:
     fog: bool = True
     # The tracking circle (author 2026-11-26; `sight_pairs`): an enemy visible on the tick before
     # (by sight or a reveal) stays visible while an observer has it within the circle of the
-    # observer's forward reach p / (1 - e), with a clear line. False (an ablation): the ellipse
-    # every tick. At e = 0 the circle is the ellipse, so the switch changes nothing there.
+    # observer's longest sight reach (`tracking_range`), with a clear line. False (an
+    # ablation): the sight egg every tick.
     fog_tracking: bool = True
-    # The bullet deflector (proposal 2026-11-27; `egg_entry`, `egg_turn`, lean/game/NOTES.md
-    # "Deflector"): a preset of card.DEFLECTOR_PRESETS ("egg", "off") setting the hit model's
+    # The bullet deflector (author 2026-11-28; `circle_entry`, `circle_turn`, lean/game/NOTES.md
+    # "Deflector"): a preset of card.DEFLECTOR_PRESETS ("circle", "off") setting the hit model's
     # deflector inputs at the deal. "off" (an ablation) also skips the deflector's code; under
-    # "egg" every deflector number is a runtime input (`with_hit_model`).
-    deflector: str = "egg"
+    # "circle" every deflector number is a runtime input (`with_hit_model`).
+    deflector: str = "circle"
 
 
 def built_once(build):
@@ -175,18 +175,14 @@ RUNTIME_CONSTANTS = (
     "core_radius",
     "hit_damage",
     "spread_speed",
-    "egg_front",
-    "egg_rear",
-    "egg_half_width",
+    "deflector_radius",
     "deflector_turn",
-    # The egg's semi-axes as inverses (derived, written with them): the pair test multiplies.
-    "inverse_egg_front",
-    "inverse_egg_rear",
-    "inverse_egg_half_width",
+    # The circle's radius as an inverse (derived, written with it): the pair test multiplies.
+    "inverse_deflector_radius",
     "nose_cone",
-    "nose_inner_cos",
+    "nose_inner_sin",
     "inverse_nose_width",
-    "hit_widths",
+    "hit_width",
 )
 
 
@@ -220,12 +216,13 @@ def _per_type(config: GameConfig) -> dict[str, Tensor]:
     raw = torch.stack([gravity, card.GRAVITY - exchange, card.GRAVITY + exchange], -1)
     hit_radius = of("hit_radius")
     deflector = {"nose_cone": card.NOSE_CONE, **card.DEFLECTOR_PRESETS[config.deflector]}
-    nose_inner_cos, nose_outer_cos = (
-        torch.cos(of("nose_inner_angle")),
-        torch.cos(of("nose_outer_angle")),
+    nose_inner_sin, inverse_nose_width = _cone_rows(
+        of("nose_inner_angle"), of("nose_outer_angle"), "the nose armour"
     )
-    if bool((nose_outer_cos >= nose_inner_cos).any()):
-        raise ValueError("the nose cone's outer angle must be larger than its inner angle")
+    blame_inner_sin, inverse_blame_width = _cone_rows(
+        of("blame_inner_angle"), of("blame_outer_angle"), "the collision blame"
+    )
+    ahead, side, behind = of("vision_ahead"), of("vision_side"), of("vision_behind")
     values = {
         "lift": lift,
         "max_acceleration": acceleration,
@@ -249,19 +246,26 @@ def _per_type(config: GameConfig) -> dict[str, Tensor]:
         "explosive_share": of("explosive_share"),
         "hit_radius": hit_radius,
         "core_radius": of("core_radius"),
-        "nose_inner_cos": nose_inner_cos,
-        "inverse_nose_width": 1.0 / (nose_inner_cos - nose_outer_cos),
+        "nose_inner_sin": nose_inner_sin,
+        "inverse_nose_width": inverse_nose_width,
+        "blame_inner_sin": blame_inner_sin,
+        "inverse_blame_width": inverse_blame_width,
         **{
             name: torch.full_like(hit_radius, value)
             for name, value in hit_model_constants(deflector).items()
         },
-        "hit_widths": hit_widths(hit_radius, deflector),
+        "hit_width": hit_widths(hit_radius, deflector),
         "max_shield": of("max_shield"),
         "shield_rate": card.SHIELD_RECHARGE_RATE * of("shield_recharge_rate_scale"),
         "shield_delay": card.SHIELD_RECHARGE_DELAY * of("shield_recharge_delay_scale"),
         "spawn_energy": 0.5 * max_energy,
-        "vision_range": card.VISION_RANGE * of("vision_range_scale"),
-        "vision_eccentricity": of("vision_eccentricity"),
+        "vision_ahead": ahead,
+        "vision_side": side,
+        "vision_behind": behind,
+        "inverse_vision_ahead": 1.0 / ahead,
+        "inverse_vision_side": 1.0 / side,
+        "inverse_vision_behind": 1.0 / behind,
+        "tracking_range": torch.maximum(torch.maximum(ahead, side), behind),
         "inverse_critical_speed": 1.0 / of("critical_speed"),
         "drag_rise_exponent": of("drag_rise_exponent"),
         "separation_drag": of("separation_drag"),
@@ -1787,12 +1791,12 @@ def _hit_test(
     real bullet not yet contacted: a contacted one flies on without contact). First contact: the
     smallest tau, ties within 1e-6 to the closer pass.
 
-    The deflector (proposal 2026-11-27, `egg_entry`, `egg_turn`): a bullet whose straight path
-    first crosses a living ship's egg inward this tick (the first such ship by tau) is turned
-    there, and its contact with that ship is the swept test of the turned remainder (the
-    crossing to the tick's end) against the hit circle; its contacts with the ships whose eggs
-    it does not enter stay on the straight path (a second egg entered in the same tick is not
-    seen and gives no contact: rare)."""
+    The deflector (author 2026-11-28, `circle_entry`, `circle_turn`): a bullet whose straight
+    path first crosses a living ship's deflector circle inward this tick (the first such ship by
+    tau) is turned there, and its contact with that ship is the swept test of the turned
+    remainder (the crossing to the tick's end) against the hit circle; its contacts with the
+    ships whose circles it does not enter stay on the straight path (a second circle entered in
+    the same tick is not seen and gives no contact: rare)."""
     E, _, N, K = bullets.shape
     c = state.constants
     per_bullet = (E, 2, N * K, 1)
@@ -1813,35 +1817,31 @@ def _hit_test(
     if config.deflector == "off":
         target, hit, _ = _first_contact(contact, tau, miss_squared)
         return Contact(target, hit, _impact(state, flown, start_bullets, bullets, target))
-    entry = egg_entry(
+    entry = circle_entry(
         start[:, 0],
         start[:, 1],
         relative[:, 0],
         relative[:, 1],
-        flown.heading_cos[:, None, :],
-        flown.heading_sin[:, None, :],
-        _per_ship(c["inverse_egg_front"]),
-        _per_ship(c["inverse_egg_rear"]),
-        _per_ship(c["inverse_egg_half_width"]),
+        _per_ship(c["inverse_deflector_radius"]),
     )
     entry = torch.where(candidate, entry, torch.inf)
     entry_tau, bend_ship = entry.min(-1)
     bent = entry_tau < torch.inf
-    # A ship whose egg the bullet enters this tick has no straight contact: the bend ship's is
-    # the turned remainder's (below); a second egg entered in the same tick is not seen (rare).
+    # A ship whose circle the bullet enters this tick has no straight contact: the bend ship's is
+    # the turned remainder's (below); a second circle entered in the same tick is not seen (rare).
     # (Excluding every entered pair, not only the bend ship's, keeps the two reductions over
     # the pairs independent, so they run as one pass.)
     target, hit, first_tau = _first_contact(contact & (entry == torch.inf), tau, miss_squared)
     # The turned remainder against the bend ship: the turn of every pair's pass (cheap
     # arithmetic in registers), read at the bend ship (`_at`), so no per-bullet gathers.
     pair_entry = torch.where(entry < torch.inf, entry, 0.0)
-    turn = egg_turn(
+    turn = circle_turn(
         start[:, 0],
         start[:, 1],
         relative[:, 0],
         relative[:, 1],
         pair_entry,
-        _per_ship(c["inverse_egg_half_width"]),
+        _per_ship(c["inverse_deflector_radius"]),
         _per_ship(c["deflector_turn"]),
     )
     bend = index.ship == bend_ship[..., None]
@@ -1935,51 +1935,26 @@ def _per_ship(values: Tensor | float) -> Tensor | float:
     return values[:, None, :] if isinstance(values, Tensor) else values
 
 
-def egg_entry(
-    start_x,
-    start_y,
-    move_x,
-    move_y,
-    nose_cos,
-    nose_sin,
-    inverse_front,
-    inverse_rear,
-    inverse_half_width,
-):
-    """The deflector's egg (proposal 2026-11-27): in the ship's frame (nose +x) the front half an
-    ellipse of semi-axis `front` along the nose, the rear half one of semi-axis `rear`, both of
-    half-width `half_width`. The tau in [0, 1) at which the straight path start + tau move (the
-    bullet relative to the ship's centre, world axes) first crosses the egg inward, inf for
-    none: a path starting inside (a bullet fired from inside, or already turned) never enters.
-    The semi-axes come as inverses (1 / front, 1 / rear, 1 / half_width: the rows
-    inverse_egg_*), so the pair test multiplies. Elementwise; every argument broadcasts."""
-    along = start_x * nose_cos + start_y * nose_sin
-    across = start_y * nose_cos - start_x * nose_sin
-    move_along = move_x * nose_cos + move_y * nose_sin
-    move_across = move_y * nose_cos - move_x * nose_sin
-    scaled_across = across * inverse_half_width
-    scaled_move_across = move_across * inverse_half_width
-
-    def half(inverse, front_half: bool):
-        p, d = along * inverse, move_along * inverse
-        qa = (d * d + scaled_move_across * scaled_move_across).clamp_min(1e-12)
-        qb = p * d + scaled_across * scaled_move_across
-        qc = p * p + scaled_across * scaled_across - 1.0
-        disc = qb * qb - qa * qc
-        t = (-qb - disc.clamp_min(0.0).sqrt()) / qa
-        on_half = along + t * move_along
-        on_half = on_half >= 0.0 if front_half else on_half < 0.0
-        valid = (disc > 0.0) & (t >= 0.0) & (t < 1.0) & on_half
-        return torch.where(valid, t, torch.inf), qc > 0.0
-
-    front_t, outside_front = half(inverse_front, True)
-    rear_t, outside_rear = half(inverse_rear, False)
-    outside = torch.where(along >= 0.0, outside_front, outside_rear)
-    return torch.where(outside, torch.minimum(front_t, rear_t), torch.inf)
+def circle_entry(start_x, start_y, move_x, move_y, inverse_radius):
+    """The deflector's circle (author 2026-11-28): the tau in [0, 1) at which the straight path
+    start + tau move (the bullet relative to the ship's centre) first crosses the circle of
+    radius 1 / `inverse_radius` about the centre inward, inf for none: a path starting inside
+    (a bullet fired from inside, or already turned) never enters. The radius comes as an
+    inverse (the row inverse_deflector_radius), so the pair test multiplies. Elementwise; every
+    argument broadcasts."""
+    p_x, p_y = start_x * inverse_radius, start_y * inverse_radius
+    d_x, d_y = move_x * inverse_radius, move_y * inverse_radius
+    qa = (d_x * d_x + d_y * d_y).clamp_min(1e-12)
+    qb = p_x * d_x + p_y * d_y
+    qc = p_x * p_x + p_y * p_y - 1.0
+    disc = qb * qb - qa * qc
+    t = (-qb - disc.clamp_min(0.0).sqrt()) / qa
+    valid = (qc > 0.0) & (disc > 0.0) & (t >= 0.0) & (t < 1.0)
+    return torch.where(valid, t, torch.inf)
 
 
 class Turn(NamedTuple):
-    """`egg_turn`'s result, per path."""
+    """`circle_turn`'s result, per path."""
 
     cos: Tensor  # the rotation of the path's direction
     sin: Tensor
@@ -1995,10 +1970,10 @@ def hump(x: Tensor) -> Tensor:
     return 6.75 * x * (1.0 - x) * (1.0 - x)
 
 
-def egg_turn(start_x, start_y, move_x, move_y, entry_tau, inverse_half_width, turn_max) -> Turn:
-    """The deflector's turn at the egg entry (`egg_entry`'s tau) of the straight path start +
-    tau move (relative to the ship's centre): the direction turned away from the centre by
-    turn_max x hump(b / half_width) (given as inverse_half_width), b the distance of the
+def circle_turn(start_x, start_y, move_x, move_y, entry_tau, inverse_radius, turn_max) -> Turn:
+    """The deflector's turn at the circle entry (`circle_entry`'s tau) of the straight path
+    start + tau move (relative to the ship's centre): the direction turned away from the centre
+    by turn_max x hump(b / radius) (the radius given as inverse_radius), b the distance of the
     straight line from the centre (b = 0 goes straight); the speed kept; then the swept test of
     the turned remainder (the entry point to the tick's end, (1 - entry_tau) of the move turned)
     against the centre."""
@@ -2008,7 +1983,7 @@ def egg_turn(start_x, start_y, move_x, move_y, entry_tau, inverse_half_width, tu
     # Signed distance of the line from the centre: + when the centre is on the line's right.
     signed = (move_x * point_y - move_y * point_x) * inverse_length
     b = signed.abs()
-    angle = turn_max * hump(b * inverse_half_width)
+    angle = turn_max * hump(b * inverse_radius)
     turn_cos = torch.cos(angle)
     turn_sin = torch.sin(angle) * signed / b.clamp_min(1e-9)
     rest = 1.0 - entry_tau
@@ -2094,12 +2069,14 @@ def _damage(
         )
 
     hit_cos = -(direction_x * nose_cos + direction_y * nose_sin)  # 1 head-on
+    hit_sin = (direction_x * nose_sin - direction_y * nose_cos).abs()
     damage = hit_damage(
         {name: per_bullet(name) for name in SHOOTER_HIT_CONSTANTS},
         {name: _on_target(c[name], target) for name in TARGET_HIT_CONSTANTS},
         bullet_speed.reshape(flat),
         contact.impact,
         hit_cos,
+        hit_sin,
     )
     return torch.where(contact.hit & real, damage, 0.0)
 
@@ -2110,18 +2087,19 @@ TARGET_HIT_CONSTANTS = (
     "hit_radius",
     "core_radius",
     "nose_cone",
-    "nose_inner_cos",
+    "nose_inner_sin",
     "inverse_nose_width",
 )
 
 
-def hit_damage(shooter, target, bullet_speed, impact, hit_cos) -> Tensor:
+def hit_damage(shooter, target, bullet_speed, impact, hit_cos, hit_sin) -> Tensor:
     """The hit model: one bullet's damage on a ship. Kinetic (the shooter's hit damage, the
     explosive share plus the rest by the squared ratio of the bullet's speed to its reference
     speed) x closeness (`graze`: the impact parameter `impact`, the distance from the target to
     the bullet's line (its turned path's after a deflector's turn), across the band between
-    the target's core and hit radii) x aspect (the target's nose cone at `hit_cos`, the
-    bullet's path against its nose, 1 head-on: `aspect_factor`, weighted by nose_cone).
+    the target's core and hit radii) x aspect (the target's nose armour at the bullet's path
+    against its nose, `hit_cos` 1 head-on and `hit_sin` its |sine|: `aspect_factor`, weighted
+    by nose_cone).
     `shooter`, `target`: the constants by name (SHOOTER_HIT_CONSTANTS,
     TARGET_HIT_CONSTANTS; numbers or tensors broadcast with the rest). The tick's damage
     (`_damage`) and the scripted agent's gun and trigger (lean.scripted.opponent) read it, so a
@@ -2130,7 +2108,7 @@ def hit_damage(shooter, target, bullet_speed, impact, hit_cos) -> Tensor:
     explosive = shooter["explosive_share"]
     kinetic = explosive + (1.0 - explosive) * speed_ratio * speed_ratio
     closeness = graze(impact, target["core_radius"], target["hit_radius"])
-    cone = aspect_factor(hit_cos, target["nose_inner_cos"], target["inverse_nose_width"])
+    cone = aspect_factor(hit_cos, hit_sin, target["nose_inner_sin"], target["inverse_nose_width"])
     aspect = 1.0 + target["nose_cone"] * (cone - 1.0)
     return shooter["hit_damage"] * kinetic * closeness * aspect
 
@@ -2146,87 +2124,70 @@ def graze(distance: Tensor, core: Tensor | float, radius: Tensor | float) -> Ten
 
 
 def aspect_factor(
-    hit_cos: Tensor, nose_inner_cos: Tensor | float, inverse_nose_width: Tensor | float
+    hit_cos: Tensor,
+    hit_sin: Tensor,
+    inner_sin: Tensor | float,
+    inverse_width: Tensor | float,
 ) -> Tensor:
-    """The nose cone (author 2026-11-25) at the cosine `hit_cos` of the angle off the nose (1
-    dead ahead, -1 dead astern), with the ship's constants of those names: 0 inside the inner
-    angle, 1 beyond the outer, a smootherstep of t = (cos inner - c) / (cos inner - cos outer)
-    between (no acos). A bullet's damage factor (`_damage`, the bullet's path against the
-    target's nose) and, as 1 - aspect / 2, a collision's blame (`collisions`). Shared with the
+    """The nose cone's curve (author 2026-11-25; on the sine 2026-11-28) at an angle off the
+    nose given by its cosine `hit_cos` (1 dead ahead, -1 dead astern) and the |sine| `hit_sin`
+    (|cross(nose, n)|, no trig): 0 inside the inner angle, 1 beyond the outer, a smootherstep of
+    t = (sin - sin inner) / (sin outer - sin inner) between; behind the beam (a negative cosine)
+    t = 1. `inner_sin`, `inverse_width`: one angle pair's constants (`_cone_rows`). A bullet's
+    damage factor (`hit_damage`: the nose armour, the bullet's path against the target's nose)
+    and, as 1 - aspect / 2, a collision's blame (`collisions`, the blame pair). Shared with the
     scripted opponent's gun."""
-    return smootherstep(((nose_inner_cos - hit_cos) * inverse_nose_width).clamp(0.0, 1.0))
+    t = ((hit_sin - inner_sin) * inverse_width).clamp(0.0, 1.0)
+    return smootherstep(torch.where(hit_cos < 0.0, 1.0, t))
 
 
-# The hit widths' aspects (`hit_widths`): HIT_WIDTH_POINTS cosines of the bullet's path off the
-# target's nose, evenly from 1 (head-on) to -1 (from dead astern).
-HIT_WIDTH_POINTS = 17
-# The hit widths' scan: parallel rays this far apart (metres) across the egg.
+def _cone_rows(inner: Tensor, outer: Tensor, what: str) -> tuple[Tensor, Tensor]:
+    """An angle pair of the card (radians, one per type) as `aspect_factor`'s constants: the
+    inner angle's sine and 1 / (sin outer - sin inner). The outer angle must be larger than the
+    inner and at most 90 deg (the sine rises on [0, 90 deg])."""
+    if bool((outer <= inner).any()) or bool((outer > math.pi / 2 + 1e-6).any()):
+        raise ValueError(f"{what}: the outer angle must be larger than the inner, at most 90 deg")
+    inner_sin = torch.sin(inner)
+    return inner_sin, 1.0 / (torch.sin(outer) - inner_sin)
+
+
+# The hit width's scan: parallel rays this far apart (metres) across the deflector circle.
 HIT_WIDTH_STEP = 0.05
 
 
 def hit_widths(hit_radius: Tensor, inputs: dict[str, float]) -> Tensor:
     """The deflector's hit width (metres): the band of aim offsets of parallel bullets on a
-    still ship whose turned path passes within the hit radius, (..., HIT_WIDTH_POINTS) at the
-    hit_width cosines, for each `hit_radius` (...) under the hit-model `inputs` (egg_front,
-    egg_rear, egg_half_width, deflector_turn). The game's own `egg_entry` and `egg_turn` on the
-    tick's arithmetic (2 x the hit radius with no turn). Read by the scripted agent's trigger
-    and gun (`hit_width`); a column of the constants, rebuilt by `with_hit_model`."""
+    still ship whose turned path passes within the hit radius, one per `hit_radius` (...),
+    under the hit-model `inputs` (deflector_radius, deflector_turn). The circle has no
+    orientation, so the width is the same from every aspect. The game's own `circle_entry` and
+    `circle_turn` on the tick's arithmetic (2 x the hit radius with no turn). Read by the
+    scripted agent's trigger and gun; the constants' `hit_width` row, rebuilt by
+    `with_hit_model`."""
     radius = torch.as_tensor(hit_radius, dtype=torch.float32)
-    hit_cos = torch.linspace(1.0, -1.0, HIT_WIDTH_POINTS, dtype=torch.float64)
-    side = torch.sqrt((1.0 - hit_cos * hit_cos).clamp_min(0.0))
-    # The bullet's direction in the ship's frame: head-on (-1, 0), from astern (1, 0).
-    direction_x, direction_y = -hit_cos, side
-    reach = float(radius.max()) + float(inputs["egg_half_width"]) + 1.0
+    reach = float(radius.max()) + float(inputs["deflector_radius"]) + 1.0
     offsets = torch.arange(-reach, reach, HIT_WIDTH_STEP, dtype=torch.float64)
-    far = 4.0 * max(float(inputs["egg_front"]), float(inputs["egg_rear"]), reach)
-    across_x, across_y = -direction_y[:, None], direction_x[:, None]
-    start_x = offsets * across_x - far * direction_x[:, None]
-    start_y = offsets * across_y - far * direction_y[:, None]
-    move_x = (2.0 * far * direction_x[:, None]).expand_as(start_x)
-    move_y = (2.0 * far * direction_y[:, None]).expand_as(start_y)
-    entry = egg_entry(
-        start_x,
-        start_y,
-        move_x,
-        move_y,
-        1.0,
-        0.0,
-        1.0 / float(inputs["egg_front"]),
-        1.0 / float(inputs["egg_rear"]),
-        1.0 / float(inputs["egg_half_width"]),
-    )
+    far = 4.0 * reach
+    # Rays along +x at height `offset`, from far behind to far beyond the centre.
+    start_x = torch.full_like(offsets, -far)
+    move_x = torch.full_like(offsets, 2.0 * far)
+    zeros = torch.zeros_like(offsets)
+    inverse_radius = 1.0 / float(inputs["deflector_radius"])
+    entry = circle_entry(start_x, offsets, move_x, zeros, inverse_radius)
     entered = entry < torch.inf
-    turn = egg_turn(
+    turn = circle_turn(
         start_x,
-        start_y,
+        offsets,
         move_x,
-        move_y,
+        zeros,
         torch.where(entered, entry, 0.0),
-        1.0 / float(inputs["egg_half_width"]),
+        inverse_radius,
         torch.tensor(float(inputs["deflector_turn"]), dtype=torch.float64),
     )
-    # Straight (no entry: a miss of the egg) or turned, against each hit radius.
-    cross = start_x * move_y - start_y * move_x
-    straight_squared = cross * cross / (move_x * move_x + move_y * move_y)
-    squared = torch.where(entered, turn.miss_squared, straight_squared)
-    inside = squared[None] < (radius.reshape(-1, 1, 1).double() ** 2)
+    # Straight (no entry: a miss of the circle) or turned, against each hit radius.
+    squared = torch.where(entered, turn.miss_squared, offsets * offsets)
+    inside = squared[None] < (radius.reshape(-1, 1).double() ** 2)
     widths = HIT_WIDTH_STEP * inside.sum(-1).to(torch.float32)
-    return widths.reshape(*radius.shape, HIT_WIDTH_POINTS)
-
-
-def hit_width(widths: Tensor, hit_cos: Tensor) -> Tensor:
-    """The hit width (metres) at the cosine `hit_cos` of the bullet's path off the target's
-    nose (1 head-on), linear between the `hit_widths` points. widths: (..., HIT_WIDTH_POINTS)
-    broadcast against hit_cos (...)."""
-    position = ((1.0 - hit_cos) * (0.5 * (HIT_WIDTH_POINTS - 1))).clamp(0.0, HIT_WIDTH_POINTS - 1.0)
-    low = position.floor().clamp_max(HIT_WIDTH_POINTS - 2.0)
-    fraction = position - low
-    low = low.long()
-    shape = torch.broadcast_shapes(widths.shape[:-1], hit_cos.shape)
-    table = widths.expand(*shape, HIT_WIDTH_POINTS)
-    below = table.gather(-1, low.expand(shape)[..., None])[..., 0]
-    above = table.gather(-1, (low + 1).expand(shape)[..., None])[..., 0]
-    return below + (above - below) * fraction
+    return widths.reshape(radius.shape)
 
 
 class HitInput(NamedTuple):
@@ -2248,48 +2209,39 @@ HIT_MODEL = (
     HitInput("core_radius", "core radius", "m", 0.0, 20.0),
     HitInput("hit_damage", "hit damage", "shield points", 1.0, 40.0),
     HitInput("bullet_spread", "bullet spread (velocity noise per axis)", "m/s", 0.0, 60.0),
-    HitInput("egg_front", "egg: front semi-axis (along the nose)", "m", 5.0, 120.0),
-    HitInput("egg_rear", "egg: rear semi-axis", "m", 5.0, 80.0),
-    HitInput("egg_half_width", "egg: half-width (the turn's F)", "m", 5.0, 60.0),
+    HitInput("deflector_radius", "deflector: circle radius", "m", 5.0, 60.0),
     HitInput("deflector_turn", "deflector: largest turn", "rad", 0.0, 1.57),
-    HitInput("nose_cone", "nose cone's damage rule (1 on, 0 off)", "", 0.0, 1.0),
-    HitInput("nose_inner_angle", "nose cone: no damage inside", "rad", 0.0, 1.4),
-    HitInput("nose_outer_angle", "nose cone: full damage beyond", "rad", 0.05, 1.57),
+    HitInput("nose_cone", "nose armour's rule (1 on, 0 off)", "", 0.0, 1.0),
+    HitInput("nose_inner_angle", "nose armour: no damage inside", "rad", 0.0, 1.4),
+    HitInput("nose_outer_angle", "nose armour: full damage beyond", "rad", 0.05, 1.57),
 )
 _HIT_SAME = (
     "hit_radius",
     "core_radius",
     "hit_damage",
-    "egg_front",
-    "egg_rear",
-    "egg_half_width",
+    "deflector_radius",
     "deflector_turn",
     "nose_cone",
 )
-# The inputs the hit widths read.
-_WIDTH_INPUTS = ("egg_front", "egg_rear", "egg_half_width", "deflector_turn")
-
-
-def _cone_constants(inner: float, outer: float, what: str) -> tuple[float, float]:
-    inner_cos, outer_cos = math.cos(inner), math.cos(outer)
-    if outer_cos >= inner_cos:
-        raise ValueError(f"{what}: the outer angle must be larger than the inner angle")
-    return inner_cos, 1.0 / (inner_cos - outer_cos)
+# The inputs the hit width reads.
+_WIDTH_INPUTS = ("deflector_radius", "deflector_turn")
 
 
 def hit_model_constants(inputs: dict[str, float]) -> dict[str, float]:
     """The constants (RUNTIME_CONSTANTS names, except the hit widths) of hit-model inputs
     (`HIT_MODEL` names; the nose cone's pair only when both angles are given)."""
     out = {name: float(inputs[name]) for name in _HIT_SAME if name in inputs}
-    for name in ("egg_front", "egg_rear", "egg_half_width"):
-        if name in inputs:
-            out["inverse_" + name] = 1.0 / float(inputs[name])
+    if "deflector_radius" in inputs:
+        out["inverse_deflector_radius"] = 1.0 / float(inputs["deflector_radius"])
     if "bullet_spread" in inputs:
         out["spread_speed"] = float(inputs["bullet_spread"])
     if "nose_inner_angle" in inputs and "nose_outer_angle" in inputs:
-        out["nose_inner_cos"], out["inverse_nose_width"] = _cone_constants(
-            float(inputs["nose_inner_angle"]), float(inputs["nose_outer_angle"]), "nose"
+        inner_sin, inverse_width = _cone_rows(
+            torch.tensor(float(inputs["nose_inner_angle"]), dtype=torch.float64),
+            torch.tensor(float(inputs["nose_outer_angle"]), dtype=torch.float64),
+            "the nose armour",
         )
+        out["nose_inner_sin"], out["inverse_nose_width"] = float(inner_sin), float(inverse_width)
     return out
 
 
@@ -2302,10 +2254,10 @@ def hit_model_of(constants: Constants) -> dict[str, float]:
 
     out = {name: first(name) for name in _HIT_SAME}
     out["bullet_spread"] = first("spread_speed")
-    inner_cos = first("nose_inner_cos")
-    outer_cos = inner_cos - 1.0 / first("inverse_nose_width")
-    out["nose_inner_angle"] = math.acos(max(-1.0, min(1.0, inner_cos)))
-    out["nose_outer_angle"] = math.acos(max(-1.0, min(1.0, outer_cos)))
+    inner_sin = first("nose_inner_sin")
+    outer_sin = inner_sin + 1.0 / first("inverse_nose_width")
+    out["nose_inner_angle"] = math.asin(max(-1.0, min(1.0, inner_sin)))
+    out["nose_outer_angle"] = math.asin(max(-1.0, min(1.0, outer_sin)))
     return out
 
 
@@ -2323,11 +2275,11 @@ def with_hit_model(constants: Constants, **inputs: float) -> Constants:
     for name, value in hit_model_constants(merged).items():
         start, _ = constants.columns[name]
         table[start] = value
-    start, width = constants.columns["hit_widths"]
+    start, _ = constants.columns["hit_width"]
     radius = table[constants.columns["hit_radius"][0]]  # (T,)
     unique, inverse = radius.cpu().unique(return_inverse=True)  # built once per radius
     widths = hit_widths(unique, {name: merged[name] for name in _WIDTH_INPUTS})[inverse]
-    table[start : start + width] = widths.T.to(table.device)
+    table[start] = widths.to(table.device)
     return dataclasses.replace(constants, table=table)
 
 
@@ -2338,7 +2290,9 @@ class Collisions(NamedTuple):
     closing: Tensor  # m/s: |w|, the relative speed
     miss: Tensor  # m: b, the closest distance of the tick's relative line, extended
     nose_cos: Tensor  # cos(my nose, the line of centres at first touch, me to the other)
-    blame: Tensor  # 1 - aspect / 2: 1 inside my nose cone's inner angle, 0.5 beyond the outer
+    blame: (
+        Tensor  # 1 - aspect / 2 on the blame pair: 1 inside its inner angle, 0.5 beyond its outer
+    )
     damage: Tensor  # the damage I take (0 without a contact)
 
 
@@ -2365,10 +2319,10 @@ def collisions(
     first. b = |m|, m = p + tau w, tau = -p.w / |w|^2 unclamped: the closest distance of the
     tick's relative line, extended past the tick (the pass's predicted closest approach). The
     line of centres at first touch n = m / R - sqrt(max(0, 1 - b^2 / R^2)) u, u = w / |w|; my
-    blame 1 - aspect(nose . n) / 2 (aspect_factor: 1 inside the nose cone's inner angle, 0.5
-    beyond the outer). I take max shield x (|w| / tick) / (2 x cruise) x graze(b; R_core, R)
-    x blame: linear in the closing speed, a full shield's worth head-on at cruise with full
-    blame; full closeness when the cores would meet, a graze when only the hit radii do."""
+    blame 1 - aspect / 2 at my nose against n (aspect_factor on the card's blame pair, the sine
+    |nose x n|: 1 dead-on, 0.5 beyond the outer angle, 45 deg, and behind the beam). I take
+    max shield x (|w| / tick) / (2 x cruise) x graze(b; R_core, R) x blame: linear in the
+    closing speed, a full shield's worth head-on at cruise with full blame; full closeness when the cores would meet, a graze when only the hit radii do."""
     c = state.constants
     N = end_x.shape[1]
     x, y = state.x, state.y
@@ -2397,8 +2351,9 @@ def collisions(
     line_x = miss_x * inverse_reach - back * relative_x
     line_y = miss_y * inverse_reach - back * relative_y
     cosine = nose_cos[:, :, None] * line_x + nose_sin[:, :, None] * line_y
+    sine = (nose_cos[:, :, None] * line_y - nose_sin[:, :, None] * line_x).abs()
     blame = 1.0 - 0.5 * aspect_factor(
-        cosine, _per_me(c["nose_inner_cos"]), _per_me(c["inverse_nose_width"])
+        cosine, sine, _per_me(c["blame_inner_sin"]), _per_me(c["inverse_blame_width"])
     )
     miss = miss_squared.sqrt()
     closing = relative_squared * inverse_relative / tick_length
@@ -2841,41 +2796,42 @@ def tracked_by_enemy(state: State) -> Tensor:
 def sight_pairs(state: State, tracked: Tensor | None = None) -> Tensor:
     """(E, target, observer) bool: the observer, a living ship of the target's other team, sees the
     target (v2's sight test, src/bnb/game/perception/sight.py `sighted`, game spec 10.1, with the
-    sight ellipse, author 2026-11-25). The observer sees inside an ellipse with itself at one focus,
-    stretched along its nose: with d the offset target - observer and n the observer's unit nose,
-    |d| - e (d . n) <= p, p the observer's vision range (the side reach) and e its
-    vision_eccentricity (0 <= e < 1): p / (1 - e) dead ahead, p / (1 + e) dead behind; e = 0 is the
-    circle |d| <= p. Tested without a square root as |d|^2 <= (p + e (d . n))^2 (for p > 0 and e < 1
-    a negative p + e (d . n) cannot pass: |d| <= -(p + e d . n) <= -p + e |d| has no solution),
-    which at e = 0 is exactly the circle's d^2 <= p^2. A target in `tracked` (E, N) bool (visible
-    to this team on the tick before, `tracked_by_enemy`; author 2026-11-26) is held inside the
-    tracking circle instead, |d|^2 <= (p / (1 - e))^2: the ellipse's forward reach all round, a
-    superset of the ellipse (|d| <= p + e |d| gives |d| <= p / (1 - e)), equal to it at e = 0.
-    None: the ellipse for every target. Sight is blocked only by fields' cores: field
-    i, with core radius max(r - w / 2, 0) and outer radius r + w / 2, blocks the line when exactly
-    one end is strictly inside its core and the two ends are not both inside its outer disc (core
-    and band see each other), or when neither end is inside its core and the segment passes strictly
-    within the core radius of the centre. Dead targets are tested like living ones (a wreck in sight
-    is seen); dead observers see nothing. Bullets are not perceived."""
+    sight egg, author 2026-11-28). The observer sees inside an egg in its own frame: with d the
+    offset target - observer, along = d . nose and across = d x nose, the front half (along >= 0)
+    the ellipse (along / ahead)^2 + (across / side)^2 <= 1, the rear half the same with behind for
+    ahead; ahead, side, behind the card's vision_ahead / vision_side / vision_behind (the
+    constants' inverses: multiplies and a sign check, no square root). A target in `tracked` (E,
+    N) bool (visible to this team on the tick before, `tracked_by_enemy`; author 2026-11-26) is
+    held inside the tracking circle instead, |d| <= tracking_range (the longest of the three
+    reaches: the circle contains the egg). None: the egg for every target. Sight is blocked only
+    by fields' cores: field i, with core radius max(r - w / 2, 0) and outer radius r + w / 2,
+    blocks the line when exactly one end is strictly inside its core and the two ends are not
+    both inside its outer disc (core and band see each other), or when neither end is inside its
+    core and the segment passes strictly within the core radius of the centre. Dead targets are
+    tested like living ones (a wreck in sight is seen); dead observers see nothing. Bullets are
+    not perceived."""
     c = state.constants
     x, y = state.x, state.y
     line_x = x[:, :, None] - x[:, None, :]  # (E, target, observer): target minus observer, d
     line_y = y[:, :, None] - y[:, None, :]
-    length_squared = line_x * line_x + line_y * line_y
 
     def per_observer(value):  # a uniform number, or (E, N) per slot as (E, 1, observer)
         return value[:, None, :] if isinstance(value, Tensor) else value
 
-    along_nose = line_x * state.heading_cos[:, None, :] + line_y * state.heading_sin[:, None, :]
-    side, eccentricity = per_observer(c["vision_range"]), per_observer(c["vision_eccentricity"])
-    reach = side + eccentricity * along_nose
-    if tracked is not None:
-        reach = torch.where(tracked[:, :, None], side / (1.0 - eccentricity), reach)
-    clear = (
-        (length_squared <= reach * reach)
-        & state.alive[:, None, :]
-        & (state.team[:, :, None] != state.team[:, None, :])
+    nose_x, nose_y = state.heading_cos[:, None, :], state.heading_sin[:, None, :]
+    along = line_x * nose_x + line_y * nose_y
+    across = (line_y * nose_x - line_x * nose_y) * per_observer(c["inverse_vision_side"])
+    along = along * torch.where(
+        along >= 0.0,
+        per_observer(c["inverse_vision_ahead"]),
+        per_observer(c["inverse_vision_behind"]),
     )
+    inside = along * along + across * across <= 1.0
+    if tracked is not None:
+        reach = per_observer(c["tracking_range"])
+        held = line_x * line_x + line_y * line_y <= reach * reach
+        inside = torch.where(tracked[:, :, None], held, inside)
+    clear = inside & state.alive[:, None, :] & (state.team[:, :, None] != state.team[:, None, :])
     if state.fields.shape[-1] > 0:
         clear = clear & ~field_blocks(
             state.fields, x[:, :, None], y[:, :, None], x[:, None, :], y[:, None, :]

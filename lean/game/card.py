@@ -67,8 +67,11 @@ CARD_FIELDS = (
     "shield_recharge_delay_scale",
     "nose_inner_angle",
     "nose_outer_angle",
-    "vision_range_scale",
-    "vision_eccentricity",
+    "blame_inner_angle",
+    "blame_outer_angle",
+    "vision_ahead",
+    "vision_side",
+    "vision_behind",
     *FLIGHT_TERMS,
 )
 
@@ -100,32 +103,22 @@ POST_STALL_DRAG_ANGLE = math.radians(45.0)
 # (core._path_lift): the softness, a fraction of the held vertical.
 PATH_LIFT_SOFTNESS = 0.25
 
-# The bullet deflector (proposal 2026-11-27, core.egg_entry and core.egg_turn; lean/game/NOTES.md
-# "Deflector"): an invisible egg around every ship in its frame (nose +x), the front half an
-# ellipse of semi-axis egg_front along the nose, the rear half one of egg_rear, both of half-width
-# egg_half_width. A bullet whose straight in-tick path first crosses it inward is turned away from
-# the ship's centre by deflector_turn x hump(b / egg_half_width) (b the line's distance from the
-# centre; core.hump, 0 at both ends, peak at a third), its speed kept. The same for every type and
-# any shield. The presets (GameConfig.deflector) set the hit model's deflector inputs
+# The bullet deflector (author 2026-11-28, core.circle_entry and core.circle_turn;
+# lean/game/NOTES.md "Deflector"): an invisible circle of radius deflector_radius around every
+# ship. A bullet whose straight in-tick path first crosses it inward is turned away from the
+# ship's centre by deflector_turn x hump(b / deflector_radius) (b the line's distance from the
+# centre; core.hump, 0 at both ends, peak at a third), its speed kept. The same for every type
+# and any shield. The presets (GameConfig.deflector) set the hit model's deflector inputs
 # (core.HIT_MODEL); "off" also skips the deflector's code in the tick. Metres and radians.
-EGG_HALF_WIDTH = 24.0
+DEFLECTOR_RADIUS = 24.0
 DEFLECTOR_PRESETS = {
-    "egg": dict(
-        egg_front=40.0 / 18.0 * EGG_HALF_WIDTH,  # 53.3 m: the sketch's 40/18 proportion
-        egg_rear=EGG_HALF_WIDTH,
-        egg_half_width=EGG_HALF_WIDTH,
-        deflector_turn=math.radians(45.0),
-    ),
-    "off": dict(
-        egg_front=40.0 / 18.0 * EGG_HALF_WIDTH,
-        egg_rear=EGG_HALF_WIDTH,
-        egg_half_width=EGG_HALF_WIDTH,
-        deflector_turn=0.0,
-    ),
+    "circle": dict(deflector_radius=DEFLECTOR_RADIUS, deflector_turn=math.radians(45.0)),
+    "off": dict(deflector_radius=DEFLECTOR_RADIUS, deflector_turn=0.0),
 }
-# The nose cone's damage rule (core.aspect_factor; author 2026-11-25): its weight in the hit
-# model, 0 off (author 2026-11-27: off by default, the code kept as a setting), 1 on.
-NOSE_CONE = 0.0
+# The nose cone's armour (core.aspect_factor; author 2026-11-25, on again 2026-11-28): its weight
+# in the hit model, 1 on (no bullet damage inside the card's nose_inner_angle, full beyond
+# nose_outer_angle), 0 off (a setting for ablations).
+NOSE_CONE = 1.0
 
 # Guns, shields, boundary, spawns.
 BULLET_DRAG = 0.0005
@@ -143,10 +136,6 @@ SIDE_GAP_FRACTION = (
     0.05  # "sides": each team's half disc this far (over the arena radius) from the dividing line
 )
 SIDE_HEADING_JITTER = 0.2617993877991494  # "sides": noses within 15 degrees of the axis
-VISION_RANGE = 3072.0  # m; times the type's vision_range_scale: 1,500 m for every type
-# The sight ellipse (core.sighted_by_enemy): the card's vision_eccentricity e, 0 <= e < 1, stretches
-# the vision range p along the observer's nose: p / (1 - e) ahead, p to the side, p / (1 + e)
-# behind. e = 0 is the circle.
 LN_SQRT2 = 0.5 * math.log(2.0)
 LN_2 = math.log(2.0)
 
