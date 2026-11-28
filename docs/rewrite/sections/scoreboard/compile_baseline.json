@@ -78,5 +78,5 @@
  "gpu": "NVIDIA GeForce RTX 4070 Laptop GPU",
  "power_profile": "performance",
  "torch": "2.15.0+cu132",
- "budget_s": 150.0
+ "budget_s": 175.0
 }
