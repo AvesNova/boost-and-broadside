@@ -165,6 +165,17 @@ port), 3 (docs cleanup), 7 (correctness review): see the Log.
    environment step, gradient diagnostics, config); the BC dry run backfilled from its log.
    Built on a branch during BC (CPU only), merged after BC ends, RL starts with it.
 
+20. Scripted trigger redesign (author go-ahead 2026-11-29 ~00:00; after the RL dry run for any
+   GPU measurement): one rule, expected value against cost. Sideways uncertainty sigma (spread,
+   lead error, the target's possible turn, over the flight time) gives the hit chance; the fire
+   window is centred on the lead point with width (half-width + k sigma) x fire_tolerance; soft
+   gates: "worth it" = sigmoid of log(expected damage / cost) (cost = fire_worth ticks of
+   recharge), "team-mate in line" soft by the mate's clearance; range soft as now; "gun ready"
+   stays hard. Then measure (step 1): today's trigger at fire_tolerance 1 / 3 / 6 / 10 and the new
+   one at a few k: shots, hits, hits per shot per ship-minute, tail-chase share, loose Elo. The
+   winner is the teacher for the first overnight BC arm (step 2, vs tonight's BC, same seed and
+   budget); RL from it if BC improves (step 3). Then the environment-count arm and a second seed.
+
 ## Waiting on the author (not in the queue)
 
 - After R3: the five persona decisions (yardstick = robust centre with crowd rows on?, persona
@@ -226,3 +237,4 @@ scripted delay is a bug; next-state and hit on all visible ships; the pairwise h
 - ~19:55 author: a graceful stop and W&B logging before RL (item 19, `ops-19`).
 - ~20:35 item 19 done (`ops-19` 6bd5c5c3, merged into core; the running BC is pinned at 0a310a3c, unaffected). SIGTERM/SIGINT: finish the update, checkpoint, exit 0 (second signal: immediate); units need `-p TimeoutStopSec=300 -p KillMode=mixed`. W&B in lean.train: project boost-and-broadside-v2, run `<dir>-<stage>` grouped by the run, id in DIR/wandb.json (resume continues it), x = environment_steps, every update metric + gradient diagnostics + config (commit, Learn/Model/GameConfig), host/user/code capture off; online by default, offline fallback, errors never stop training. Backfill script for the BC dry run (docs/rewrite/sections/ops-19/backfill.py), run after BC ends. Quick tier lean/learn 120 passed (CPU), ruff clean.
 - ~23:10 item 16 done: BC 100.7M ticks, exit 0, bc_kl 0.33; student score vs the teacher: 4v4 0.100 (EMA) / 0.116 (live), 1v1 0.379, 16v16 0.000 (bar 0.4: met only at 1v1); gap is gunnery (hits per minute half the teacher's). RL dry run (item 17) started from bc.pt anyway (coordinator's judgement; written up in dry-run-2026-11-28.md).
+- ~00:00 author: go-ahead for the trigger redesign (item 20), at a sensible time (RL runs to completion first); signing off.
