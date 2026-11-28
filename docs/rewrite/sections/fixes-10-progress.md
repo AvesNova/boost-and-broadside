@@ -13,3 +13,8 @@ worktree in `data/fixes10/` (not committed); scripts in `fixes-10/` (from item 6
   `level_names`), the model's critic sized by `ModelConfig.value_levels` (train.py sets it
   from the learner), option C on the team-wide levels (`returns.fallen_team_values`), the
   store unlabels unresolved rows (`store.unresolved_rows`, in `end_segment`).
+- 13:48 core's queue restarted (the first try had no venv in the scratch worktree; failed at
+  import, nothing ran). The CPU replay unit had finished: load 1.6, performance profile. ETA
+  for core's three jobs 14:15 (worst 14:25); then the quick tier and the slow tier on the CPU
+  (alone), then the branch's three jobs. The trainer also prints the enemy-hit share of the
+  labelled observed rows, all of them and away from the ends (from core RL on).

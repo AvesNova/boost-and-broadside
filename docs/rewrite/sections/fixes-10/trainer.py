@@ -83,7 +83,45 @@ train.update = timing("update", train.update)
 timed_update = train.update
 
 
+def hit_shares(store):
+    """Measurement only: the enemy-hit share of the labelled observed rows in the store, all
+    of them and only those at least a bullet's life - 1 rows before an episode end or the
+    update's end (the rows the item-10 mask keeps; computed here from the store's own records,
+    seat-major over the update's segments), and the labelled row counts."""
+    from lean.contract import BULLET_SLOTS
+
+    label = store.resident["hit_label"][:, : store.views].long()
+    observed = store.resident["observed"][:, : store.views]
+    done = store.resident["done"][:, : store.views]
+    ticks, segments, seats = store.ticks, store.segments, store.seats
+    chained = done.view(ticks, segments, seats).transpose(0, 1).reshape(segments * ticks, seats)
+    reach = BULLET_SLOTS - 1
+    padded = torch.cat([chained, chained.new_ones((reach, seats))])
+    near = torch.zeros_like(chained)
+    for offset in range(reach):
+        near |= padded[offset : offset + segments * ticks]
+    near |= torch.cat(
+        [chained.new_zeros((segments * ticks - reach, seats)), chained.new_ones((reach, seats))]
+    )
+    near = near.view(segments, ticks, seats).transpose(0, 1).reshape(ticks, segments * seats)
+    labelled = observed & (label >= 0)
+    far = labelled & ~near[..., None]
+    enemy = label == 1
+    return (
+        float((enemy & labelled).sum() / labelled.sum().clamp(min=1)),
+        float((enemy & far).sum() / far.sum().clamp(min=1)),
+        int(labelled.sum()),
+        int(far.sum()),
+    )
+
+
 def update_and_store(config, policy, optimiser, store, **keywords):
+    shares = hit_shares(store)
+    print(
+        f"hit share labelled {shares[0]:.5f} ({shares[2]} rows), away from ends "
+        f"{shares[1]:.5f} ({shares[3]} rows)",
+        flush=True,
+    )
     result = timed_update(config, policy, optimiser, store, **keywords)
     sizes = store.nbytes()
     print(

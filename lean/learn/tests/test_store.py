@@ -428,7 +428,10 @@ def test_hit_labels_near_a_segment_boundary_come_from_the_next_segment(monkeypat
     every row of the store is labelled with the outcome of the bullet the ship emitted there,
     found by searching the recorded game steps over all 36 ticks, so a segment's tail is
     labelled by bullets that end in the next segment; only the last segment keeps an
-    unlabelled tail."""
+    unlabelled tail. The rows whose bullet could not report a miss (the bullet life before
+    each game's end and the update's end, store.unresolved_rows) are unlabelled."""
+    from lean.learn.store import unresolved_rows
+
     recorder = StepRecorder().install(monkeypatch)
     segments, ticks = 3, 12
     _, _, _, store = real_store(segments, ticks, clock=24)
@@ -437,7 +440,11 @@ def test_hit_labels_near_a_segment_boundary_come_from_the_next_segment(monkeypat
     environment = torch.cat(
         [torch.arange(4), torch.arange(2)]
     )  # 4 environments, 2 self-play: the seats
+    done = torch.stack(recorder.done).index_select(1, environment)  # (U x T, S)
+    unresolved = unresolved_rows(done, True)
+    assert unresolved.any() and not unresolved.all()
     expected = recorder.hit_labels().index_select(1, environment)
+    expected = torch.where(unresolved[..., None], -1, expected)
     assert torch.equal(labels, expected)
     assert (labels[ticks - 3 : ticks] >= 0).any()  # segment 0's tail is labelled from segment 1
     assert (
