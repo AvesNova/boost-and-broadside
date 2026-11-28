@@ -172,7 +172,9 @@ def play(agent: str, size: int, envs: int, seed: int, device: str) -> dict:
         "wipe_share": float(wiped.float().mean()),
         "one_team_wiped_share": float((wiped & ~both_wiped).float().mean()),
         "both_wiped_share": float(both_wiped.float().mean()),
-        "edge_quantiles": dict(zip([f"{q:g}" for q in quantiles.tolist()], edge_quantiles.tolist())),
+        "edge_quantiles": dict(
+            zip([f"{q:g}" for q in quantiles.tolist()], edge_quantiles.tolist())
+        ),
     }
 
 

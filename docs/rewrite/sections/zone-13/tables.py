@@ -52,8 +52,10 @@ def main() -> None:
             cells.append("-" if old is None else form.format(old))
             cells.append(form.format(results[size][key]))
         print("| " + " | ".join(cells) + " |")
-    print("\nMap-edge target (living ships every 15th tick, m): quantiles 0 / 0.1% / 1% / 50% / "
-          "99% / 99.9% / 1")
+    print(
+        "\nMap-edge target (living ships every 15th tick, m): quantiles 0 / 0.1% / 1% / 50% / "
+        "99% / 99.9% / 1"
+    )
     for size in (1, 4):
         q = results[size]["edge_quantiles"]
         print(f"- {size}v{size}: " + " / ".join(f"{value:,.0f}" for value in q.values()))

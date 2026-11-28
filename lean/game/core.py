@@ -3181,12 +3181,13 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
     200 m/s and of the nose rate over 1 rad/s; angle of attack over 0.25 rad, its cos and sin;
     store and shield as fractions of the type's full values; shield over 100; shield wait over
     3 s, clipped to 1; gun cooldown in whole ticks; distance inside the current zone's edge
-    over 1000 m clipped to [-1, 1]; the outward unit direction x, y from the zone's centre; heading cos, sin; the share of bullet
-    slots in flight], then flags [same team as the viewer, alive, exists, fired last tick], then
-    the ship-type one-hot. Rows of slots that do not exist are zero. Fired last tick is the
-    step's stored flag; the share of bullet slots in flight counts real bullets not yet
-    contacted (ghosts and contacted bullets are not observed). Position is not a scalar (Obs.pos
-    carries it, for the position code and the rotary angles).
+    over 1000 m clipped to [-1, 1]; the outward unit direction x, y from the zone's centre;
+    heading cos, sin; the share of bullet slots in flight], then flags [same team as the
+    viewer, alive, exists, fired last tick], then the ship-type one-hot. Rows of slots that do
+    not exist are zero. Fired last tick is the step's stored flag; the share of bullet slots in
+    flight counts real bullets not yet contacted (ghosts and contacted bullets are not
+    observed). Position is not a scalar (Obs.pos carries it, for the position code and the
+    rotary angles).
 
     globals (E, GLOBAL_FEATURES), contract.GLOBAL_COLUMNS: the zone now (centre x, y,
     radius) and at its stage's end (`zone_stage_end`), each over ZONE_SCALE; the seconds to the
