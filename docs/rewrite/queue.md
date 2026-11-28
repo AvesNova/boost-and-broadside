@@ -14,11 +14,11 @@ core when sensible (author 2026-11-27).
 
 ## Running
 
-- 11 Gradient tools + entropy in BC (`gradients-11`, lean/learn).
+(nothing: the queue is empty; see Waiting on the author)
 
 ## Done
 
-R1 persona round 2, R2 two-level league, R3 persona round 3, 8a correctness fixes, 8b scripted delay, 8c heads, items 4 (second training review), 5 (speed wins), 6 (teacher), 9 (eval counters), 10 (morning fixes), 1 (merge + compile baselines), 2 (hit-range
+R1 persona round 2, R2 two-level league, R3 persona round 3, 8a correctness fixes, 8b scripted delay, 8c heads, items 4 (second training review), 5 (speed wins), 6 (teacher), 9 (eval counters), 10 (morning fixes), 11 (gradient tools), 1 (merge + compile baselines), 2 (hit-range
 port), 3 (docs cleanup), 7 (correctness review): see the Log.
 
 ## Queue (in order)
@@ -145,3 +145,5 @@ scripted delay is a bug; next-state and hit on all visible ships; the pairwise h
 - ~15:00 item 10 done (`fixes-10` 7c2703d2, merged into core). Option C on the outcome only (dead ships' damage / kill_death values 0 again); objective levels off by default (LearnConfig.objective_levels; value head 3 levels; pre-item-10 checkpoints need value_levels=5 + objective_levels=True); hit labels of the last 11 rows before an episode or update end masked (exact rule; core's RL hit share was +2.3 / +8.5 / +5.4% high, the branch's equal near and away from the ends); compile budget 175 s. Back-to-back BC (both at load ~4.5-6, the author's browser open): core 108.7 / 110.9 s per update (8,756 / 8,612 steps/s), branch 106.4 / 106.5 s (8,967 / 8,946); store 2,601.5 -> 2,409.4 MiB; peak 1.16 -> 1.06 GiB; end_segment +0.1 ms. An earlier +8-11% branch slowdown was the busy machine. Cold compile 189.6 s at load 7.0 (fails 175 s; core 170.3 s at load 6.8): to re-measure quiet. Quick tier 222 passed, slow learn 6 passed, ruff clean.
 - ~15:06 item 10 follow-up (`fixes-10` 9ccd4e7a merged: notes): cold compile on the branch 164.8 s at load 2.9 (passes 175 s), 189.6 s at load 7.0; core 170.3 / 174.7 s at load 6.8 / 7.0. Little headroom on a loaded machine.
 - ~15:30 author: entropy 0.003 in BC too; port v2's gradient tools to lean and run the gradient diagnostic. Item 11 started (`gradients-11`).
+- ~16:09 item 11 done (`gradients-11` 51320307, merged into core). Entropy 0.003 in BC; lean.learn.gradients (v2's decomposition: norms, shares, trunk cosines, agreement, coherent fraction, actor share; --gradient-diagnostics-every N, off by default; ~30 s per measured update); fixed geometry.draw_keys treating cuda / cuda:0 as different devices (GPU pair keys came from the default generator). Diagnostic, fresh weights, 6 BC + 3 RL updates, first minibatch, raw gradients: BC trunk shares bc 0.93, value 0.008, next_state 0.010, pair 0.004, field 0.054, edge -0.003, entropy -0.002; RL teacher 0.82, next_state 0.08, value 0.05, pair 0.03, edge 0.03, field 0.01, surrogate -0.02 (40x smaller norm than the teacher, coherent fraction ~0: noise this early). No auxiliary over 50% in any update; in BC pair and field point against bc (cosine negative in 6/6 and 5/6 updates). Quick tier 199 passed, slow learn 6 passed, ruff clean, compile 168.6 s at load 6.6 (budget 175), graphs unchanged.
+- ~16:10 author (replays): the round-3 centre and league personas are degenerate in duels: nose to nose, firing, colliding (often both die; inside-egg shots get through). Discussing front armour by hit angle with an "absorbed" visual and collision damage; nothing built yet.
