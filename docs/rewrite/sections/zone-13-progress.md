@@ -12,3 +12,15 @@ Started 17:53 (power performance, load 1.3). ETA 20:00 (worst 20:50).
   max 121.6 s; 15.0% of deaths by the boundary.
 - 18:20 queued bnb-13-gpu: real trainer 2 BC + 2 RL static, then the cold compile check.
   ETA all done 19:15 (worst 19:45).
+- 18:11 behaviour done (tables: zone-13/tables.md). 4v4: every game a wipe (0.10% both),
+  median 52.3 s, p90 76.2 s, max 118.4 s; 3.6% of deaths by the boundary.
+- 18:15 replays: data/replays-2026-11-28-zone13/ (1v1 seeds 0-2: 66.1 / 104.8 / 74.7 s; 4v4:
+  84.3 / 70.8 / 47.7 s; all wipes), the zone drawn (yellow edge, red ramp end, map faint).
+- 18:22 real trainer (lean.train, static, 2,048 environments): 2 BC + 2 RL updates, no
+  recompile (fail_on_recompile); second-update rates 8,698 (BC) / 8,603 (RL) steps/s with the
+  quick tier running on the CPU beside it (not a timing).
+- 18:26 compile check: within the baseline; 6 graphs, 11,477 traced operations (item 12:
+  11,439), 0 graph breaks, cold 172.9 s at load 3.9 (budget 175 s: little headroom).
+- Quick tier (game, scripted, model, eval, tool, learn) 410 passed, 3 skipped; ruff clean.
+  One learn test changed: it relied on the clock's tie-break for wins at a 6-tick test clock;
+  a test-clock end is now a draw (wins are covered by test_rewards).
