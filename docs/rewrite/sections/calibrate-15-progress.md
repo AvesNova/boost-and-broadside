@@ -13,3 +13,10 @@ Queue item 15: re-measure the learner's supports and scales under the core rules
   First read: hit prior unchanged (4v4 0.9863 / 0.0109 / 0.0028); map edge badly balanced (6
   of 16 bins, largest 38%); field edge's largest bin 21%; feature scales fine. ETA 20:25
   (worst 21:15).
+- 19:25 worked: 16v16 collected (256 x 8,000, 1,278 episodes, 429 s). Applied (a3b7dc4c):
+  value damage +-5.4 -> 5.6, kill_death +-7.5 -> 8.2; next-state ranges by the 99.9% rule
+  (along +-0.53, across +-0.60, heading +-0.039, speed +-3.6, energy +-460 knee 0.18, shield
+  -100..0); field edge -1,500..6,200 knee 200; map edge 32 bins -3,900..300 knee 1,000; hit
+  prior 0.9863 / 0.0109 / 0.0028; feature scales unchanged. Table: calibrate-15/table.md.
+  Running: quick tier (bnb-15-quick). Next: slow learn, compile check, smoke. ETA 20:20
+  (worst 21:00).
