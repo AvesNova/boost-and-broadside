@@ -391,3 +391,20 @@ inferences marked in each section.
 [jsrl]: https://arxiv.org/abs/2204.02372
 [sgi]: https://arxiv.org/abs/2106.04799
 [adam]: https://arxiv.org/abs/1412.6980
+
+## Answers from the code (coordinator, 2026-11-28)
+
+- Next-state has 6 columns (lean/model/policy.py NEXT_STATE_COLUMNS). Its loss is the mean over
+  rows and columns (training.py: divided by next_count x columns), not a sum.
+- The geometry heads are likewise nats per column, the sampled pairs weighted and divided by the
+  minibatch's valid pair count (lean/learn/geometry.py geometry_losses): a mean over pairs.
+- The value loss is the mean over reward levels (divided by own_count x levels).
+- k in teacher_decay ** k is the RL update index (one update = 1,048,576 environment ticks): a
+  half-life of 13.5 updates (~14M ticks); the weight falls below teacher_cutoff 0.005 at
+  update ~45 (0.5 x 0.95^45 = 0.0050), unless the win-rate gate closes it earlier. The cutoff is
+  on the coefficient, as read.
+- Because every head averages over its columns (and pairs), section 5's c x sqrt(k) .. c x k
+  becomes c / sqrt(k) .. c on the trunk gradient: a head's coefficient is an upper bound on its
+  weight, not a multiple of it.
+- There are no grad_* diagnostics in lean today (only the global clip's norm); the gradient-share
+  measurement needs a small script.
