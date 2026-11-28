@@ -1,0 +1,213 @@
+# analyse.py run 2026-11-28 ~19:15 on the code before the change ("current" = the old numbers; "proposed" = proposal.json; the map edge was then proposed at 16 bins, 32 chosen: see table.md)
+
+4v4: 1024 environments x 8000 ticks, 5439 episodes, 327 s; episode ticks median / p99 / max 1301 / 2777 / 3524
+1v1: 2048 environments x 8000 ticks, 8758 episodes, 311 s; episode ticks median / p99 / max 1510 / 3486 / 3641
+16v16: 256 environments x 8000 ticks, 1278 episodes, 429 s; episode ticks median / p99 / max 1372 / 2821 / 3527
+
+## Value returns (min / 0.1% / 1% / median / 99% / 99.9% / max)
+- damage 4v4 (43917116 rows): -2.97 / -1.593 / -0.8436 / 0 / 0.8288 / 1.599 / 4.147
+    current -5.4..5.4 knee 0.0109: 99% in 42/63, largest 35.2%, empty 18, perplexity 20.4, clamped 0.00%
+    proposed -5.6..5.6 knee 0.0109: 99% in 42/63, largest 35.3%, empty 18, perplexity 20.3, clamped 0.00%
+- damage 1v1 (28318066 rows): -2.516 / -1.478 / -0.6464 / 0 / 0.6464 / 1.478 / 2.516
+    current -5.4..5.4 knee 0.0109: 99% in 41/63, largest 67.2%, empty 18, perplexity 6.2, clamped 0.00%
+    proposed -5.6..5.6 knee 0.0109: 99% in 40/63, largest 67.2%, empty 18, perplexity 6.2, clamped 0.00%
+- damage 16v16 (31319099 rows): -4.13 / -1.669 / -0.9511 / 3.257e-05 / 0.924 / 1.682 / 5.592
+    current -5.4..5.4 knee 0.0109: 99% in 43/63, largest 17.7%, empty 16, perplexity 33.2, clamped 0.00%
+    proposed -5.6..5.6 knee 0.0109: 99% in 43/63, largest 17.7%, empty 18, perplexity 33.0, clamped 0.00%
+- kill_death 4v4 (43917116 rows): -4.801 / -2.802 / -2.429 / 0.0002234 / 2.191 / 3.018 / 8.189
+    current -7.5..7.5 knee 0.141: 99% in 42/63, largest 35.9%, empty 20, perplexity 18.8, clamped 0.00%
+    proposed -8.2..8.2 knee 0.141: 99% in 41/63, largest 36.0%, empty 20, perplexity 18.5, clamped 0.00%
+- kill_death 1v1 (28318066 rows): -2.83 / -2.746 / -2.052 / 0 / 2.052 / 2.746 / 2.83
+    current -7.5..7.5 knee 0.141: 99% in 41/63, largest 66.6%, empty 20, perplexity 6.1, clamped 0.00%
+    proposed -8.2..8.2 knee 0.141: 99% in 40/63, largest 66.8%, empty 20, perplexity 6.1, clamped 0.00%
+- kill_death 16v16 (31319099 rows): -4.813 / -2.828 / -2.559 / 0.01114 / 2.314 / 3.442 / 7.057
+    current -7.5..7.5 knee 0.141: 99% in 42/63, largest 16.4%, empty 19, perplexity 31.7, clamped 0.00%
+    proposed -8.2..8.2 knee 0.141: 99% in 42/63, largest 16.5%, empty 19, perplexity 31.2, clamped 0.00%
+- outcome 4v4 (43917116 rows): -10 / -9.976 / -9.78 / 6.357 / 9.907 / 9.991 / 10
+    current -10.0..10.0 knee 0.0: 99% in 30/63, largest 6.1%, empty 29, perplexity 26.1, clamped 0.00%
+    proposed -10.0..10.0 knee 0.0: 99% in 30/63, largest 6.1%, empty 29, perplexity 26.1, clamped 0.00%
+- outcome 1v1 (28318066 rows): -10 / -9.991 / -9.904 / 0 / 9.904 / 9.991 / 10
+    current -10.0..10.0 knee 0.0: 99% in 36/63, largest 4.0%, empty 24, perplexity 33.5, clamped 0.00%
+    proposed -10.0..10.0 knee 0.0: 99% in 36/63, largest 4.0%, empty 24, perplexity 33.5, clamped 0.00%
+- outcome 16v16 (31319099 rows): -10 / -9.931 / -9.503 / 6.24 / 9.872 / 9.988 / 10
+    current -10.0..10.0 knee 0.0: 99% in 30/63, largest 6.7%, empty 28, perplexity 25.4, clamped 0.00%
+    proposed -10.0..10.0 knee 0.0: 99% in 30/63, largest 6.7%, empty 28, perplexity 25.4, clamped 0.00%
+
+## Next-state targets
+- along 4v4: -1.684 / -0.3524 / -0.08183 / 0.005249 / 0.08915 / 0.325 / 1.821
+- along 1v1: -1.795 / -0.5236 / -0.1182 / 0.003202 / 0.123 / 0.5071 / 1.698
+- along 16v16: -1.758 / -0.3395 / -0.08633 / 0.005253 / 0.08766 / 0.2996 / 1.584
+    data-rule knee (4v4): 0.0028370219078982244 (every side 0.0028370219078982244), exact zeros 0.000
+    current -1.89..1.89 knee 0.0024: 99% in 35/63, largest 13.3%, empty 25, perplexity 19.6, clamped 0.00%
+    proposed -0.53..0.53 knee 0.0024: 99% in 43/63, largest 10.4%, empty 18, perplexity 24.2, clamped 0.01%
+- across 4v4: -1.801 / -0.4768 / -0.2056 / -1.868e-06 / 0.2085 / 0.4813 / 2.033
+- across 1v1: -1.872 / -0.5908 / -0.2299 / -5.794e-05 / 0.2306 / 0.5877 / 1.74
+- across 16v16: -1.847 / -0.4758 / -0.2081 / 5.614e-06 / 0.2054 / 0.4742 / 1.704
+    data-rule knee (4v4): 2.0535250264574613e-05 (every side 2.0535250264574613e-05), exact zeros 0.000
+    current -1.82..1.82 knee 0.0244: 99% in 33/63, largest 6.9%, empty 26, perplexity 28.1, clamped 0.00%
+    proposed -0.6..0.6 knee 0.0244: 99% in 44/63, largest 5.7%, empty 16, perplexity 37.4, clamped 0.01%
+- heading 4v4: -0.2645 / -0.0385 / -0.01675 / 0 / 0.01674 / 0.0385 / 0.2591
+- heading 1v1: -0.2473 / -0.03784 / -0.01701 / 0 / 0.01702 / 0.03793 / 0.2516
+- heading 16v16: -0.238 / -0.03424 / -0.01451 / 0 / 0.01451 / 0.03425 / 0.2509
+    data-rule knee (4v4): None (every side 5.797211710155422e-10), exact zeros 0.002
+    current -0.1..0.1 knee 7.7e-05: 99% in 45/63, largest 3.6%, empty 16, perplexity 42.3, clamped 0.00%
+    proposed -0.039..0.039 knee 7.7e-05: 99% in 51/63, largest 3.2%, empty 8, perplexity 48.6, clamped 0.03%
+- speed 4v4: -10.14 / -3.371 / -1.777 / 0.06638 / 1.117 / 1.834 / 3.215
+- speed 1v1: -9.15 / -2.514 / -1.362 / 0.07341 / 0.9492 / 1.589 / 3.224
+- speed 16v16: -10.17 / -3.577 / -1.889 / 0.06046 / 1.232 / 1.95 / 3.223
+    data-rule knee (4v4): 0.16649930093547283 (every side 0.16649930093547283), exact zeros 0.000
+    current -5.39..5.39 knee 0.156: 99% in 39/63, largest 6.5%, empty 21, perplexity 32.4, clamped 0.00%
+    proposed -3.6..3.6 knee 0.156: 99% in 44/63, largest 5.8%, empty 16, perplexity 36.3, clamped 0.01%
+- energy 4v4: -672.4 / -379.7 / -251.1 / 0 / 273.6 / 439 / 686.1
+- energy 1v1: -689.5 / -409.4 / -252.8 / 0 / 257.7 / 422 / 689.3
+- energy 16v16: -675.7 / -379.7 / -254.1 / 0 / 280.8 / 454.9 / 686.2
+    data-rule knee (4v4): 0.1830206106311026 (every side 0.09151642135114654), exact zeros 0.561
+    current -976.0..976.0 knee 21.8: 99% in 35/63, largest 72.0%, empty 25, perplexity 4.7, clamped 0.00%
+    proposed -460.0..460.0 knee 0.18: 99% in 47/63, largest 58.4%, empty 12, perplexity 9.0, clamped 0.00%
+- shield 4v4: -97.44 / -8.288 / 0 / 0 / 0 / 0 / 0
+- shield 1v1: -90.19 / -7.667 / 0 / 0 / 0 / 0 / 0
+- shield 16v16: -98.18 / -8.857 / -0.03709 / 0 / 0 / 0 / 0
+    data-rule knee (4v4): None (every side 6.13055792149849e-06), exact zeros 0.992
+    current -90.0..0.0 knee 1.0: 99% in 1/63, largest 99.3%, empty 61, perplexity 1.1, clamped 0.00%
+    proposed -100.0..0.0 knee 1.0: 99% in 1/63, largest 99.3%, empty 61, perplexity 1.1, clamped 0.00%
+
+## Geometry targets
+- range 4v4 (5338672): 0.3583 / 22.25 / 58.59 / 778.4 / 5671 / 6448 / 7319; current: 99% in 23/32, largest 6.9%, empty 7, perplexity 21.6, clamped 0.00%
+- range 1v1 (144749): 0.5815 / 10.05 / 31.5 / 315.9 / 1280 / 1453 / 3042; current: 99% in 15/32, largest 10.6%, empty 16, perplexity 13.6, clamped 0.00%
+- range 16v16 (78829113): 0.3253 / 33.86 / 88.44 / 2291 / 5674 / 6342 / 7272; current: 99% in 22/32, largest 11.9%, empty 8, perplexity 17.8, clamped 0.00%
+    proposed {'low': 0.0, 'high': 6500.0, 'knee': 100.0} 4v4: 99% in 23/32, largest 6.9%, empty 7, perplexity 21.7, clamped 0.00%
+    proposed {'low': 0.0, 'high': 6500.0, 'knee': 100.0} 1v1: 99% in 15/32, largest 10.5%, empty 16, perplexity 13.7, clamped 0.00%
+    proposed {'low': 0.0, 'high': 6500.0, 'knee': 100.0} 16v16: 99% in 22/32, largest 12.0%, empty 8, perplexity 17.9, clamped 0.00%
+- range_rate 4v4 (5338672): -1360 / -744.6 / -541.3 / -76.09 / 404 / 597.3 / 1288; current: 99% in 21/32, largest 9.8%, empty 9, perplexity 18.7, clamped 0.00%
+- range_rate 1v1 (144749): -1253 / -889.4 / -602.7 / -25.11 / 471.2 / 606.1 / 1193; current: 99% in 21/32, largest 6.4%, empty 9, perplexity 20.9, clamped 0.00%
+- range_rate 16v16 (78829113): -1412 / -727.7 / -524.3 / -66.48 / 416.6 / 612.2 / 1418; current: 99% in 21/32, largest 9.7%, empty 9, perplexity 18.8, clamped 0.00%
+    proposed {'low': -900.0, 'high': 900.0, 'knee': 50.0} 4v4: 99% in 21/32, largest 9.4%, empty 9, perplexity 19.4, clamped 0.00%
+    proposed {'low': -900.0, 'high': 900.0, 'knee': 50.0} 1v1: 99% in 22/32, largest 6.2%, empty 8, perplexity 21.6, clamped 0.00%
+    proposed {'low': -900.0, 'high': 900.0, 'knee': 50.0} 16v16: 99% in 21/32, largest 9.4%, empty 9, perplexity 19.5, clamped 0.00%
+- line_of_sight_rate 4v4 (5338672): -153.9 / -5.875 / -2.144 / -0.0006633 / 2.145 / 5.907 / 213.7; current: 99% in 22/32, largest 8.7%, empty 6, perplexity 18.3, clamped 0.01%
+- line_of_sight_rate 1v1 (144749): -293.3 / -8.514 / -4.365 / 0.005323 / 4.22 / 8.625 / 75.26; current: 99% in 25/32, largest 9.3%, empty 4, perplexity 20.9, clamped 0.02%
+- line_of_sight_rate 16v16 (78829113): -512.4 / -4.007 / -1.212 / 0.0001721 / 1.208 / 3.98 / 246.9; current: 99% in 20/32, largest 12.3%, empty 10, perplexity 13.7, clamped 0.00%
+    proposed {'low': -9.0, 'high': 9.0, 'knee': 0.05} 4v4: 99% in 20/32, largest 9.6%, empty 8, perplexity 16.9, clamped 0.00%
+    proposed {'low': -9.0, 'high': 9.0, 'knee': 0.05} 1v1: 99% in 23/32, largest 9.7%, empty 6, perplexity 19.3, clamped 0.01%
+    proposed {'low': -9.0, 'high': 9.0, 'knee': 0.05} 16v16: 99% in 18/32, largest 13.3%, empty 10, perplexity 12.7, clamped 0.00%
+- energy_difference 4v4 (5338672): -3.294e+04 / -3.282e+04 / -3.254e+04 / 0 / 3.252e+04 / 3.281e+04 / 3.292e+04; current: 99% in 26/32, largest 17.2%, empty 6, perplexity 17.5, clamped 0.00%
+- energy_difference 1v1 (144749): -3.279e+04 / -3.266e+04 / -2.494e+04 / 17.71 / 2.517e+04 / 3.208e+04 / 3.275e+04; current: 99% in 22/32, largest 26.8%, empty 6, perplexity 9.9, clamped 0.00%
+- energy_difference 16v16 (78829113): -3.295e+04 / -3.283e+04 / -3.269e+04 / 0 / 3.269e+04 / 3.283e+04 / 3.294e+04; current: 99% in 26/32, largest 12.2%, empty 6, perplexity 21.9, clamped 0.00%
+- train_angle 4v4 (10677344): -3.142 / -3.131 / -3.037 / -0.004053 / 3.036 / 3.131 / 3.142; current: 99% in 32/32, largest 7.2%, empty 0, perplexity 29.4, clamped 0.00%
+- train_angle 1v1 (289498): -3.142 / -3.133 / -3.057 / 0.009932 / 3.054 / 3.133 / 3.141; current: 99% in 32/32, largest 8.0%, empty 0, perplexity 29.5, clamped 0.00%
+- train_angle 16v16 (157658226): -3.142 / -3.132 / -3.044 / 0.003064 / 3.044 / 3.132 / 3.142; current: 99% in 32/32, largest 5.4%, empty 0, perplexity 30.5, clamped 0.00%
+- gun_error 4v4 (10677344): -3.142 / -3.131 / -3.037 / -0.003271 / 3.038 / 3.131 / 3.142; current: 99% in 30/32, largest 8.6%, empty 0, perplexity 22.9, clamped 0.00%
+- gun_error 1v1 (289498): -3.142 / -3.134 / -3.059 / 0.00631 / 3.054 / 3.132 / 3.142; current: 99% in 31/32, largest 9.6%, empty 0, perplexity 23.1, clamped 0.00%
+- gun_error 16v16 (157658226): -3.142 / -3.132 / -3.044 / 0.002818 / 3.044 / 3.132 / 3.142; current: 99% in 29/32, largest 9.2%, empty 0, perplexity 21.1, clamped 0.00%
+- field_edge 4v4 (24672390): -1936 / -1424 / -720.7 / 2107 / 5387 / 6068 / 7083; current: 99% in 21/32, largest 21.2%, empty 7, perplexity 9.7, clamped 0.00%
+- field_edge 1v1 (6567490): -1931 / -1398 / -698.6 / 2118 / 5449 / 6116 / 6856; current: 99% in 21/32, largest 21.5%, empty 7, perplexity 9.7, clamped 0.00%
+- field_edge 16v16 (80779960): -1937 / -1420 / -718.3 / 2112 / 5297 / 5955 / 6928; current: 99% in 21/32, largest 21.5%, empty 7, perplexity 9.7, clamped 0.00%
+    proposed {'low': -1500.0, 'high': 6200.0, 'knee': 200.0} 4v4: 99% in 23/32, largest 15.4%, empty 6, perplexity 13.2, clamped 0.00%
+    proposed {'low': -1500.0, 'high': 6200.0, 'knee': 200.0} 1v1: 99% in 23/32, largest 15.3%, empty 6, perplexity 13.1, clamped 0.00%
+    proposed {'low': -1500.0, 'high': 6200.0, 'knee': 200.0} 16v16: 99% in 23/32, largest 15.5%, empty 6, perplexity 13.1, clamped 0.00%
+- map_edge 4v4 (2467239): -4181 / -3831 / -3462 / -1516 / -201.8 / 60.45 / 442.9; current: 99% in 6/16, largest 37.9%, empty 8, perplexity 3.9, clamped 0.00%
+- map_edge 1v1 (656749): -4159 / -3763 / -3286 / -894.2 / -107.9 / 136.4 / 456.1; current: 99% in 6/16, largest 44.1%, empty 7, perplexity 3.9, clamped 0.00%
+- map_edge 16v16 (8077996): -4191 / -3878 / -3500 / -1724 / -308.2 / 0.3213 / 333.4; current: 99% in 5/16, largest 46.4%, empty 9, perplexity 3.2, clamped 0.00%
+    proposed {'low': -3900.0, 'high': 300.0, 'knee': 1000.0} 4v4: 99% in 8/16, largest 22.7%, empty 7, perplexity 6.3, clamped 0.00%
+    proposed {'low': -3900.0, 'high': 300.0, 'knee': 1000.0} 1v1: 99% in 8/16, largest 37.7%, empty 7, perplexity 5.5, clamped 0.00%
+    proposed {'low': -3900.0, 'high': 300.0, 'knee': 1000.0} 16v16: 99% in 7/16, largest 29.0%, empty 7, perplexity 5.5, clamped 0.00%
+
+## Hit outcomes (missed / enemy / team-mate)
+- 4v4: 64992385 bullets: 0.9863 / 0.0109 / 0.0028
+- 1v1: 32570625 bullets: 0.9958 / 0.0042 / 0.0000
+- 16v16: 65004739 bullets: 0.9792 / 0.0141 / 0.0067
+
+## Scaled features (attended rows): 1% / 50% / 99% / max |x|; flags
+- velocity x (symlog /200) 4v4: 0.0122 / 0.435 / 1.04 / 1.54
+- velocity x (symlog /200) 1v1: 0.0141 / 0.514 / 1.18 / 1.51
+- velocity x (symlog /200) 16v16: 0.0118 / 0.423 / 1.02 / 1.55
+- velocity y (symlog /200) 4v4: 0.0123 / 0.433 / 1.03 / 1.54
+- velocity y (symlog /200) 1v1: 0.0152 / 0.514 / 1.18 / 1.51
+- velocity y (symlog /200) 16v16: 0.0119 / 0.426 / 1.01 / 1.54
+- speed (symlog /200) 4v4: 0.23 / 0.631 / 1.19 / 1.55
+- speed (symlog /200) 1v1: 0.257 / 0.756 / 1.36 / 1.53
+- speed (symlog /200) 16v16: 0.223 / 0.634 / 1.16 / 1.55
+- nose rate (symlog /1) 4v4: 0.000131 / 0.365 / 1.27 / 2.36
+- nose rate (symlog /1) 1v1: 0.0031 / 0.339 / 1.21 / 2.46
+- nose rate (symlog /1) 16v16: 1.62e-06 / 0.33 / 1.26 / 2.53
+- angle of attack (/0.25) 4v4: 6.43e-05 / 0.387 / 3.16 / 3.92
+- angle of attack (/0.25) 1v1: 0.00126 / 0.188 / 2.79 / 3.82
+- angle of attack (/0.25) 16v16: 7.44e-07 / 0.348 / 3.17 / 4.01
+- angle cos 4v4: 0.705 / 0.995 / 1 / 1
+- angle cos 1v1: 0.766 / 0.999 / 1 / 1
+- angle cos 16v16: 0.701 / 0.996 / 1 / 1
+- angle sin 4v4: 1.61e-05 / 0.0967 / 0.709 / 0.83
+- angle sin 1v1: 0.000316 / 0.047 / 0.643 / 0.816
+- angle sin 16v16: 3.28e-07 / 0.0869 / 0.713 / 0.851
+- store fraction 4v4: 0.00219 / 0.866 / 0.998 / 1
+- store fraction 1v1: 0.0378 / 0.967 / 0.999 / 1
+- store fraction 16v16: 0.0017 / 0.665 / 0.998 / 1
+- shield fraction 4v4: 0 / 0.49 / 1 / 1
+- shield fraction 1v1: 0 / 0.557 / 1 / 1
+- shield fraction 16v16: 0 / 0.438 / 1 / 1
+- shield (/100) 4v4: 0 / 0.49 / 1 / 1
+- shield (/100) 1v1: 0 / 0.557 / 1 / 1
+- shield (/100) 16v16: 0 / 0.438 / 1 / 1
+- shield wait (/3, clip) 4v4: 0.756 / 1 / 1 / 1
+- shield wait (/3, clip) 1v1: 0.9 / 1 / 1 / 1
+- shield wait (/3, clip) 16v16: 0.522 / 1 / 1 / 1
+- gun cooldown (ticks) 4v4: 0 / 0 / 0 / 0
+- gun cooldown (ticks) 1v1: 0 / 0 / 0 / 0
+- gun cooldown (ticks) 16v16: 0 / 0 / 0 / 0
+- inside zone edge (/1000, clip) 4v4: 0.183 / 1 / 1 / 1
+- inside zone edge (/1000, clip) 1v1: 0.105 / 0.888 / 1 / 1
+- inside zone edge (/1000, clip) 16v16: 0.259 / 1 / 1 / 1
+- outward x 4v4: 0.0159 / 0.711 / 1 / 1
+- outward x 1v1: 0.0159 / 0.711 / 1 / 1
+- outward x 16v16: 0.0159 / 0.713 / 1 / 1
+- outward y 4v4: 0.0158 / 0.703 / 1 / 1
+- outward y 1v1: 0.0158 / 0.703 / 1 / 1
+- outward y 16v16: 0.0154 / 0.7 / 1 / 1
+- heading cos 4v4: 0.0158 / 0.708 / 1 / 1
+- heading cos 1v1: 0.0151 / 0.706 / 1 / 1
+- heading cos 16v16: 0.0156 / 0.705 / 1 / 1
+- heading sin 4v4: 0.0156 / 0.706 / 1 / 1
+- heading sin 1v1: 0.0155 / 0.708 / 1 / 1
+- heading sin 16v16: 0.0157 / 0.709 / 1 / 1
+- bullet share 4v4: 0 / 0 / 0.75 / 1
+- bullet share 1v1: 0 / 0 / 0.417 / 1
+- bullet share 16v16: 0 / 0 / 0.75 / 1
+- zone x 4v4: 0 / 0 / 0 / 0
+- zone x 1v1: 0 / 0 / 0 / 0
+- zone x 16v16: 0 / 0 / 0 / 0
+- zone y 4v4: 0 / 0 / 0 / 0
+- zone y 1v1: 0 / 0 / 0 / 0
+- zone y 16v16: 0 / 0 / 0 / 0
+- zone radius 4v4: 1.51 / 3.43 / 4.19 / 4.2
+- zone radius 1v1: 0.638 / 3.22 / 4.18 / 4.2
+- zone radius 16v16: 1.58 / 3.39 / 4.19 / 4.2
+- next zone x 4v4: 0 / 0 / 0 / 0
+- next zone x 1v1: 0 / 0 / 0 / 0
+- next zone x 16v16: 0 / 0 / 0 / 0
+- next zone y 4v4: 0 / 0 / 0 / 0
+- next zone y 1v1: 0 / 0 / 0 / 0
+- next zone y 16v16: 0 / 0 / 0 / 0
+- next zone radius 4v4: 0.3 / 0.3 / 0.3 / 0.3
+- next zone radius 1v1: 0.3 / 0.3 / 0.3 / 0.3
+- next zone radius 16v16: 0.3 / 0.3 / 0.3 / 0.3
+- stage time left 4v4: 0.861 / 1.78 / 2.14 / 2.14
+- stage time left 1v1: 0.447 / 1.68 / 2.14 / 2.14
+- stage time left 16v16: 0.894 / 1.76 / 2.14 / 2.14
+- own alive 4v4: 0.25 / 0.75 / 1 / 1
+- own alive 1v1: 1 / 1 / 1 / 1
+- own alive 16v16: 0.0625 / 0.5 / 1 / 1
+- enemy alive 4v4: 0.25 / 0.75 / 1 / 1
+- enemy alive 1v1: 1 / 1 / 1 / 1
+- enemy alive 16v16: 0.0625 / 0.5 / 1 / 1
+- field radius (/1000) 4v4: 0.194 / 0.651 / 1.94 / 1.94
+- field radius (/1000) 1v1: 0.194 / 0.645 / 1.94 / 1.94
+- field radius (/1000) 16v16: 0.194 / 0.647 / 1.94 / 1.94
+- field band (/40) 4v4: 4 / 4 / 4 / 4
+- field band (/40) 1v1: 4 / 4 / 4 / 4
+- field band (/40) 16v16: 4 / 4 / 4 / 4
+- field level (/2) 4v4: 0.5 / 1 / 1 / 1
+- field level (/2) 1v1: 0.5 / 1 / 1 / 1
+- field level (/2) 16v16: 0.5 / 1 / 1 / 1
+- since_seen 4v4: 0 / 0 / 2.09 / 4
+- since_seen 1v1: 0 / 0 / 1.93 / 4.46
+- since_seen 16v16: 0 / 0 / 2.17 / 4.05

@@ -1,0 +1,16 @@
+{
+ "value_damage": [-5.6, 5.6, 0.0109],
+ "value_kill_death": [-8.2, 8.2, 0.141],
+ "value_outcome": [-10.0, 10.0, 0.0],
+ "next_along": [-0.53, 0.53, 0.0024],
+ "next_across": [-0.6, 0.6, 0.0244],
+ "next_heading": [-0.039, 0.039, 7.7e-05],
+ "next_speed": [-3.6, 3.6, 0.156],
+ "next_energy": [-460.0, 460.0, 0.18],
+ "next_shield": [-100.0, 0.0, 1.0],
+ "pair_range": {"low": 0.0, "high": 6500.0, "knee": 100.0},
+ "pair_range_rate": {"low": -900.0, "high": 900.0, "knee": 50.0},
+ "pair_line_of_sight_rate": {"low": -9.0, "high": 9.0, "knee": 0.05},
+ "field_edge": {"low": -1500.0, "high": 6200.0, "knee": 200.0},
+ "map_edge": {"low": -3900.0, "high": 300.0, "knee": 1000.0}
+}

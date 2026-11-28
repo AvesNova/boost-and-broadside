@@ -1,0 +1,11 @@
+performance
+ 19:28:11 up 1 day,  5:09,  1 user,  load average: 2.26, 2.39, 2.03
+act: 1 graph(s), 577 traced operations, aot [['forward', 673]], backend 15.6 s
+scripted_actions: 1 graph(s), 5248 traced operations, aot [['forward', 5532]], backend 33.6 s
+advance: 1 graph(s), 3260 traced operations, aot [['forward', 3476]], backend 18.8 s
+minibatch_loss: 1 graph(s), 1645 traced operations, aot [['forward', 2088], ['backward', 2224]], backend 23.6 s
+slot_actions: 1 graph(s), 720 traced operations, aot [['forward', 1114]], backend 9.5 s
+merge_league: 1 graph(s), 27 traced operations, aot [['forward', 43]], backend 0.6 s
+total: 6 graphs, 11477 traced operations, 0 graph breaks, cold 160.6 s (NVIDIA GeForce RTX 4070 Laptop GPU, performance)
+compile check: within the baseline
+EXIT 0

@@ -867,11 +867,11 @@ def test_next_state_targets_per_column_on_a_hand_made_pair():
     )
     assert torch.allclose(target, expected, atol=1e-3)
     # By hand: bins 3 + (s(value) - s(low)) / (s(high) - s(low)) * 56 (3 buffer columns below
-    # the measured low), s(x) = sign(x) knee ln(1 + |x| / knee), rounded: along 47.6, across
-    # 43.7, heading 50.0, speed 49.5, energy 18.4; the shield (knee 1, over [-ln 91, 0]):
-    # 0 -> 59, -21 -> 20.6 (21).
+    # the measured low), s(x) = sign(x) knee ln(1 + |x| / knee), rounded: along 51.5, across
+    # 48.0, heading 52.9, speed 51.8, energy 8.4; the shield (knee 1, over [-ln 101, 0]):
+    # 0 -> 59, -21 -> 21.5 (21).
     bins = next_state_distribution(config, target).argmax(-1)
-    assert bins.tolist() == [[48, 44, 50, 50, 18, 59], [48, 44, 50, 50, 18, 21]]
+    assert bins.tolist() == [[52, 48, 53, 52, 8, 59], [52, 48, 53, 52, 8, 21]]
 
 
 def test_next_state_shield_is_exactly_zero_on_a_recharging_tick():

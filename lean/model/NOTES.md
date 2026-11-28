@@ -12,7 +12,7 @@ Reasons: `docs/rewrite/model-audit.md`, `docs/rewrite/literature-model-choices.m
   42 policy logits, `value_levels` value levels x 63 bins (3: the learner's, lean.learn; 5 with
   the objective levels); `sequence` returns a `Sequence` (NamedTuple)
   that also holds the next-state logits (6 x 63), the hit logits (3), the map-edge logits
-  (16) and, given a `PairQuery`, the pairwise head's logits (`geometry.py`).
+  (32) and, given a `PairQuery`, the pairwise head's logits (`geometry.py`).
 - `agent.py`: how a network acts, shared by `lean.learn`'s rollout and `lean.eval`'s runner:
   `Network` (a weightless `Stepper` template per architecture plus weights; new weights are new
   data, so no recompile), `agent_step` (the one agent tick: precision, forward, the joint
@@ -82,31 +82,35 @@ ln(1 + |x| / knee) (`lean.model.value.symlog`; knee 0 = linear): 57 across the m
 the outermost centres at the measured ends, then `BUFFER_COLUMNS` = 3 more of the same width
 beyond each end (`buffered_centres`). A symmetric range has 0 on the middle centre; there is no
 zero class. HL-Gauss targets are the Gaussian over the bins in bin space; the decode is the
-expectation over the centres mapped back to target units (`decode_value`). Ranges from 42.7M
-rows (scripted yardstick against itself, 4v4, training game: spawn, fields, fog, the
-1,800-tick clock, 2026-11-25; `docs/rewrite/sections/scoreboard/target_ranges.py`): each
-symmetric range is +-the larger measured extreme (the table below); knees from the flat-core
-data rule (`docs/rewrite/sections/scoreboard/symlog-preview.md`). The shield keeps -90 to 0 and
-knee 1 (= `contract.symlog`) pending its bug check.
+expectation over the centres mapped back to target units (`decode_value`). Ranges measured
+2026-11-28 (queue item 15, the core rules with the shrinking zone; the default scripted agent
+against itself, training game: spawn, fields, fog, no clock; 4v4 1,024 environments x 8,000
+ticks, 1v1 2,048 x 8,000, 16v16 256 x 8,000; `docs/rewrite/sections/calibrate-15/`): each
+symmetric range is +-the largest |0.1st| or |99.9th| percentile over the three team sizes,
+rounded out (until then +-the measured extreme, which left a quarter to a third of the bins
+empty); knees from the flat-core data rule (`docs/rewrite/sections/scoreboard/symlog-preview.md`)
+where it improves the occupancy (energy only). The shield keeps knee 1, its range the full
+shield.
 
 Bin widths in target units: innermost (the narrowest) and outermost (the widest, a buffer column).
+Occupancy at 4v4 (nearest centre): bins holding 99% of the rows, the largest bin's share.
 
-| Column | Target | Measured range | Knee | Innermost, outermost bin | Outermost centres |
-|---|---|---|---|---|---|
-| along (m) | move minus world velocity x tick, in the nose frame | +-1.89 | 2.4e-3 | 6.1e-4, 0.92 | +-3.87 |
-| across (m) | the same, across the nose | +-1.82 | 0.0244 | 3.9e-3, 0.45 | +-2.91 |
-| heading (rad) | wrapped heading change minus nose rate x tick | +-0.100 | 7.7e-5 | 2.1e-5, 0.055 | +-0.216 |
-| speed (m/s) | change of proper speed | +-5.39 | 0.156 | 0.0205, 1.04 | +-7.98 |
-| energy (store) | change | +-976 | 21.8 | 3.08, 205 | +-1,481 |
-| shield (points) | change minus the recharge given | -90 to 0 | 1 | 0.082, 9.34 | -115 to 0.27 |
+| Column | Target | Range (until 2026-11-28) | Knee | Innermost, outermost bin | Outermost centres | 99% in, largest |
+|---|---|---|---|---|---|---|
+| along (m) | move minus world velocity x tick, in the nose frame | +-0.53 (+-1.89) | 2.4e-3 | 4.9e-4, 0.18 | +-0.95 | 43, 10.4% |
+| across (m) | the same, across the nose | +-0.60 (+-1.82) | 0.0244 | 2.9e-3, 0.10 | +-0.86 | 44, 5.7% |
+| heading (rad) | wrapped heading change minus nose rate x tick | +-0.039 (+-0.100) | 7.7e-5 | 1.8e-5, 0.017 | +-0.076 | 51, 3.2% |
+| speed (m/s) | change of proper speed | +-3.6 (+-5.39) | 0.156 | 0.018, 0.60 | +-5.13 | 44, 5.8% |
+| energy (store) | change | +-460 (+-976) | 0.18 (21.8) | 0.054, 300 | +-1,066 | 47, 58.4% (56% exactly 0) |
+| shield (points) | change minus the recharge given | -100 to 0 (-90 to 0) | 1 | 0.084, 10.7 | -128 to 0.28 | 1, 99.3% (exactly 0) |
 
-The hit head's shares (`hit_class_frequencies`), re-measured 2026-11-28 on the current game (hit
-damage 8, the egg deflector), the scripted yardstick against itself, 4v4, training game, 48
-environments x 4,200 ticks on the CPU (finished games re-dealt), 1.6M bullets that ended (ghosts
-included): 98.65% missed, 1.10% an enemy, 0.25% a team-mate (was 93.74 / 5.47 / 0.80 from
-2026-11-25, before the egg cut the hit width). The correctness review's shorter sample (32 x 600
-ticks, mostly the approach, which has no hits) gave 0.70% / 0.15%. The enemy
-class is rare: watch whether the hit head learns beyond the prior.
+The hit head's shares (`hit_class_frequencies`), re-measured 2026-11-28 (item 15: nose armour,
+the circle deflector, the shrinking zone), the default scripted agent against itself, 4v4,
+training game, 1,024 environments x 8,000 ticks on the GPU (finished games re-dealt), 65.0M
+bullets that ended (ghosts included): 98.63% missed, 1.09% an enemy, 0.28% a team-mate (was
+98.65 / 1.10 / 0.25 from 1.6M bullets under the egg deflector; 1v1 99.58 / 0.42 / 0, 16v16
+97.92 / 1.41 / 0.67). The enemy class is rare: watch whether the hit head learns beyond the
+prior.
 
 ## Geometry heads (queue item 8c, author 2026-11-28)
 
@@ -143,29 +147,36 @@ every support here). Angles are a circle of bins over (-pi, pi], uniform in s = 
 knee) (knee 0: uniform), the Gaussian wrapped onto the circle (`circular_hl_gauss_targets`:
 each bin takes the mass at its nearest image; no seam at +-pi).
 
-Ranges measured 2026-11-28 (scripted yardstick vs itself, 4v4 training game, 64 environments x
-1,800 ticks, every 4th tick, both views; 0.70M visible pairs, 3.0M ship-field pairs, 0.30M
-ships): each range the 99.9% interval rounded out; each knee about the finest scale that
-matters. Bin widths in target units: innermost, outermost.
+Ranges measured 2026-11-28 (queue item 15, the core rules with the shrinking zone; the
+default scripted agent against itself, training game, every 8th tick on 256 environments,
+both views, the rows the team sees; 4v4 5.3M ship pairs, 24.7M ship-field pairs, 2.5M ships;
+also 1v1 and 16v16; `docs/rewrite/sections/calibrate-15/`): each range the 99.9% interval over
+the three team sizes rounded out; each knee about the finest scale that matters, traded
+against the bins' balance. The ship-pair columns (first measured ~04:00 on the fixed arena)
+still fit and are unchanged; the field edge and the map edge changed. Bin widths in target
+units: innermost, outermost. Occupancy (4v4 / 1v1 / 16v16): bins holding 99% of the mass, the
+largest bin's share.
 
-| Column | Bins | Range | Knee | Bins: innermost, outermost | Measured 0.1% / 50% / 99.9% (max) |
-|---|---|---|---|---|---|
-| range (m) | 32 | 0 to 6,700 | 100 | 18 m, 1.75 km | 28 / 956 / 6,686 (7,423) |
-| range rate (m/s) | 32 | +-1,000 | 50 | 13, 471 | -723 / -80 / 568 (-1,088, 987) |
-| line-of-sight rate (rad/s) | 32 | +-6 | 0.05 | 0.021, 6.1 | -5.8 / 0 / 5.8 (+-280 when touching) |
-| energy difference (store) | 32 | +-33,000 (the full store, 32,979) | linear | 2,640 | -32,810 / 0 / 32,790 |
-| train angle (rad) | 32 | circle | uniform | 0.196 (11.25 deg) | about uniform, 8% within 0.1 |
-| gun error (rad) | 32 | circle | 0.02 | 6.9 mrad, 0.73 | 0.9% within 0.01, 8% within 0.1 |
-| field edge (m) | 32 | -2,000 to 7,000 | 50 | 19 m, 5.8 km | -1,264 / 2,214 / 6,136 |
-| map edge (m) | 16 | -4,200 to 300 | 100 | 66 m, 10 km | -4,132 / -2,274 / -427 |
+| Column | Bins | Range | Knee | Bins: innermost, outermost | 4v4 0.1% / 50% / 99.9% | 99% in, largest |
+|---|---|---|---|---|---|---|
+| range (m) | 32 | 0 to 6,700 | 100 | 18 m, 1.75 km | 22 / 778 / 6,448 | 23 / 15 / 22, 6.9 / 10.6 / 11.9% |
+| range rate (m/s) | 32 | +-1,000 | 50 | 13, 471 | -745 / -76 / 597 | 21 / 21 / 21, 9.8 / 6.4 / 9.7% |
+| line-of-sight rate (rad/s) | 32 | +-6 | 0.05 | 0.021, 6.1 | -5.9 / 0 / 5.9 (1v1 +-8.6) | 22 / 25 / 20, 8.7 / 9.3 / 12.3% |
+| energy difference (store) | 32 | +-33,000 (the full store) | linear | 2,640 | -32,820 / 0 / 32,810 | 26 / 22 / 26, 17.2 / 26.8 / 12.2% |
+| train angle (rad) | 32 | circle | uniform | 0.196 (11.25 deg) | about uniform | 32 / 32 / 32, 7.2 / 8.0 / 5.4% |
+| gun error (rad) | 32 | circle | 0.02 | 6.9 mrad, 0.73 | | 30 / 31 / 29, 8.6 / 9.6 / 9.2% |
+| field edge (m) | 32 | -1,500 to 6,200 (-2,000 to 7,000) | 200 (50) | 50 m, 2.8 km | -1,424 / 2,107 / 6,068 | 23 / 23 / 23, 15.4 / 15.3 / 15.5% (was 21%) |
+| map edge (m) | 32 (16) | -3,900 to 300 (-4,200 to 300) | 1,000 (100) | 77 m, 453 m | -3,831 / -1,516 / 60 | 19 / 20 / 19, 8.3 / 15.1 / 10.9% (was 6 of 16, 38-46%) |
 
 Knees: range 100 m (collisions are tens of metres, the gun range 697 m); range rate 50 m/s; the
 line-of-sight rate 0.05 rad/s (a sustained turn is 0.70 rad/s); the gun error 0.02 rad (a hit
-needs about 8 mrad at 300 m: half the 4.75 m hit width); the field edge 50 m (the band is 160
-m wide); the map edge 100 m (the boundary ramp is 300 m). 16 bins only for the map edge (the
-scripted agent rarely nears it; coarse is enough). The bounded columns (range, energy
-difference, map edge) keep the buffer columns beyond their hard bounds (unused bins, 3 of 32
-or 16), for one support layout everywhere.
+needs about 8 mrad at 300 m: half the 4.75 m hit width); the field edge 200 m (the band is 160
+m wide; knee 50 put 21% of the mass in one far bin); the map edge 1,000 m (the boundary ramp
+is 300 m; the innermost bin 77 m). The map edge has 32 bins since 2026-11-28 (16 before, when
+the scripted agent rarely neared a fixed edge; the shrinking zone brings every ship to it, and
+16 bins left 6 for the mass). The bounded columns (range, energy difference, map edge) keep the
+buffer columns beyond their hard bounds (unused bins, 3 of 32), for one support layout
+everywhere.
 
 
 `tests/test_model.py`: `sequence` equals repeated steps (resets, masks, fields, rotated
@@ -182,15 +193,13 @@ pairwise head reads only its two ships and the order.
 
 ## Open
 
-- The value supports, next-state ranges and hit shares are the game's of 2026-11-25; measure
-  again when the flight numbers, the lineup, the clock or the scripted agent change
-  (`docs/rewrite/sections/scoreboard/target_ranges.py`, about a minute on the laptop GPU). Due:
-  since then the hit damage (21 to 8), the bullets (ghost-only, every ship a bullet a tick), the
-  egg deflector, collisions, the post-stall levels and the look-ahead scripted agent changed.
+- The value supports, next-state ranges, geometry ranges and hit shares are the game's of
+  2026-11-28 (item 15, after items 12 and 13); measure again when the flight numbers, the
+  lineup, the zone or the scripted agent change (`docs/rewrite/sections/calibrate-15/calibrate.py`
+  and `analyse.py`, about 20 minutes on the laptop GPU for 1v1, 4v4 and 16v16).
 - Grid cells (gain, phases, spacings) and the `v2_codes` period are builder picks.
 - No parity test against v2's modules; no compiled or bf16 `sequence` test here (the learner's
   compiled tests cover the loss graph).
-- The geometry ranges are the game's of 2026-11-28 (re-measure with the others).
 - The pairwise head has a ship and a field other-side projection; zones would add theirs.
 - The map centre is the origin in three places: the game token's position code (`code(offset)`)
   and its rotary (identity: position 0, heading 0), and the fields' rotary heading (toward the

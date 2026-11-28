@@ -1,0 +1,11 @@
+performance
+ 19:30:55 up 1 day,  5:12,  1 user,  load average: 3.21, 2.58, 2.15
+bc update 0 steps 1048576 scripted_win_rate 0.000 league_members 1 snapshots 0 league_slots [scripted:12] draining 0 scripted_dealt 1.000 overflow_games 0 league_win_rates [0.00] steps_per_second 6283 peak_allocated_gib 1.06 loss=5.798 surrogate=0.04253 bc=3.688 bc_kl=2.415 teacher_weight=1 value=4.074 next_state=4.109 hit=0.02398 hit_labelled=0.9835 entropy=3.735 entropy_fraction=0.9993 approximate_kl=0.002619 clip_fraction=0.02026 gradient_norm=1.489 skipped_steps=0 advantage_std=0.4829 learning_rate=1.92e-05 advantage_shares [0.03 0.30 0.67]
+bc update 0 WARNING value support: narrow_outcome
+bc update 1 steps 2097152 scripted_win_rate 0.000 league_members 1 snapshots 0 league_slots [scripted:12] draining 0 scripted_dealt 1.000 overflow_games 0 league_win_rates [0.00] steps_per_second 8897 peak_allocated_gib 1.06 loss=5.176 surrogate=0.06666 bc=3.315 bc_kl=2.078 teacher_weight=1 value=3.301 next_state=3.791 hit=0.02292 hit_labelled=0.969 entropy=3.593 entropy_fraction=0.9614 approximate_kl=0.07503 clip_fraction=0.6106 gradient_norm=1.761 skipped_steps=0 advantage_std=1.216 learning_rate=3.84e-05 advantage_shares [0.02 0.14 0.84]
+bc update 1 WARNING approximate KL above 0.02 (epochs: 0.0036 0.0295 0.0874 0.1796)
+bc: saved /home/vizia/avesnova/boost-and-broadside/data/calibrate-15/smoke/bc.pt
+rl update 0 steps 1048576 scripted_win_rate 0.000 league_members 6 snapshots 0 league_slots [scripted:3 ema:1 persona:8] draining 1 scripted_dealt 0.828 overflow_games 0 league_win_rates [0.00 0.47 0.00 0.00 0.00 0.00] steps_per_second 8557 peak_allocated_gib 1.14 loss=3.95 surrogate=0.03526 bc=3.653 bc_kl=2.383 teacher_weight=0.5 value=4.006 next_state=4.077 hit=0.02236 hit_labelled=0.9832 entropy=3.732 entropy_fraction=0.9984 approximate_kl=0.004706 clip_fraction=0.07086 gradient_norm=0.9729 skipped_steps=0 advantage_std=0.5325 learning_rate=1.92e-05 advantage_shares [0.03 0.26 0.71]
+rl update 0 WARNING value support: narrow_outcome
+rl: saved /home/vizia/avesnova/boost-and-broadside/data/calibrate-15/smoke/rl.pt
+EXIT 0
