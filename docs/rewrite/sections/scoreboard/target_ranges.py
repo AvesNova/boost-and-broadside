@@ -54,7 +54,6 @@ def main() -> None:
     persona = scripted.personas(
         scripted_config, envs, slots, generator, device, learn.persona_spread
     )
-    memory = scripted.fresh_memory(envs, slots, generator, device)
     ledger = blank_ledger(envs, slots, device)
     rewards = torch.zeros(ticks, envs, slots, len(LEVEL_NAMES), device=device)
     valued = torch.zeros(ticks, envs, slots, dtype=torch.bool, device=device)
@@ -63,7 +62,9 @@ def main() -> None:
     began = time.time()
     with torch.no_grad():
         for tick in range(ticks):
-            move = scripted_actions(scripted_config, state, persona, memory, generator)
+            move = scripted_actions(
+                scripted_config, state, persona, generator, learn.team_size_maximum
+            )
             next_state, out = game.tick(game_config, state, move.action, generator)
             reward, ledger = reward_step(learn, ledger, tick_events(out, state), state.team)
             rewards[tick] = reward
@@ -79,15 +80,6 @@ def main() -> None:
             fresh_sizes = draw_team_sizes(learn, envs, generator)
             fresh = game.deal(game_config, envs, slots, fresh_sizes, generator, device)
             state = game.take_deal(next_state, done, fresh)
-            new_memory = scripted.fresh_memory(envs, slots, generator, device)
-            memory = {
-                name: torch.where(
-                    done.view(-1, *[1] * (move.memory[name].dim() - 1)),
-                    new_memory[name],
-                    move.memory[name],
-                )
-                for name in move.memory
-            }
             if (tick + 1) % 200 == 0:
                 elapsed = time.time() - began
                 print(

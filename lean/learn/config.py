@@ -114,7 +114,10 @@ class LearnConfig:
     # On the joint 42-way entropy, in both stages (author 2026-11-24, "on for the whole run,
     # teacher phase included", core-decisions.md; applied in BC since 2026-11-28).
     entropy_coefficient: float = 0.003
-    value_coefficient: float = 0.05
+    # 0.25 (author 2026-11-28 ~18:15; 0.05 before): the MuZero family's weight for a
+    # categorical critic on a shared trunk (MuZero Reanalyse, Muesli, EfficientZero;
+    # docs/rewrite/literature-loss-balance.md item 2).
+    value_coefficient: float = 0.25
     next_state_coefficient: float = 0.1
     hit_coefficient: float = 0.05  # cross-entropy of the hit head, nats per labelled row
     # The relative-geometry heads (lean.learn.geometry; off with ModelConfig.geometry_heads),

@@ -133,7 +133,6 @@ def collect(out: Path, envs: int, ticks: int) -> None:
     persona = scripted.personas(
         scripted_config, envs, slots, generator, device, learn.persona_spread
     )
-    memory = scripted.fresh_memory(envs, slots, generator, device)
     ledger = blank_ledger(envs, slots, device)
     rewards = torch.zeros(ticks, envs, slots, len(LEVEL_NAMES), device=device)
     valued = torch.zeros(ticks, envs, slots, dtype=torch.bool, device=device)
@@ -145,8 +144,11 @@ def collect(out: Path, envs: int, ticks: int) -> None:
     began = time.time()
     with torch.no_grad():
         for tick in range(ticks):
-            move = scripted_actions(scripted_config, state, persona, memory, generator)
-            joint = teacher_joint(move.teacher[state.alive])
+            move = scripted_actions(
+                scripted_config, state, persona, generator, learn.team_size_maximum
+            )
+            record = move.teacher.flatten(0, 2)
+            joint = teacher_joint(record[record.float().sum(-1) > 0])
             entropies.append(-(joint * joint.clamp(min=1e-30).log()).sum(-1))
             next_state, step_out = game.tick(game_config, state, move.action, generator)
             reward, ledger = reward_step(learn, ledger, tick_events(step_out, state), state.team)
@@ -170,15 +172,6 @@ def collect(out: Path, envs: int, ticks: int) -> None:
             fresh_sizes = draw_team_sizes(learn, envs, generator)
             fresh = game.deal(game_config, envs, slots, fresh_sizes, generator, device)
             state = game.take_deal(next_state, done, fresh)
-            new_memory = scripted.fresh_memory(envs, slots, generator, device)
-            memory = {
-                name: torch.where(
-                    done.view(-1, *[1] * (move.memory[name].dim() - 1)),
-                    new_memory[name],
-                    move.memory[name],
-                )
-                for name in move.memory
-            }
             if (tick + 1) % PROGRESS_EVERY == 0 or tick + 1 == ticks:
                 np.savez(
                     out / "partial.npz",

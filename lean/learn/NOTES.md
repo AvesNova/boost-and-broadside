@@ -97,7 +97,7 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
   constant.
 - **PPO:** clip 0.2; no KL stop (`approximate_kl_epoch_<k>` logged, a warning above 0.02);
   advantages summed over levels and divided by their standard deviation, mean kept.
-- **Loss coefficients** (fixed, on scale-free terms): value 0.05, next-state 0.1, hit 0.05, entropy
+- **Loss coefficients** (fixed, on scale-free terms): value 0.25 (0.05 until 2026-11-28: author, literature-loss-balance.md), next-state 0.1, hit 0.05, entropy
   0.003 on the joint 42-way entropy in both stages; the geometry heads (PROVISIONAL, 2026-11-28, for the
   author) ship pairs 0.1, ship-field pairs 0.05, map edge 0.05.
 - **Auxiliary rows** (author 2026-11-28): next-state, hit and the geometry heads train on the
