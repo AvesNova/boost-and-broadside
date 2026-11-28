@@ -87,19 +87,18 @@ port), 3 (docs cleanup), 7 (correctness review): see the Log.
      kept in the code for zones later. This also settles the value loss over placeholder levels.
    - Hit-label bias: mask the hit loss on bullets that cannot report a miss, i.e. those fired in
      the last bullet life (12 ticks) before an episode end or before the update's end.
-   - Raise the cold-compile budget to 175 s only if the author confirms (asked 13:30).
+   - Cold-compile budget raised to 175 s (author ~14:15).
 
 ## Waiting on the author (not in the queue)
 
 - After R3: the five persona decisions (yardstick = robust centre with crowd rows on?, persona
   sampler / box, BC spread, league personas, clocks: 60 s ends only 40/72/68% of games by
   elimination at 1v1 / 4v4 / 16v16).
-- The two-level league's K and R; whether the personas share one member's PFSP share.
+- Whether the personas share one member's PFSP share (K 12 / R 4 decided ~14:15).
 - Optional: a literature check on team critics / a super-token critic (MAPPO's death masking).
+- Loss balance (policy, value, BC/teacher, auxiliary heads): literature check running (literature-loss-balance.md), then a proposal; 8c's coefficients and K stay provisional until then.
 - Muon (tabled); Liger-style kernels (tabled); the BC dry run itself (proposed first).
-- The cold-compile budget: core is 164.7 s vs 150 s (8b +~10 s in the scripted graph, 8c +~14 s in the loss; ~10 s run-to-run): raise it, or shrink one of the two graphs.
 - 8c's provisional geometry coefficients (pair 0.1, field 0.05, edge 0.05) and K = 8.
-- Optional: re-check fire_tolerance and lead_error on the fixed scripted agent (8b).
 - micro_batch_views (8) and policy_step_chunks (6) are per GPU: re-measure on the 5090.
 
 Decided 2026-11-27 ~22:00: hidden enemies masked in the per-enemy losses (visible only, to
@@ -133,3 +132,4 @@ scripted delay is a bug; next-state and hit on all visible ships; the pairwise h
 - ~09:49 item 6 done (`teacher-6` 3f8c379b, merged into core). Agent's numbers: bisect of the cold compile: 8b alone 139.2 s, 8c alone 151.5 s (recorded 141.6 s: ~10 s run-to-run), both 163.9 s (8b +1,630 ops / +9.5 s in act; 8c +766 ops / +13.6 s in the loss). Scripted agent moved to its own graph, run on league environments always and on self-play only while the teacher is used (switching off compiles nothing; covered by the static test); teacher record own rows only, float16 flight 21 + fire 1: store 3,345.5 -> 2,601.5 MiB (teacher on), 2,337.4 MiB (off); teacher off saves 2.8 ms a tick, 1.4 s an update (inside the ~1.5 s spread); BC losses equal core to the printed digits; old vs new record cross-entropy within 1.2e-7. Cold compile 164.7 s, budget 150 s kept: for the author. Quick tier 212 passed, slow learn 6 passed, ruff clean. Item 9 started (`counters-9`).
 - ~10:11 item 9 done (`counters-9` 9c3a589e, merged into core; merged tree quick tier lean/learn + scripted + model 179 passed). The old `hits` lumped bullets and collisions (StepOut.hit_damage is their sum); StepOut now also gives bullet_damage and collision_damage; eval style gains bullet_hits, collision_hits, tail_hits (shooter in the target's rear cone, |train angle| > TAIL_CHASE_ANGLE 120°, new core.train_angle) and the styles view a tail_share. Agent's CPU sanity run (yardstick mirror 4v4, 192 games, mean 44.8 s): bullet hits 20.1 per ship-minute, collision hits 1.03, tail share 0.434. Game version hash changed (new eval conditions). The queue is empty; the rest waits on the author.
 - ~13:35 author: option C on the global levels only; objective levels optional, off by default; hit-label bias masked; worktrees merged into core pruned (76; two agent worktrees under main/.claude kept: uncommitted files). Item 10 started (`fixes-10`).
+- ~14:15 author: compile budget 175 s (item 10 sets it); league K 12 / R 4 kept; fire_tolerance / lead_error re-check not needed now; loss-balance literature check running.
