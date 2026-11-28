@@ -159,6 +159,13 @@ until the author decides; numbers in docs/rewrite/sections/league-pool/progress.
 
 ## Numbers (laptop RTX 4070, performance profile, 2,048 x 4 x 128, compiled, bf16, core game)
 
+- Teacher 6 (2026-11-28, `docs/rewrite/sections/teacher-6-progress.md`, the real trainer, 3
+  updates): the store 3,345.5 -> 2,601.5 MiB with the teacher (its record 1,008.1 -> 264.0
+  MiB), 2,337.4 MiB once the term is off; RL collect segment with the teacher off 3.07 ->
+  2.71 s (-2.8 ms a tick, -1.4 s an update); BC speed unchanged; the BC losses equal to the
+  shown digits; the teacher's BC cross-entropy from the compact record equals the joint
+  record's to 1.2e-7 relative.
+
 - Speed 5 (2026-11-28, `docs/rewrite/sections/speed-5-progress.md`; core 2b7bc58e against
   the branch, quiet machine): micro-batches 64 -> 8 views, a whole BC update on the real
   trainer 124.8 -> 107.4 s (16: 111.2), peak 5.1 -> 1.3 GiB, the BC loop 7,605 -> 8,711
@@ -178,7 +185,13 @@ until the author decides; numbers in docs/rewrite/sections/league-pool/progress.
   27.9 ms with no snapshot (EMA, 2 x 107 rows; one-level 24.1, no network), 28.6 ms with 1
   (26.4), 33.1 ms with 12 (32.5); the BC tick 25.5 ms (24.2: the per-row scripted parameters,
   1.3 ms). Share tracking and the smoke run: docs/rewrite/sections/league-pool/.
-- Compile (baseline reset 2026-11-28 ~07:50 on `speed-5`, `compile_baseline.json`): 5 graphs
+- Compile (baseline reset 2026-11-28 ~09:48 on `teacher-6`: 6 graphs, act 555 traced
+  operations and scripted_actions 5,258 (the scripted call out of act, traced once for both
+  of its calls), advance 3,306, minibatch_loss 1,645, slot_actions 720, merge_league 27; cold
+  164.7 s, still over the 150 s budget, budget kept). The bisect (teacher-6-progress.md):
+  the scripted-delay merge (8b) adds about 9.5 s of act's backend, the geometry heads (8c)
+  about 13.6 s of the loss's; either alone measured 139-152 s, the spread between runs about
+  10 s. Before: (baseline reset 2026-11-28 ~07:50 on `speed-5`, `compile_baseline.json`): 5 graphs
   (act 5,788 traced operations, advance 3,307, minibatch_loss 1,627, slot_actions 720,
   merge_league 28), cold 164.3 s, **over the 150 s budget** (budget kept; for the author). Core
   before speed 5 (2b7bc58e) already failed the old baseline (05:05, act 4,613, cold 141.6 s):

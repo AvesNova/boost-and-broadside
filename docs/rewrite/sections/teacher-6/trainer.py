@@ -42,10 +42,14 @@ print(
         {
             "job": NAME,
             "overrides": OVERRIDES,
-            "power": subprocess.run(["powerprofilesctl", "get"], capture_output=True, text=True).stdout.strip(),
+            "power": subprocess.run(
+                ["powerprofilesctl", "get"], capture_output=True, text=True
+            ).stdout.strip(),
             "load": os.getloadavg(),
             "bnb_units": [line.split()[0] for line in units.splitlines() if line.strip()],
-            "commit": subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip(),
+            "commit": subprocess.run(
+                ["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True
+            ).stdout.strip(),
         }
     ),
     flush=True,

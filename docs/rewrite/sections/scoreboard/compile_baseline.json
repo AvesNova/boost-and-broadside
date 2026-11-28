@@ -1,45 +1,56 @@
 {
- "cold_s": 164.3,
- "graphs": 5,
+ "cold_s": 164.7,
+ "graphs": 6,
  "graph_breaks": 0,
- "operations": 11470,
+ "operations": 11511,
  "functions": {
   "act": {
    "graphs": 1,
-   "operations": 5788,
+   "operations": 555,
    "aot": [
     [
      "forward",
-     6168
+     661
     ]
    ],
-   "backend_s": 47.7
+   "backend_s": 15.4
+  },
+  "scripted_actions": {
+   "graphs": 1,
+   "operations": 5258,
+   "aot": [
+    [
+     "forward",
+     5528
+    ]
+   ],
+   "backend_s": 34.7
   },
   "advance": {
    "graphs": 1,
-   "operations": 3307,
+   "operations": 3306,
    "aot": [
     [
      "forward",
-     3537
+     3536
     ]
    ],
-   "backend_s": 20.2
+   "backend_s": 19.5
   },
   "minibatch_loss": {
    "graphs": 1,
-   "operations": 1627,
+   "operations": 1645,
    "aot": [
     [
      "forward",
-     2067
+     2086
     ],
     [
      "backward",
-     2215
+     2223
     ]
    ],
-   "backend_s": 23.9
+   "backend_s": 24.1
   },
   "slot_actions": {
    "graphs": 1,
@@ -50,15 +61,15 @@
      1114
     ]
    ],
-   "backend_s": 11.2
+   "backend_s": 10.1
   },
   "merge_league": {
    "graphs": 1,
-   "operations": 28,
+   "operations": 27,
    "aot": [
     [
      "forward",
-     44
+     43
     ]
    ],
    "backend_s": 0.6
