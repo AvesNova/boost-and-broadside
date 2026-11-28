@@ -14,11 +14,11 @@ core when sensible (author 2026-11-27).
 
 ## Running
 
-- 15 Calibration under the new rules and the zone (`calibrate-15`).
+- 16 BC dry run (`bnb-16-bc`, run worktree v2-run16 pinned at core).
 
 ## Done
 
-R1 persona round 2, R2 two-level league, R3 persona round 3, 8a correctness fixes, 8b scripted delay, 8c heads, items 4 (second training review), 5 (speed wins), 6 (teacher), 9 (eval counters), 10 (morning fixes), 11 (gradient tools), 12 (game rules), 13 (zone), 1 (merge + compile baselines), 2 (hit-range
+R1 persona round 2, R2 two-level league, R3 persona round 3, 8a correctness fixes, 8b scripted delay, 8c heads, items 4 (second training review), 5 (speed wins), 6 (teacher), 9 (eval counters), 10 (morning fixes), 11 (gradient tools), 12 (game rules), 13 (zone), 15 (calibration), 1 (merge + compile baselines), 2 (hit-range
 port), 3 (docs cleanup), 7 (correctness review): see the Log.
 
 ## Queue (in order)
@@ -216,3 +216,4 @@ scripted delay is a bug; next-state and hit on all visible ships; the pairwise h
 - ~18:30 author: no hard deadline; after the RL dry run keep the GPU busy with long low-token experiments by the coordinator's judgement until the author returns (item 18).
 - ~18:35 author: the coordinator may change code overnight when something is clearly wrong with evidence (a bug, a mistake, an assumption shown false): engineering judgement on whether and how to fix it, every change noted for review.
 - ~18:48 item 13 done (`zone-13` cca271af, merged into core). Zone = function of the tick: 4,200 - 35 t m, held at -300 m from 128.57 s (the stage's end); no clock (a wipe ends every game; both wiped = draw); longest game derived and asserted 3,934 ticks (131.1 s: full depth at tick 3,858 + 75 ticks to empty a full shield at 40/s, no recharge while damaged, nothing heals); game token 3 -> 9 columns (current and next circle /1,000 m, time to the stage's end /60 s, alive fractions; the clock fraction gone); old checkpoints don't load; spawns >= 630 m inside; scripted boundary term reads the zone at each look-ahead time. Yardstick mirrors: 100% end by elimination (1v1 median 59.8 s, p90 111.3, max 121.6; 4v4 52.3 / 76.2 / 118.4), draws 0.1-0.2%, boundary deaths 15.0% (1v1) / 3.6% (4v4), tail-chase share unchanged (75.9% / 54.2%). Fixed a Dynamo graph break (math.isfinite in observe, dynamic path). Quick tier 410 passed, slow learn 6, ruff clean, compile 11,477 ops, cold 161.3 s quiet. League drains now up to ~8 updates (R 4 may want a look). Item 15 started (`calibrate-15`).
+- ~19:39 item 15 done (`calibrate-15` 21f11369, merged into core). Re-measured under items 12-13 with ScriptedConfig() mirrors (4v4 5,439 episodes, 1v1 8,758, 16v16 1,278; perfect-critic Monte Carlo returns): value supports damage ±5.4 -> ±5.6, kill_death ±7.5 -> ±8.2, outcome ±10; value_coefficient 0.05 -> 0.25; next-state ranges to the 0.1/99.9% percentiles (along ±1.89 -> ±0.53, across ±1.82 -> ±0.60, heading ±0.100 -> ±0.039, speed ±5.39 -> ±3.6, energy ±976 -> ±460 knee 0.18, shield -100..0); field edge -1,500..6,200 m knee 200; map edge 16 -> 32 bins, -3,900..300 m knee 1,000 (old layout had 38-46% of the mass in one bin); pair columns unchanged; hit prior 0.9863 / 0.0109 / 0.0028 (65.0M bullets); feature scales unchanged; old scoreboard scripts fixed. Quick tier 362 passed, slow learn 6, ruff clean, compile 160.6 s; smoke clean (narrow_outcome only on an untrained critic's first update). Item 16 (BC dry run) next.
