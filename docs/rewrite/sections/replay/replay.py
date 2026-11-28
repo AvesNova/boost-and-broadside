@@ -66,6 +66,8 @@ def simulate(config: core.GameConfig, seed: int, sizes=(4, 4), persona: dict | N
             "y": state.y[0].clone(),
             "heading": torch.atan2(state.heading_sin[0], state.heading_cos[0]),
             "alive": state.alive[0].clone(),
+            # The zone this frame (core.zone_at_tick: the circle the step's damage reads).
+            "zone": core.zone_at_tick(state.constants, state.tick)[2][0, 0].clone(),
             "shield": (state.shield / state.constants["max_shield"])[0],
             "store": (state.energy * state.constants["inverse_max_energy"])[0],
             "speed": (state.speed / state.constants["corner_speed"])[0],
@@ -131,6 +133,7 @@ def simulate(config: core.GameConfig, seed: int, sizes=(4, 4), persona: dict | N
             "power",
             "fire",
             "target",
+            "zone",
         )
     }
     stacked["seen"] = (
@@ -159,7 +162,7 @@ def simulate(config: core.GameConfig, seed: int, sizes=(4, 4), persona: dict | N
         "seed": seed,
         "arena": config.arena_radius,
         "ramp": config.boundary_ramp_width,
-        "clock": config.clock_ticks,
+        "longest": core.longest_game_ticks(config),
         "tick_length": config.tick_length,
     }
 
@@ -275,10 +278,15 @@ class Painter:
         for k in range(int(2 * half / grid) + 3):
             _, gy = to_pixels(0, g0 + k * grid)
             draw.line((0, gy, width, gy), fill=(26, 30, 38), width=s)
+        # The map (the zone at the deal) faint; the zone's edge now and its ramp's end.
+        zone = float(r["zone"][t])
         for radius, colour in (
-            (r["arena"], (210, 190, 60)),
-            (r["arena"] + r["ramp"], (170, 50, 50)),
+            (r["arena"], (60, 60, 50)),
+            (zone, (210, 190, 60)),
+            (zone + r["ramp"], (170, 50, 50)),
         ):
+            if radius <= 0.0:
+                continue
             ox, oy = to_pixels(-radius, radius)
             ex, ey = to_pixels(radius, -radius)
             draw.ellipse((ox, oy, ex, ey), outline=colour, width=2 * s)
@@ -428,7 +436,10 @@ class Painter:
             return (mx0 + mm / 2 + x / whole * mm / 2, my0 + mm / 2 - y / whole * mm / 2)
 
         a0, a1 = mini(-r["arena"], r["arena"]), mini(r["arena"], -r["arena"])
-        draw.ellipse((*a0, *a1), outline=(210, 190, 60), width=s)
+        draw.ellipse((*a0, *a1), outline=(60, 60, 50), width=s)
+        if zone > 0.0:
+            z0, z1 = mini(-zone, zone), mini(zone, -zone)
+            draw.ellipse((*z0, *z1), outline=(210, 190, 60), width=s)
         c0, c1 = mini(cx - half, cy + half), mini(cx + half, cy - half)
         draw.rectangle((*c0, *c1), outline=(120, 120, 130), width=s)
         for i in np.nonzero(alive)[0]:
@@ -441,12 +452,10 @@ class Painter:
         draw.rectangle((0, 0, width, top), fill=(8, 10, 14))
         seconds = t * r["tick_length"]
         counts = [int((alive & (team == k)).sum()) for k in (0, 1)]
-        total = r["clock"] * r["tick_length"]
-        clock = f"{int(seconds // 60)}:{seconds % 60:04.1f} / "
-        clock += f"{int(total // 60)}:{round(total % 60):02d}"
+        clock = f"{int(seconds // 60)}:{seconds % 60:04.1f}  zone {zone:,.0f} m"
         draw.text((16 * s, 18 * s), clock, font=self.hud, fill=(230, 230, 230))
-        draw.text((260 * s, 18 * s), f"Blue {counts[0]}", font=self.hud, fill=TEAM_COLOURS[0])
-        draw.text((400 * s, 18 * s), f"Red {counts[1]}", font=self.hud, fill=TEAM_COLOURS[1])
+        draw.text((400 * s, 18 * s), f"Blue {counts[0]}", font=self.hud, fill=TEAM_COLOURS[0])
+        draw.text((540 * s, 18 * s), f"Red {counts[1]}", font=self.hud, fill=TEAM_COLOURS[1])
         draw.text(
             (width - 16 * s, 24 * s), self.title, font=self.small, fill=(160, 165, 175), anchor="ra"
         )
@@ -483,15 +492,7 @@ class Painter:
             head = "Draw"
         else:
             head = f"{TEAM_NAMES[r['result']]} wins"
-        if r["wiped"]:
-            how = f"wipe at {when}"
-        else:
-            left = r["left"]
-            how = (
-                f"clock: {left[0]}-{left[1]} ships alive"
-                if left[0] != left[1]
-                else f"clock: {left[0]}-{left[1]}, shield lead"
-            )
+        how = f"wipe at {when}" if r["wiped"] else f"no wipe at {when}"
         return f"{head}\n{how}"
 
 
@@ -601,7 +602,7 @@ def main() -> None:
     torch.set_num_threads(4)
     persona = json.loads(arguments.persona.read_text()) if arguments.persona else None
     arguments.out.mkdir(parents=True, exist_ok=True)
-    config = core.GameConfig()  # the core game: map, fields, fog, 1,800-tick clock, P-51D
+    config = core.GameConfig()  # the core game: map, the shrinking zone, fields, fog, P-51D
     size = arguments.ships_per_team
     stem = f"scripted{size}v{size}"
     if arguments.persona:

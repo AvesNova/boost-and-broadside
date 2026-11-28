@@ -1,5 +1,5 @@
-"""The game's rules from the author review (docs/rewrite/core-decisions.md): the clock's
-tie-break, the spawn rules, the training spawn and the one-tick action delay. Each test names
+"""The game's rules from the author review (docs/rewrite/core-decisions.md): no clock (a wipe
+ends the game), the spawn rules, the training spawn and the one-tick action delay. Each test names
 the rule it guards."""
 
 import pytest
@@ -22,59 +22,34 @@ def no_noise(state):
     return {"spread": torch.zeros(state.x.shape + (2,))}
 
 
-def at_the_clock(alive, shield):
-    """One environment of 2v2 on its last tick, far apart and inside the arena, with `alive`
-    and `shield` per slot (team 0 in slots 0 and 1)."""
+def two_by_two(alive, shield, tick=0):
+    """One environment of 2v2 far apart and well inside the zone, with `alive` and `shield`
+    per slot (team 0 in slots 0 and 1), on tick `tick`."""
     state = reset(PLAIN, 1, torch.tensor([[2, 2]]), torch.Generator().manual_seed(0), CPU)
     return core.with_velocity(
         state.replace(
-            x=0.5 * PLAIN.arena_radius * torch.tensor([[-1.0, -1.0, 1.0, 1.0]]),
+            x=0.25 * PLAIN.arena_radius * torch.tensor([[-1.0, -1.0, 1.0, 1.0]]),
             y=torch.tensor([[-500.0, 500.0, -500.0, 500.0]]),
             heading_cos=torch.ones(1, 4),
             heading_sin=torch.zeros(1, 4),
             alive=torch.tensor([alive]),
             shield=torch.tensor([shield]),
-            tick=torch.full((1,), PLAIN.clock_ticks - 1),
+            tick=torch.full((1,), tick),
         )
     )
 
 
-@pytest.mark.parametrize(
-    "alive, shield, result",
-    [
-        (
-            [True, True, True, False],
-            [10.0, 10.0, 100.0, 0.0],
-            0,
-        ),  # more living ships wins, whatever the shield
-        ([True, False, True, True], [100.0, 0.0, 10.0, 10.0], 1),
-        (
-            [True, True, True, True],
-            [60.0, 30.0, 40.0, 40.0],
-            0,
-        ),  # equal ships: more total shield wins
-        ([True, True, True, True], [20.0, 30.0, 40.0, 40.0], 1),
-        ([True, True, True, True], [30.0, 50.0, 50.0, 30.0], 2),  # equal on both: a draw
-        (
-            [True, False, True, False],
-            [50.0, 90.0, 50.0, 0.0],
-            2,
-        ),  # a dead ship's shield does not count
-    ],
-)
-def test_the_clock_decides_by_living_ships_then_shield_then_a_draw(alive, shield, result):
-    """Rule (2.3): at the clock more living ships wins; equal living ships, more total shield
-    over the living ships wins; equal on both, a draw."""
-    state = at_the_clock(alive, shield)
+def test_there_is_no_clock_only_a_wipe_ends_the_game():
+    """Rule (author 2026-11-28): no clock end. A game with both teams alive runs on past the
+    old 60 s clock; a wipe ends it at once, the side with ships left winning (both wiped: a
+    draw). A test clock (clock_ticks) ends a running game as a draw."""
+    state = two_by_two([True, True, True, False], [10.0, 10.0, 100.0, 0.0], tick=1799)
     _, out = step(PLAIN, state, neutral(state), no_noise(state))
-    assert bool(out.done[0]) and int(out.result[0]) == result
-
-
-def test_a_wipe_decides_before_the_clock():
-    """Rule: a wipe ends the game at once, and the side with ships left wins (both wiped: a
-    draw), however the clock's tie-break would have gone."""
-    state = at_the_clock([True, True, False, False], [1.0, 1.0, 100.0, 100.0])
-    state = state.replace(tick=torch.zeros(1, dtype=torch.long))
+    assert not bool(out.done[0]) and int(out.result[0]) == -1
+    clocked = GameConfig(field_count=0, fog=False, clock_ticks=1800)
+    _, out = step(clocked, state, neutral(state), no_noise(state))
+    assert bool(out.done[0]) and int(out.result[0]) == 2
+    state = two_by_two([True, True, False, False], [1.0, 1.0, 100.0, 100.0])
     _, out = step(PLAIN, state, neutral(state), no_noise(state))
     assert bool(out.done[0]) and int(out.result[0]) == 0
     state = state.replace(alive=torch.zeros(1, 4, dtype=torch.bool))
@@ -175,9 +150,7 @@ def test_the_training_spawn_draws_speed_shield_and_store_with_a_share_standard()
 def test_an_action_takes_effect_exactly_one_tick_later():
     """Rule (3.3): the action chosen on tick t is applied on tick t + 1; a deal's pending action
     is neutral (straight, coast, no fire)."""
-    state = at_the_clock([True, True, True, True], [100.0] * 4).replace(
-        tick=torch.zeros(1, dtype=torch.long)
-    )
+    state = two_by_two([True, True, True, True], [100.0] * 4)
     assert (state.pending == 0).all()
     chosen = neutral(state)
     chosen[0, 0] = torch.tensor([5, 2, 1])  # full stick, climb, fire

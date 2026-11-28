@@ -1,6 +1,6 @@
 # lean/game
 
-The game step: elimination on one fixed map with no shrink, any team sizes, batched over
+The game step: elimination on one map with a shrinking zone, any team sizes, batched over
 environments. Pure functions of tensors, no Python loops over ships or bullets. Decisions:
 `docs/rewrite/core-decisions.md`. History: `docs/rewrite/core-worklog.md`. Types shared with the
 other packages: `lean/contract.py`.
@@ -10,13 +10,16 @@ other packages: `lean/contract.py`.
 `from lean.game import GameConfig, reset, deal, take_deal, step, draw_noise, tick, observe`
 (`lean/game/core.py`).
 
-- `GameConfig()` is the core game: arena 4,200 m, boundary ramp 300 m, clock 1,800 ticks (60 s
-  at 30 Hz), "mixed" spawn, lineup `("p51d",)`, ten fields drawn per environment at each deal,
+- `GameConfig()` is the core game: arena (the zone at the deal) 4,200 m shrinking at 35 m/s,
+  boundary ramp 300 m, no clock (a game ends by elimination, at the latest
+  `longest_game_ticks`, 3,934 ticks), "mixed" spawn, lineup `("p51d",)`, ten fields drawn per environment at each deal,
   ghost-only bullets, fog (the sight egg) with the tracking circle, the "circle" deflector, the
   nose armour, the post-stall regime,
   a store of two loops at corner speed with 5% edge bands, firing cuts thrust to
   `fire_thrust_fraction` (0). Ablations: `field_count=0`, `fog=False`, `fog_tracking=False`,
-  `deflector="off"`, `post_stall=False`.
+  `deflector="off"`, `post_stall=False`; `zone_shrink_speed=0` a fixed arena (the tool and the
+  sandbox; games end only by a wipe); `clock_ticks=n` ends games at n ticks as draws (short
+  test games only).
 - `reset` / `deal` / `take_deal`: fresh states at given team sizes (unused slots `exists=False`);
   the learner draws deals once per segment and takes them as environments finish.
 - `step(config, state, action, noise)`: one tick. The tick applies `state.pending` (the previous
@@ -71,13 +74,38 @@ other packages: `lean/contract.py`.
 
 ## Rules that matter
 
-- **End:** a wipe, or at the clock more living ships, then more total shield, else a draw.
+- **End** (author 2026-11-28): a wipe only, one team (the other wins) or both (a draw). No
+  clock: the zone ends every game.
+- **The zone** (author 2026-11-28; `zone_circle`, `zone_at_tick`, `zone_stage_end`,
+  `longest_game_ticks`): a function of the game's tick, no state. The radius shrinks linearly
+  from the deal, `arena_radius` 4,200 m at `zone_shrink_speed` 35 m/s: 0 at 120 s, minus the
+  ramp width (-300 m) at 4,500 / 35 = 128.57 s (the end of the zone's one stage, tick 3,858),
+  where every point of the map is in full boundary damage, and held there. The centre is the
+  map's centre (0, 0). Boundary damage (`_boundary_damage`, unchanged ramp and rule:
+  `card.BOUNDARY_MAX_DAMAGE` 40 per second x smootherstep(depth / ramp)) is measured from the
+  zone's edge at the tick's end (`boundary_distance(constants, tick, x, y)`, signed, negative
+  inside), the circle the next observation shows. The constants carry `zone_shrink_speed` and
+  `zone_floor_radius` (-ramp) beside `arena_radius`, so the scripted agent reads the zone
+  through the same `zone_circle`.
+- **The longest game** (`longest_game_ticks`, derived, asserted in `tests/test_zone.py`): from
+  tick 3,858 every living ship takes 40 per second = 1.333 a tick; a hurt ship never recharges
+  (`_shields`: the recharge needs a tick without damage; the shield's recharge, 24 per second
+  after a 3 s quiet wait, is below the damage anyway) and nothing else heals (the rewards'
+  "boundary healing" is the recharge's attribution, not a game rule), so the net rate is the
+  full 40 per second for every ship type. A full shield (100) empties in ceil(100 / 1.333) = 75
+  ticks and the next damaged tick kills: 3,858 + 75 + 1 (float32 sums) = 3,934 ticks, 131.1 s.
+  Every ship is then dead: the game has ended by a wipe (a draw if both). Two quiet ships
+  with full shields from the tick before full depth die at tick 3,933 (the test: within two
+  ticks of the bound; the float32 tick was not needed there).
 - **Spawns** (a setting chosen at launch): "mixed", every ship uniform over a disc of 0.85 R,
   heading uniform; "sides", each team on a half disc of a random axis, noses toward the other
   side within 15 degrees. Under both, a ship within 1,000 m of the boundary pointing outward is
   mirrored. `training_spawn` (set by `lean.train` only): per ship speed uniform from the stall
   speed to the top level speed, shield and store uniform 0 to full; an eighth of environments
   (`standard_spawn_share`) take the standard spawn (full shield, half store, 145.3 m/s).
+  Against the zone: every ship spawns at least 630 m inside it (the spawn disc 0.85 R); flying
+  straight from the training spawn, the first boundary damage over 16,384 ships was at 2.57 s
+  ("mixed"; 2.80 s on a fixed arena; "sides" none in 5 s).
 - **Flight:** weight always on the wing, the engine drives speed only, dive and climb trade
   store for speed; fields bend paths (a no-fields path for F = 0).
 - **Stick levels** (`card.LEVEL_NAMES`; stick indices 1/2 Sustain, 3/4 Max, 5/6 Snap;
@@ -146,7 +174,14 @@ other packages: `lean/contract.py`.
   card's reaches). With equal reaches the egg is a circle and tracking changes nothing (tested).
 - **Observation:** `Obs.pending` holds own living ships' joint action, `NO_PENDING` (42)
   elsewhere. The ship row has no position scalars; `Obs.pos` carries position for the model's
-  position code and rotary.
+  position code and rotary. The ship row's boundary scalar is the distance inside the current
+  zone's edge (over 1,000 m, clipped to [-1, 1]) and its outward direction is from the zone's
+  centre. The game token's row (`contract.GLOBAL_COLUMNS`, author 2026-11-28, laid out for
+  staged zones): the current circle (centre x, y, radius) and the next (centre x, y, radius;
+  here the zone at the stage's end: the map centre, -300 m), each over `ZONE_SCALE` 1,000 m,
+  the time to the stage's end over `ZONE_TIME_SCALE` 60 s (2.14 at the deal, 0 from 128.6 s),
+  then the own and enemy alive fractions (9 columns; was the clock's fraction and the two
+  fractions).
 - **Bullets: the ring is the clock** (core-decisions "Ghost-only bullets"): every ship, alive,
   dead or not existing, writes one bullet a tick into slot `tick mod BULLET_SLOTS` of its ring
   (`_fire`), overwriting the bullet written 12 ticks before, so every bullet lives exactly
@@ -263,7 +298,7 @@ other packages: `lean/contract.py`.
 | angle of attack | linear / 0.25 rad | -0.245 / 0.244 rad |
 | store, shield fraction | linear | 0.002 / 0.68; 0 / 1 |
 | shield wait | linear / 3 s, clipped | 3 / 3 s |
-| inside the boundary | linear / 1,000 m, clipped to [-1, 1] | 752 / 4,049 m |
+| inside the boundary (the zone's edge since 2026-11-28) | linear / 1,000 m, clipped to [-1, 1] | 752 / 4,049 m (fixed arena) |
 | gun cooldown | whole ticks | 0 / 0 |
 
 ## Tests
@@ -285,7 +320,13 @@ not turned, ghosts like real bullets, the turned path and contact equal the desi
 trace_through on its circle, the hit width equals the sketch's, the hit model's round trip and
 no recompile),
 the steady-flight table (`test_steady_table.py`), invariants (finite, inert padding, team
-swap), the clock and wipe, both spawn rules, the training spawn, the one-tick delay, the levels
+swap), the end by a wipe only (and a test clock's draw), the zone (`test_zone.py`: the radius
+against time and held at -300 m; boundary damage against the current radius; the derived
+longest game 3,934 ticks, a full-depth quiet ship never recharging, two such ships dying
+within two ticks of the bound; the observation's circles, time left, boundary scalar and
+map-edge target; spawns at least 630 m inside and no boundary damage flying straight for 2 s;
+the scripted boundary term on the zone at its look-ahead times; chaser games at 1v1 and 2v2
+always ending by a wipe within the bound), both spawn rules, the training spawn, the one-tick delay, the levels
 (Max the envelope's top line to 0.1% and above every fraction of it, Snap equal to Max above
 corner and at the deep angle below its band, Sustain's energy rate about 0 where a sustained
 turn exists, the stick tables by index), the nose (damping ratio per level, the overshoot order
@@ -303,6 +344,9 @@ coefficients; the cache's key).
   a model step may drop them.
 - The feature scales were measured on the 2026-11-23 game; the flight, the bullets and the hit
   model have changed since.
-- The clock (1,800 ticks, 60 s) is set from scripted wipe times: docs/rewrite/clock-measurement.md.
+- The zone's settings (35 m/s from 4,200 m) are the author's; staged zones (hold, then shrink
+  to a random circle inside the current one) later: the observation already has the next
+  circle and the time to the stage's end, and nothing reads a fixed radius (the model's map
+  centre is still the origin: the game token's position code and rotary, the fields' heading).
 - Engine power and the ship roster wait for the WWII research (core-decisions.md).
 - On the GPU: the dense (E, N K, N) hit test's memory at large team sizes.

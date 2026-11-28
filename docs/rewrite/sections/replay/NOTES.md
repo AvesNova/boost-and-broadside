@@ -3,7 +3,7 @@
 `replay.py` plays scripted-vs-scripted 4v4 games of the core game on the CPU and writes one MP4
 per game (1080x1080, 30 fps, one frame per tick, H.264 yuv420p, faststart; the last frame is held
 3 s with the result). Nothing in `lean/` is changed: the game is `lean.game.deal` / `tick` at batch
-size 1, `GameConfig()` (the 4,200 m map with its fields, fog on, the 1,800-tick clock, the P-51D
+size 1, `GameConfig()` (the 4,200 m map with its fields, fog on, the shrinking zone (drawn: the map's edge faint, the zone's edge yellow, its ramp red), the P-51D
 card, the standard spawn as in evaluation; training's randomised spawn is off), and every ship is
 `ScriptedConfig()` (the default yardstick), both teams in one `decide` call as in evaluation.
 The seed seeds one `torch.Generator` used for the deal, the scripted memory, the action draws and

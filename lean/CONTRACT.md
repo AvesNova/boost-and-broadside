@@ -23,7 +23,8 @@ LEVEL_NAMES = ("damage", "kill_death", "objective_progress", "objective", "outco
 OWN_LEVEL_NAMES = ("damage", "kill_death")  # each ship's own; the rest are team-wide
 OBJECTIVE_LEVEL_NAMES = ("objective_progress", "objective")
 level_names(objective_levels)  # -> the levels that train: all five, or without the objectives
-SHIP_FEATURES, GLOBAL_FEATURES, FIELD_FEATURES  # 18 scalars + 4 flags + type one-hot; 3; 3
+SHIP_FEATURES, GLOBAL_FEATURES, FIELD_FEATURES  # 18 scalars + 4 flags + type one-hot; 9; 3
+GLOBAL_COLUMNS  # the game token's row: zone x, y, radius; next zone x, y, radius; stage time left; own, enemy alive
 BULLET_SLOTS = 12  # also every bullet's life in ticks: the ring (slot tick mod 12) is its clock
 GHOST, REAL, CONTACTED = 0, 1, 2  # State.bullet_state
 ```
@@ -63,8 +64,8 @@ Beside the blocks: `constants`, `tick (E,)`, `fields (E, 5, F)` (x, y, radius, b
 ln n), `pending (E, N, 3)` long (the action the next tick applies), and with fog on `seen
 (E, SEEN_COLUMNS, N)` (each ship as its enemy team last saw it) and `ticks_since_seen (E, N)`.
 
-**`StepOut`** (one tick): `damage_taken (E, N)`, `died (E, N)`, `done (E,)`, `result (E,)` (0 or 1
-the winning team, 2 a draw, -1 not done), `shot_outcome (E, N, K)` (each bullet once: 1 hit an enemy
+**`StepOut`** (one tick): `damage_taken (E, N)`, `died (E, N)`, `done (E,)` (a wipe; no clock),
+`result (E,)` (0 or 1 the winning team, 2 both wiped, -1 not done), `shot_outcome (E, N, K)` (each bullet once: 1 hit an enemy
 or 2 a team-mate at its first contact, 0 missed on its last tick; -1 otherwise) and `shot_tick`, `hit_damage (E, N, N)` [attacker, target]
 (real bullets' damage and collisions', each ship's collision damage credited to the other ship of
 the pair), `boundary_damage (E, N)`, `shield_restored (E, N)`.
@@ -76,7 +77,7 @@ the pair), `boundary_damage (E, N)`, `shield_restored (E, N)`.
 | `ship` | `(E, N, SHIP_FEATURES)` | scaled scalars and flags (no position) |
 | `pos`, `heading` | `(E, N, 2)`, `(E, N)` | metres, arena centre at 0; radians |
 | `key_mask`, `own` | `(E, N)` bool | row may be attended (exists, alive); rows this view controls |
-| `globals` | `(E, GLOBAL_FEATURES)` | |
+| `globals` | `(E, GLOBAL_FEATURES)` | `GLOBAL_COLUMNS` (2026-11-28): the zone now and at its stage's end (centre x, y, radius over 1,000 m), seconds to the stage's end over 60 s, the alive fractions |
 | `field`, `field_pos` | `(E, F, FIELD_FEATURES)`, `(E, F, 2)` | F may be 0 |
 | `visible`, `since_seen` | `(E, N)` | seen this tick; symlog seconds since seen |
 | `pending` | `(E, N)` long | own living ships' joint pending action, else `NO_PENDING` |
@@ -86,6 +87,12 @@ the pair), `boundary_damage (E, N)`, `shield_restored (E, N)`.
 ```python
 GameConfig(...)                          # the core game by default (see lean/game/NOTES.md)
 reset(config, envs, team_sizes, generator, device) -> State   # team_sizes (E, 2) long, each >= 1
+# The zone (2026-11-28): a function of the game's tick, no state; a game ends by a wipe only.
+zone_circle(constants, seconds) -> (centre_x, centre_y, radius)   # any shape; the scripted agent's too
+zone_at_tick(constants, tick) -> (centre_x, centre_y, radius)     # tick (E,) -> each (E, 1)
+zone_stage_end(config) -> float          # seconds to the radius at minus the ramp (128.57 s)
+longest_game_ticks(config) -> int        # the derived bound on a game's length (3,934 ticks)
+boundary_distance(constants, tick, x, y) -> Tensor   # beyond the zone's edge, negative inside
 deal(config, envs, slots, team_sizes, generator, device) -> State   # fresh states at a given N
 take_deal(state, done, fresh, index=None) -> State   # re-deal the finished environments
 draw_noise(config, envs, slots, generator, device) -> dict[str, Tensor]

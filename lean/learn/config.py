@@ -239,8 +239,9 @@ class LearnConfig:
     snapshot_history_from: int = 3
     snapshot_members: int = 12
     # The two-level league (lean.learn.pool): K loaded slots take new games, R spare slots let
-    # level 1 load a member while an unloaded slot drains its running games (at most about 4
-    # updates at parity: a game lasts at most clock_ticks + segment_ticks = 1,928 ticks). Each
+    # level 1 load a member while an unloaded slot drains its running games (at most about 8
+    # updates at parity: a game lasts at most lean.game.core.longest_game_ticks, 3,934 ticks
+    # with the shrinking zone, plus a segment of 128; 4 with the old 1,800-tick clock). Each
     # slot holds a member: a network's weights or a scripted agent's parameters; a member may
     # hold several. Level 1 (between updates) sets each member's slots to its PFSP share of K
     # (the rounding carried from update to update, so the long-run share is exact), at most

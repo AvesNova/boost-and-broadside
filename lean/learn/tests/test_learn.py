@@ -144,7 +144,7 @@ def test_normalised_advantages_keep_their_mean_and_have_unit_standard_deviation(
 
 ENVIRONMENTS = 8  # half self-play (the tests' layout, setting.SMALL): 12 seats
 SEATS = ENVIRONMENTS + round(SMALL["self_play_share"] * ENVIRONMENTS)
-CLOCK = 6  # every game ends at the clock on its sixth tick
+CLOCK = 6  # every game ends at the test clock on its sixth tick, a draw
 
 
 def run_updates(updates, snapshot=False):
@@ -178,7 +178,7 @@ def run_updates(updates, snapshot=False):
     return rollout, history
 
 
-def test_rollout_shapes_and_outcome_reward_reach_both_teams():
+def test_rollout_shapes_and_a_clock_draw_pays_no_outcome():
     rollout, history = run_updates(1, snapshot=True)
     assert rollout.reward.shape == (16, SEATS, 4, LEVELS)
     assert rollout.observation.ship.shape == (16, SEATS, 4, SHIP_FEATURES)
@@ -186,8 +186,10 @@ def test_rollout_shapes_and_outcome_reward_reach_both_teams():
     assert rollout.done[[CLOCK - 1, 2 * CLOCK - 1]].all() and rollout.done.sum() == 2 * SEATS
     assert (rollout.value[~rollout.observation.own] == 0).all()
     assert torch.isfinite(rollout.log_probability).all()
+    # The test clock ends running games as draws (no wipe in 6 ticks): no outcome paid. Wins
+    # and losses: test_rewards.
     outcome = rollout.reward[..., OUTCOME][rollout.done]  # (ended episodes, N)
-    assert (outcome > 0).any() and (outcome < 0).any()  # winners and losers are both paid
+    assert (outcome == 0).all()
     assert rollout.position_offset.shape == (16, SEATS, 2)
     assert not rollout.next_valid[rollout.done].any()
     assert not (rollout.fallen & rollout.observation.own).any()

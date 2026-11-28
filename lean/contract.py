@@ -25,7 +25,21 @@ SHIP_TYPES = 1  # len(lean.game.card.TYPE_NAMES)
 SHIP_SCALARS = 18
 SHIP_FLAGS = 4
 SHIP_FEATURES = SHIP_SCALARS + SHIP_FLAGS + SHIP_TYPES
-GLOBAL_FEATURES = 3
+# The game token's row (lean.game.core.observe; author 2026-11-28, laid out for staged zones):
+# the current zone circle and the next (centre, radius, over 1,000 m), the time to the zone
+# stage's end (over 60 s), then the alive fractions.
+GLOBAL_COLUMNS = (
+    "zone_x",
+    "zone_y",
+    "zone_radius",
+    "next_zone_x",
+    "next_zone_y",
+    "next_zone_radius",
+    "stage_time_left",
+    "own_alive",
+    "enemy_alive",
+)
+GLOBAL_FEATURES = len(GLOBAL_COLUMNS)
 # Per-field observation row (v2's field inputs, src/bnb/models/yemong/inputs.py): radius over
 # 1000 m, band width over 40 m, level (half-octaves of the refractive index) over 2.
 FIELD_FEATURES = 3

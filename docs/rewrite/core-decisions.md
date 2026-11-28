@@ -1199,3 +1199,37 @@ After replays showed duels degenerate into nose-to-nose fire and collisions. lea
   `advance` 3,306 to 3,261), cold 166.4 s (budget 175 s), within the baseline.
 - Checks: quick tier on lean/game, scripted, learn, model, eval, tool 409 passed (one style
   test rewritten for the armour); slow tier lean/learn 6 passed; ruff clean.
+
+## The shrinking zone and no clock (decided 2026-11-28 ~17:30; branch `zone-13`, queue item 13)
+
+lean/game/NOTES.md ("The zone", "The longest game", "Observation"); measurements
+docs/rewrite/sections/zone-13-progress.md and zone-13/tables.md.
+
+- **The zone** (`core.zone_circle`, `zone_at_tick`): a function of the game's tick, no state.
+  Radius `arena_radius` (4,200 m) at the deal, shrinking at `zone_shrink_speed` 35 m/s: 0 at
+  120 s, -300 m (minus the ramp width) at 128.57 s, held there (every point in full damage, so
+  shrinking further changes nothing). Centre the map's centre. Boundary damage, ramp and rule
+  unchanged, measured from the current edge at the tick's end. `zone_shrink_speed=0` is a fixed
+  arena (the tool and the sandbox only).
+- **No clock**: a game ends by a wipe only (one team: a win; both: a draw). The clock's
+  tie-break (living ships, then shield) is removed; `GameConfig.clock_ticks` (None by default)
+  survives only to cut short test games, ending them as draws.
+- **The longest game is derived** (`core.longest_game_ticks`): full damage everywhere from tick
+  3,858; the net rate there is the full 40 per second for every ship type (a hurt ship never
+  recharges; nothing heals; the recharge, 24 per second, is below it anyway); a full shield of
+  100 empties in 75 ticks and the next damaged tick kills: 3,858 + 75 + 1 (float32) = 3,934
+  ticks, 131.1 s. Asserted in lean/game/tests/test_zone.py (two quiet full-shield ships die at
+  3,933).
+- **Observation laid out for staged zones** (`contract.GLOBAL_COLUMNS`, 3 to 9 globals): the
+  current circle (centre x, y, radius) and the next (here the zone at the stage's end: the
+  centre, -300 m), each over 1,000 m, the seconds to the stage's end over 60 s (the single
+  stage ends when the radius reaches minus the ramp), the alive fractions; the clock fraction
+  is gone. The ship row's boundary scalar and outward direction and the map-edge target read
+  the current zone. Checkpoints from before do not load (the game encoder's width).
+- **Scripted agent**: its boundary term reads the zone at each look-ahead point's time through
+  `core.zone_circle` (the constants carry the zone's settings).
+- **Measured** (yardstick mirrors, fields and fog): every game ends by a wipe; 1v1 / 4v4
+  median 59.8 / 52.3 s, p90 111.3 / 76.2 s, max 121.6 / 118.4 s; both wiped 0.20% / 0.10%;
+  deaths by the boundary 15.0% / 3.6%; kills per game-minute 0.96 / 6.14 (item 12, cut at
+  60 s: 0.43 / 5.68).
+- Not now: battle-royale stages (hold, then shrink to a random circle inside the current one).

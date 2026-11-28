@@ -43,6 +43,10 @@ the whole loop is in `lean/learn/NOTES.md`.
 ## The pieces
 
 - **Encoder:** per kind (ship, game, field) `gelu(norm(Linear))`, then a shared Linear and norm.
+  The game token = `Obs.globals` (`contract.GLOBAL_COLUMNS`, 9 since 2026-11-28: the zone now
+  and at its stage's end, the time to the stage's end, the alive fractions) + the position code
+  of the map centre (the origin, offset like any token). A checkpoint from before 2026-11-28
+  (3 globals) does not load: the game encoder's first Linear changed width.
   A ship = `Obs.ship` + fog pair (`visible`, `since_seen`) + position code of `pos + offset` +
   the pending action as an embedding (row 42 = none, a zero row).
 - **Spatial:** pre-norm attention of the trunk tokens over trunk tokens and fields in one
@@ -125,7 +129,8 @@ enemies visible this tick; a pair with a hidden or dead ship is masked (`lean.le
   crossing angle = own train angle - the other's + pi), so they are not predicted.
 - **Ship-field pairs:** the signed distance to the field's edge (the middle of its band,
   negative inside).
-- **Map edge:** the signed distance beyond the arena edge, per ship on the auxiliary head group.
+- **Map edge:** the signed distance beyond the zone's current edge (`lean.game.boundary_distance`
+  at the row's tick: it follows the shrinking radius), per ship on the auxiliary head group.
 - The gun solution error: from the launch direction of a shot now (velocity + muzzle along the
   nose, over the map, no spread) to the lead point (the target at its world velocity after the
   bullet's drag-law time of flight, 3 fixed-point passes, capped at the bullet's life). A
@@ -187,6 +192,13 @@ pairwise head reads only its two ships and the order.
   compiled tests cover the loss graph).
 - The geometry ranges are the game's of 2026-11-28 (re-measure with the others).
 - The pairwise head has a ship and a field other-side projection; zones would add theirs.
+- The map centre is the origin in three places: the game token's position code (`code(offset)`)
+  and its rotary (identity: position 0, heading 0), and the fields' rotary heading (toward the
+  origin). The zone's centre is the origin today (item 13); a moving centre (staged zones)
+  would move the game token's code and rotary to the zone's centre (from Obs, not from the
+  scaled globals) or add the zone as its own key. The position codes themselves (Fourier, 64
+  m to 20 km, random offset over the coarsest period) and the rotary reach (twice the arena's
+  diameter, `ModelConfig.for_arena` on the radius at the deal) read no zone and need no change.
 - A checkpoint saved before the geometry heads does not load into a ModelConfig with them on
   (missing keys): load it with `geometry_heads=False` (no shim kept).
 - Not here: zones, nearest-k attention, an enemy-action head, a game-token outcome head (an

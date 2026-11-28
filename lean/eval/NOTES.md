@@ -16,7 +16,7 @@ judgement calls: `docs/rewrite/morning-notes.md` ("V"); history: `docs/rewrite/c
 
 Agents: `yardstick`, `scripted:FILE.json` (parameter rows over the defaults),
 `net:CHECKPOINT[:live|ema|uniform]` (ema by default), or an agent id in the store. Game options
-(`--clock-ticks`, `--arena-radius`, `--spawn`, `--fields`, `--no-fog`) change the conditions;
+(`--zone-shrink-speed`, `--arena-radius`, `--spawn`, `--fields`, `--no-fog`) change the conditions;
 evaluation always uses the standard spawn. In Python: `Evaluator(Store(path), GameConfig())`,
 then `ensure([(a, b, (4, 4), games)])`, `adaptive(pairings, target_error=0.02)`, `report`, `elo`.
 
@@ -120,7 +120,7 @@ architecture (each is new data for `seat_moves`) and scripted vectors in one que
 sizes are dynamic (lean.contract.compile_dynamic, duck sizing off): 4v4, 8v8, 16v16, 32v32
 and 4 against 8, one after another in one process and all five in one queue, compiled once
 with no recompile (TORCH_LOGS=recompiles silent, Dynamo's graph count unchanged).
-No new graph either for E, the queue length, W, a new arena radius, spawn rule or clock. Fog
+No new graph either for E, the queue length, W, a new arena radius, spawn rule or zone. Fog
 off compiles a new graph. Another architecture compiles `seat_moves` again (not measured).
 A queue's games are padded to its largest ship count, so `ensure` splits calls by ship
 bucket (a power of two); the graph is the same.
