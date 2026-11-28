@@ -84,3 +84,6 @@ Observations against the brief's flags:
   negative in more than one of the three updates.
 - Not measured: anything beyond 6 + 3 updates from fresh weights; no EMA of the cosines (Du et
   al.'s caveat: single-minibatch cosines are noisy).
+- 16:12 tests: quick tier lean/learn + model + eval 199 passed (15:40, the code as committed;
+  later commits touched docs and scripts only), slow lean/learn 6 passed, ruff clean. Done;
+  nothing next on this branch (unmerged, for the coordinator).
