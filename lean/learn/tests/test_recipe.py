@@ -10,7 +10,7 @@ import pytest
 import torch
 
 from lean import model, scripted
-from lean.contract import JOINT, LEVEL_NAMES
+from lean.contract import JOINT
 from lean.learn import (
     LearnConfig,
     TeacherTerm,
@@ -468,7 +468,8 @@ def test_each_levels_share_of_the_advantage_variance_adds_up_to_one():
 def test_an_update_logs_the_advantage_shares_and_the_entropy_fraction():
     config, policy, rollout, generator = rollout_of(16)
     metrics = update(config, policy, make_optimiser(config, policy), rollout, generator=generator)
-    shares = [metrics[f"advantage_share_{name}"] for name in LEVEL_NAMES]
+    shares = [metrics[f"advantage_share_{name}"] for name in config.level_names]
+    assert len(shares) == 3  # the objective levels off by default
     assert sum(shares) == pytest.approx(1.0, abs=1e-4) and metrics["advantage_std"] > 0
     assert metrics["entropy_fraction"] == pytest.approx(metrics["entropy"] / math.log(JOINT))
     assert 0.95 < metrics["entropy_fraction"] <= 1.0  # a fresh policy is near uniform

@@ -5,15 +5,19 @@ import pytest
 import torch
 
 from lean import game, scripted
+from lean.contract import LEVEL_NAMES
 from lean.learn import LearnConfig, value_centres, value_knees
-from lean.learn.config import DAMAGE, KILL_DEATH, LEVELS, OBJECTIVE, OBJECTIVE_PROGRESS, OUTCOME
 from lean.learn.returns import usage_counts, usage_flags, usage_metrics
 from lean.learn.rewards import TickEvents, blank_ledger, reward_step, tick_events
 from lean.model import ModelConfig
 
 CONFIG = LearnConfig()
-KILL = CONFIG.reward_weights[KILL_DEATH]
-DAMAGE_POINT = CONFIG.reward_weights[DAMAGE] / CONFIG.damage_unit
+LEVELS = len(CONFIG.level_names)  # the levels that train (the objective levels off)
+# Indices on the rewards' level axis.
+DAMAGE, KILL_DEATH, OUTCOME = (CONFIG.level(name) for name in ("damage", "kill_death", "outcome"))
+WEIGHT = dict(zip(LEVEL_NAMES, CONFIG.reward_weights, strict=True))
+KILL = WEIGHT["kill_death"]
+DAMAGE_POINT = WEIGHT["damage"] / CONFIG.damage_unit
 # 2v2 in one environment: slots 0 and 1 are team 0, slots 2 and 3 team 1.
 TEAM = torch.tensor([[0, 0, 1, 1]])
 
@@ -110,9 +114,7 @@ def test_outcome_pays_every_ship_of_both_teams_on_the_last_tick():
     cancel when the teams are equal."""
     ledger = blank_ledger(1, 4)
     won, _ = reward_step(CONFIG, ledger, events(done=True, result=1, died=(3,)), TEAM)
-    assert torch.equal(
-        won[0, :, OUTCOME], torch.tensor([-1.0, -1.0, 1.0, 1.0]) * CONFIG.reward_weights[OUTCOME]
-    )
+    assert torch.equal(won[0, :, OUTCOME], torch.tensor([-1.0, -1.0, 1.0, 1.0]) * WEIGHT["outcome"])
     assert won[0, :, OUTCOME].sum() == 0
     drawn, _ = reward_step(CONFIG, ledger, events(done=True, result=2), TEAM)
     assert (drawn[..., OUTCOME] == 0).all()
@@ -120,7 +122,7 @@ def test_outcome_pays_every_ship_of_both_teams_on_the_last_tick():
     assert (running[..., OUTCOME] == 0).all()
     absent = torch.tensor([[True, True, True, False]])
     benched, _ = reward_step(CONFIG, ledger, events(done=True, result=0, present=absent), TEAM)
-    assert benched[0, 3, OUTCOME] == 0 and benched[0, 2, OUTCOME] == -CONFIG.reward_weights[OUTCOME]
+    assert benched[0, 3, OUTCOME] == 0 and benched[0, 2, OUTCOME] == -WEIGHT["outcome"]
 
 
 def test_a_kill_is_shared_by_the_final_hit_and_the_outstanding_damage():
@@ -186,13 +188,23 @@ def test_friendly_fire_blames_the_shooter_and_pays_the_other_team_twice():
     )
 
 
-def test_objective_levels_are_kept_and_zero_in_elimination():
-    ledger = blank_ledger(1, 4)
-    reward, _ = reward_step(
-        CONFIG, ledger, events(raw={(0, 2): 50.0}, lost={2: 50.0}, done=True, result=0), TEAM
-    )
-    assert reward.shape[-1] == LEVELS
-    assert (reward[..., OBJECTIVE_PROGRESS] == 0).all() and (reward[..., OBJECTIVE] == 0).all()
+@pytest.mark.parametrize("objective_levels", [False, True])
+def test_the_objective_levels_exist_only_when_on_and_are_zero_in_elimination(objective_levels):
+    """LearnConfig.objective_levels: off (the default), the rewards have damage, kill_death
+    and the outcome; on, all five, the objective levels zero (no mode pays them yet); the
+    other levels the same either way."""
+    config = LearnConfig(objective_levels=objective_levels)
+    happened = events(raw={(0, 2): 50.0}, lost={2: 50.0}, died=(2,), done=True, result=0)
+    reward, _ = reward_step(config, blank_ledger(1, 4), happened, TEAM)
+    default, _ = reward_step(CONFIG, blank_ledger(1, 4), happened, TEAM)
+    assert reward.shape[-1] == (5 if objective_levels else 3) == len(config.level_names)
+    for name in ("objective_progress", "objective"):
+        assert (name in config.level_names) == objective_levels
+        if objective_levels:
+            assert (reward[..., config.level(name)] == 0).all()
+    for name in ("damage", "kill_death", "outcome"):
+        assert (reward[..., config.level(name)] != 0).any()
+        assert torch.equal(reward[..., config.level(name)], default[..., CONFIG.level(name)])
 
 
 def test_the_real_game_gives_zero_sum_levels():
@@ -226,25 +238,26 @@ def test_range_monitoring_flags_clamped_and_narrow_targets():
     """Guards the supports' watch: a target beyond the outermost centres counts as
     clamped and raises the warning; targets in a few middle bins raise the narrow one,
     except on a level that paid no reward."""
-    config = LearnConfig()
+    config = LearnConfig(objective_levels=True)  # an objective level that paid nothing
+    level = {name: config.level(name) for name in config.level_names}
+    low, high = config.per_level(config.value_low), config.per_level(config.value_high)
     centres = value_centres(config, ModelConfig().bins)
     mask = torch.ones(8, 2, 3, dtype=torch.bool)
-    reward = torch.zeros(8, 2, 3, LEVELS)
-    reward[..., DAMAGE] = 1.0
-    reward[..., KILL_DEATH] = 1.0
-    reward[..., OUTCOME] = 1.0
+    reward = torch.zeros(8, 2, 3, len(level))
+    for name in ("damage", "kill_death", "outcome"):
+        reward[..., level[name]] = 1.0
     spread = torch.linspace(0.0, 1.0, 48).view(8, 2, 3)
-    target = torch.zeros(8, 2, 3, LEVELS)
-    for level in (DAMAGE, KILL_DEATH):  # spread over the support, inside it
-        target[..., level] = config.value_low[level] + spread * (
-            config.value_high[level] - config.value_low[level]
-        )
-    target[0, 0, 0, KILL_DEATH] = 10 * config.value_high[KILL_DEATH]  # one far outside: 1 in 48
-    target[..., OUTCOME] = 0.01 * spread  # all in the middle bin or two
-    target[..., OBJECTIVE] = 0.01 * spread  # narrow, but the level paid nothing
+    target = torch.zeros(8, 2, 3, len(level))
+    for name in ("damage", "kill_death"):  # spread over the support, inside it
+        index = level[name]
+        target[..., index] = low[index] + spread * (high[index] - low[index])
+    kill_death = level["kill_death"]
+    target[0, 0, 0, kill_death] = 10 * high[kill_death]  # one far outside: 1 in 48
+    target[..., level["outcome"]] = 0.01 * spread  # all in the middle bin or two
+    target[..., level["objective"]] = 0.01 * spread  # narrow, but the level paid nothing
     paid = (reward != 0).flatten(0, -2).any(0)  # as the update reads it from the rollout
     counts = usage_counts(target, mask, centres, value_knees(config))
-    usage = usage_metrics(usage_flags(counts, paid, config).tolist())
+    usage = usage_metrics(usage_flags(counts, paid, config).tolist(), config.level_names)
     assert usage["range_clamped_kill_death"] == pytest.approx(1 / 48)
     assert usage["range_warning_clamped_kill_death"] == 1.0
     assert usage["range_clamped_damage"] == 0.0 and usage["range_warning_clamped_damage"] == 0.0

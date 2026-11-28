@@ -113,3 +113,89 @@ def test_assembled_labels_put_each_outcome_on_its_firing_row(ticks):
     if ticks < BULLET_SLOTS - 1:  # a bullet fired before the previous segment: dropped
         outcomes[0, 0, 0, BULLET_SLOTS - 1] = 1
     assert torch.equal(assemble_hit_labels(outcomes), expected.view(2, ticks, envs, slots))
+
+
+def test_unresolved_rows_are_the_bullet_life_before_an_end():
+    """unresolved_rows against the rule: a bullet from row r misses on row r + BULLET_SLOTS
+    - 1, so with an episode end on row 20 rows 10 to 20 cannot report a miss (row 9's miss
+    lands on the end's own tick); a closed window also loses its last BULLET_SLOTS - 1 rows,
+    an open one (a later segment follows) keeps them open."""
+    from lean.learn.store import unresolved_rows
+
+    reach = BULLET_SLOTS - 1
+    done = torch.zeros(40, 2, dtype=torch.bool)
+    done[20, 0] = True
+    closed, opened = unresolved_rows(done, True), unresolved_rows(done, False)
+    rows = torch.arange(40)
+    end = (rows >= 20 - reach + 1) & (rows <= 20)
+    tail = rows >= 40 - reach
+    assert torch.equal(closed[:, 0], end | tail) and torch.equal(opened[:, 0], end)
+    assert torch.equal(closed[:, 1], tail) and not opened[:, 1].any()
+    assert end.sum() == reach and tail.sum() == reach
+
+
+@pytest.mark.parametrize("ticks", [8, 24])
+def test_the_store_unlabels_bullets_that_cannot_report_a_miss(ticks):
+    """The hit-label bias (training-review-2 part 1; author 2026-11-28 ~13:30), a constructed
+    end-of-episode case: one ship fires on every row of two segments, an episode ends on row
+    E; each bullet hits at a drawn age with probability 0.3 or misses at its last age, and
+    reports only by its episode's end and the window's end (the game's rule), into the
+    segment of its report (the previous segment's rows through `previous_hit_label`, rows
+    older than that dropped, as assemble_hit_labels does). Before the mask the labelled
+    rows near the ends are all hits; after it the store keeps exactly the rows whose miss
+    could have reported, each with its true outcome, so the kept rows carry no selection
+    on the outcome. Segments shorter (8: four of them; a miss two segments on is dropped, so
+    its row is unresolved too) and longer (24) than a bullet's life."""
+    from lean.learn.store import RolloutStore
+
+    reach = BULLET_SLOTS - 1
+    segments = 4 if ticks < reach else 2
+    rows = segments * ticks
+    end = rows // 2 + 3
+    generator = torch.Generator().manual_seed(ticks)
+    hit = torch.rand(rows, generator=generator) < 0.3
+    age = torch.randint(0, BULLET_SLOTS, (rows,), generator=generator)
+    truth = hit.long()  # 1 hit an enemy, 0 missed
+    report = torch.where(hit, torch.arange(rows) + age, torch.arange(rows) + reach)
+    episode_end = torch.where(torch.arange(rows) <= end, end, rows - 1)
+    reported = (report <= episode_end) & (report < rows)
+    own = torch.full((segments, ticks), -1)  # each segment's own rows' labels
+    previous = torch.full((segments, ticks), -1)  # the earlier segment's, from this one
+    labelled = torch.zeros(rows, dtype=torch.bool)  # labelled before the mask
+    for row in range(rows):
+        if not reported[row]:
+            continue
+        here, there = row // ticks, int(report[row]) // ticks
+        if there == here:
+            own[here, row % ticks] = truth[row]
+        elif there == here + 1:
+            previous[there, row % ticks] = truth[row]
+        labelled[row] = there <= here + 1
+    store = RolloutStore(segments, stream=False)
+    for segment in range(segments):
+        store.begin_segment(
+            segment, ticks, torch.zeros(1, 1, 1), {"position_offset": torch.zeros(1, 2)}
+        )
+        if segment == 0:
+            store.resident["done"] = torch.zeros(ticks, store.views + 1, dtype=torch.bool)
+            store.resident["done"][end % ticks, end // ticks] = True
+        store.end_segment(
+            segment,
+            own[segment].view(ticks, 1, 1),
+            torch.zeros(1, 1, 3),
+            torch.zeros(3, 4),
+            previous[segment].view(ticks, 1, 1) if segment > 0 else None,
+        )
+    stored = store.resident["hit_label"][:, :segments, 0].T.reshape(rows).long()
+    fired = torch.arange(rows)
+    resolvable = (
+        (fired + reach <= episode_end)
+        & (fired + reach < rows)
+        & ((fired + reach) // ticks <= fired // ticks + 1)
+    )
+    assert resolvable.sum() > 0 and (~resolvable).sum() >= 2 * reach
+    assert torch.equal(stored, torch.where(resolvable, truth, -1))
+    # The bias it removes: rows labelled that could not have missed were all hits.
+    unmasked = labelled & ~resolvable
+    assert unmasked.any() and (truth[unmasked] == 1).all()
+    assert (stored[~resolvable] == -1).all() and (store.resident["hit_label"][:, -1] == -1).all()

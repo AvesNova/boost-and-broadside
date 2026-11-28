@@ -44,7 +44,7 @@ def main() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.manual_seed(0)
     generator = torch.Generator(device=device).manual_seed(0)
-    learn = LearnConfig()
+    learn = LearnConfig(objective_levels=True)  # all five levels, LEVEL_NAMES order
     model = ModelConfig()
     game_config = game.GameConfig(training_spawn=True)
     sizes = draw_team_sizes(learn, envs, generator)

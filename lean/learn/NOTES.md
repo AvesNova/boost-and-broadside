@@ -34,7 +34,8 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
 - `weights.py`: `WeightAverages` (EMA and uniform), checkpoints.
 - `pool.py`: `League` (the pool of members and tallies, level 1 `allocate`, level 2 `draw` /
   `slot_draws`, draining slots, the persona parameter table), `SnapshotSchedule`, `retained`.
-- `rewards.py`: v2's five reward levels and the damage ledger.
+- `rewards.py`: v2's reward levels (those that train, `LearnConfig.level_names`) and the damage
+  ledger.
 - `compiled.py`: `graphs(shapes)`: act, advance, scripted_actions (one graph per environment
   count: one at self_play_share 0.5), slot_actions, merge_league, minibatch_values,
   minibatch_loss. `LearnConfig.compile_shapes`: "static" (the default) compiles
@@ -50,10 +51,19 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
 - **Update:** 2,048 environments x 4 segments x 128 ticks (1,048,576 environment ticks), returns
   chained over the 512 ticks of each seat and bootstrapped only at the end, 4 epochs, 32
   minibatches, micro-batches of 8 views with gradient accumulation (speed only, per GPU), targets once per update.
-- **Dead ships** (author 2026-11-28, option C): a fallen ship's value in the returns (its
-  post-death ticks and the update's bootstrap) is its living team-mates' mean value at that tick
-  and level (`returns.fallen_team_values`, the store's `fallen` record), so the outcome reaches
-  its earlier ticks at gamma^k; its death penalty stays. Team-shared payments (boundary deaths,
+- **Levels** (author 2026-11-28 ~13:30): damage, kill_death and outcome train;
+  objective_progress and objective (no mode pays them yet) only with
+  `LearnConfig.objective_levels` (off): no rewards, returns, supports, value bins, value loss
+  or store columns for them, and the value loss averages over the levels that train. The
+  per-level settings keep all five levels (`LEVEL_NAMES` order; `LearnConfig.per_level` picks);
+  the model's critic has `ModelConfig.value_levels` levels, set by lean.train from the learner
+  (checkpoints from before 2026-11-28 have 5 and do not load with the default).
+- **Dead ships** (author 2026-11-28, option C on the team-wide levels): a fallen ship's value in
+  the returns (its post-death ticks and the update's bootstrap) on the outcome (and the
+  objective levels when on) is its living team-mates' mean value at that tick and level
+  (`returns.fallen_team_values`, the store's `fallen` record), so the outcome reaches its
+  earlier ticks at gamma^k; on damage and kill_death, each ship's own, it is 0 (a team-mate's
+  value there holds that team-mate's own future damage and kills). Its death penalty stays. Team-shared payments (boundary deaths,
   friendly-fire compensation, unattributed boundary healing) go to the living ships only.
 - **Seeds:** the explicit generator takes `--seed` + 1,000,003, torch's default generators
   (initial weights, the compiled rollout's draws) `--seed`.
@@ -91,7 +101,12 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
   rows the seat sees (`observed`: its living ships and the enemies visible this tick; hidden
   enemies and dead ships masked). A next-state row also needs the ship alive and visible to
   the seat after the step (its target is what the team sees on both ticks) and the episode
-  not ended; a hit row a label (a plain game label, an enemy's bullet too).
+  not ended; a hit row a label (a plain game label, an enemy's bullet too). A bullet reports
+  once, at its first contact (hit) or its last tick (miss), and one in flight at an episode end
+  or the update's end never reports, so there hits would be labelled and misses not: the store
+  unlabels every row whose miss would land after its episode's last tick or the update's last
+  tick (`store.unresolved_rows`, in `end_segment`: the 11 rows before each such end;
+  2026-11-28, training-review-2 part 1).
 - **Geometry heads** (lean/model/NOTES.md "Geometry heads"): per view and tick K = 8 valid ship
   pairs of the 28 (4v4) and K = 8 valid ship-field pairs of the 80 (`pair_samples`,
   `field_pair_samples`), drawn without replacement before the pair layers; the uniform keys
@@ -101,8 +116,8 @@ log: the long notes before step L1). Evaluation is its own package (`lean/eval/N
   an unbiased estimate of the mean over every valid pair, exact when K >= c. Losses in nats per
   column: the ship pairs' symmetric columns on the upper triangle, the train angle and gun
   error averaged over both orders. Off for an ablation: `ModelConfig(geometry_heads=False)`.
-- **Rewards:** v2's five levels; value supports from measured returns (2026-11-25): damage
-  +-5.4, kill_death +-7.5, outcome +-10, objective levels +-1 (placeholders), each 57 bins
+- **Rewards:** v2's levels (the objective levels off by default); value supports from measured
+  returns (2026-11-25): damage +-5.4, kill_death +-7.5, outcome +-10, objective levels +-1 (placeholders), each 57 bins
   across the range plus 3 buffer columns of the same width beyond both ends (63 bins;
   lean/model/NOTES.md). Damage and kill_death are symlog (`value_knee`, the event rule: one
   event x e^-3: a hit of 8 points 0.0109 (0.0286 until 2026-11-28, from 21-point hits) and a

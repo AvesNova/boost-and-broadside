@@ -9,7 +9,8 @@ Reasons: `docs/rewrite/model-audit.md`, `docs/rewrite/literature-model-choices.m
 - `Policy(ModelConfig())` (`policy.py`): `initial_carry`, `step(obs, carry, position_offset, reset)`
   (one tick, rollout) and `sequence(obs, carry, reset, ...)` (T ticks, the learner). One code
   path; `step` is T = 1. Inputs are `lean.contract`'s feature counts. Outputs are per ship:
-  42 policy logits, 5 value levels x 63 bins; `sequence` returns a `Sequence` (NamedTuple)
+  42 policy logits, `value_levels` value levels x 63 bins (3: the learner's, lean.learn; 5 with
+  the objective levels); `sequence` returns a `Sequence` (NamedTuple)
   that also holds the next-state logits (6 x 63), the hit logits (3), the map-edge logits
   (16) and, given a `PairQuery`, the pairwise head's logits (`geometry.py`).
 - `agent.py`: how a network acts, shared by `lean.learn`'s rollout and `lean.eval`'s runner:

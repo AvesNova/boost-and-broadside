@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
-from lean.contract import JOINT, LEVEL_NAMES
+from lean.contract import JOINT
 from lean.learn.config import LearnConfig, learning_rate
 from lean.learn.geometry import draw_keys, geometry_losses, observed_rows, pair_query
 from lean.learn.returns import (
@@ -296,11 +296,11 @@ def target_pass(
     value stored at collection; an episode end cuts as anywhere else.
     Returns, on the device, the targets' range measures, usage_flags (4, LEVELS), and the
     advantages' tallies before scaling (returns.advantage_sums, for each level's share)."""
-    levels = len(config.discounts)
+    levels = len(config.level_names)
     advantage, target = store.targets(levels)
     support = value_support(config, policy.config.bins, store.device)
-    discounts = to_device(torch.tensor(config.discounts), store.device)
-    lambdas = to_device(torch.tensor(config.gae_lambdas), store.device)
+    discounts = to_device(torch.tensor(config.per_level(config.discounts)), store.device)
+    lambdas = to_device(torch.tensor(config.per_level(config.gae_lambdas)), store.device)
     names = store.observation_names + TARGET_NAMES if values is not None else STORED_TARGET_NAMES
     counts = paid = sums = None
     for batch in store.batches(names, index):
@@ -366,16 +366,17 @@ def update(
     cross-entropy with weight bc_coefficient, the other terms as in RL (the critics learn
     the stage's own returns).
 
-    Every term is a mean over its valid tokens in the minibatch: the learner's living ships
-    (`own`) for surrogate, entropy, bc and value (value also averaged over levels, so it is
-    nats per softmax group); bc is the cross-entropy of the policy's 42-way distribution
-    against the scripted teacher's full distribution (Rollout.teacher, the joint of its
-    factors; with its weight 0 in RL the record is neither copied nor read: a zero record of
-    the same shape goes into the same graph); `next_valid` rows
-    and their columns for the next-state head's HL-Gauss cross-entropy (nats per column,
-    lean.model.policy.next_state_cross_entropy; a head whose columns differ from the
-    recorded target's raises ValueError); the hit head's cross-entropy (nats) over the `own`
-    rows that have a hit label.
+    Every term is a mean over its valid tokens in the minibatch: the learner's living ships (`own`)
+    for surrogate, entropy, bc and value (value also averaged over the levels that train,
+    LearnConfig.level_names, so it is nats per softmax group); bc is the cross-entropy of the
+    policy's 42-way distribution against the scripted teacher's full distribution (Rollout.teacher,
+    the joint of its factors; with its weight 0 in RL the record is neither copied nor read: a zero
+    record of the same shape goes into the same graph); `next_valid` rows and their columns for the
+    next-state head's HL-Gauss cross-entropy (nats per column,
+    lean.model.policy.next_state_cross_entropy; a head whose columns differ from the recorded
+    target's raises ValueError); the hit head's cross-entropy (nats) over the `observed` rows that
+    have a hit label (the store unlabels the rows whose bullet could not report a miss,
+    store.unresolved_rows).
 
     A minibatch is a random set of views (one seat's whole segment each), run as
     micro-batches of config.micro_batch_views views through Policy.sequence from the stored
@@ -543,7 +544,7 @@ def update(
     optimiser.found_inf = None
 
     names = list(totals)
-    levels = len(config.discounts)
+    levels = len(config.level_names)
     read = torch.cat(
         [
             torch.stack([totals[name] for name in names]),
@@ -561,9 +562,9 @@ def update(
     )
     position = len(names)
     rows = [read[position + row * levels : position + (row + 1) * levels] for row in range(4)]
-    metrics.update(usage_metrics(rows))
+    metrics.update(usage_metrics(rows, config.level_names))
     position += 4 * levels
-    for level, name in enumerate(LEVEL_NAMES):
+    for level, name in enumerate(config.level_names):
         metrics[f"advantage_share_{name}"] = read[position + level]
     metrics["advantage_std"] = read[position + levels]
     position += levels + 1

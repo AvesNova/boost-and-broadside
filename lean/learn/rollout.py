@@ -178,15 +178,18 @@ class Rollout:
     geometry: (T, S, N, lean.game.GEOMETRY_COLUMNS) lean.game.geometry_record, every slot of
     the seat's environment (the losses read the observed rows only).
     fallen: (T, S, N) bool, the seat's team's dead ships still in the match (their value in
-    the returns is their living team-mates' mean, returns.fallen_team_values).
+    the returns on the team-wide levels is their living team-mates' mean,
+    returns.fallen_team_values).
     hit_label: (T, S, N) long, the outcome of the bullet the ship emitted on that tick
     (0 missed, 1 hit an enemy, 2 hit a team-mate; -1 unlabelled: no bullet, or it had not
     ended by the segment's end). Labels every slot of the seat's environment (a plain game
     label, the enemies' too); the loss takes the `observed` rows. Streamed into a store,
     the bullets fired in the previous segment that end in this one label that segment's rows
-    (RolloutStore.end_segment); only the update's last segment keeps an unlabelled tail.
+    (RolloutStore.end_segment); only the update's last segment keeps an unlabelled tail. The
+    store then unlabels the rows whose bullet could not report a miss (store.unresolved_rows:
+    before an episode end or the update's end); this record keeps them.
     bootstrap_value: (S, N, LEVELS) value after the last tick, zero outside `own` except on
-    fallen ships (returns.fallen_team_values).
+    fallen ships' team-wide levels (returns.fallen_team_values).
     value_centres: (LEVELS, BINS) the critic's support the values were decoded with.
     seat_environment, seat_team: (S,) the environment of each seat and its team at the
     last tick. self_play: (S,) bool, the seat's environment is a self-play one.
