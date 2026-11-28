@@ -28,6 +28,25 @@ counters, the games in progress (game state and carry) and the random generators
 settings and plan; `--updates` may extend RL. A resumed run gives the same updates as one
 that never stopped (on the CPU eagerly, to rounding; tests/test_train.py).
 
+Stopping: SIGTERM or SIGINT (Ctrl-C) asks the run to stop; it finishes the update in progress
+(its collect and learn), writes a checkpoint as the periodic ones (DIR/checkpoints/
+<stage>_<steps>.pt, the same contents, so `--resume DIR` continues it exactly; test_train.py),
+prints "<stage>: stopped ..." and exits 0. A second signal exits at once (by the signal, no
+checkpoint: the last one stays whole, checkpoints are written to a temporary file first).
+Pause = stop, then `--resume DIR`. The stop waits for an update boundary (a mid-update
+checkpoint would have to keep the partial store), so a laptop update (~120 s at ~8,700
+steps/s, more with the gradient diagnostic) plus the write must fit systemd's stop timeout (90 s
+by default): start units with `-p TimeoutStopSec=300 -p KillMode=mixed` (mixed: the SIGTERM goes
+to the trainer only, not to W&B's service or compile workers, which are killed once it exits).
+
+W&B (`--wandb online|offline|off`, default online; lean.wandb_log): one W&B run per stage in
+project boost-and-broadside-v2, named `<DIR>-<stage>` (`<parent>-<stage>` when DIR is named
+for the stage), its id kept in DIR/wandb.json so `--resume` continues it; every update's
+numbers (all the metrics, the gradient decomposition, the league's) against environment steps;
+the config (LearnConfig, ModelConfig, GameConfig, seed, commit, stage, plan). Without
+credentials or network it falls back to offline; a W&B failure never stops training. Without
+`--out` W&B is off.
+
 `--seed` fixes the initial weights, the scenario draws and the data order. The explicit
 generator (scenario draws, sampling, data order) is seeded `--seed` + GENERATOR_SEED_OFFSET and
 torch's default generators (initial weights; compiled, the rollout's draws) `--seed`, so the
@@ -40,12 +59,14 @@ into one RolloutStore (streamed to pinned host memory on a GPU), then learns fro
 import argparse
 import dataclasses
 import json
+import os
+import signal
 import time
 from pathlib import Path
 
 import torch
 
-from lean import game, model, scripted
+from lean import game, model, scripted, wandb_log
 from lean.learn import (
     League,
     LearnConfig,
@@ -87,6 +108,37 @@ CHECKPOINTS = "checkpoints"
 # The explicit generator's seed less the default generators' (a large prime: no nearby
 # --seed of another run replays this run's other stream).
 GENERATOR_SEED_OFFSET = 1_000_003
+
+
+class StopRequest:
+    """SIGTERM / SIGINT handling (the module's docstring): the first signal sets `requested`,
+    checked after each update; the second ends the process by that signal. `restore` puts the
+    previous handlers back."""
+
+    SIGNALS = (signal.SIGTERM, signal.SIGINT)
+
+    def __init__(self) -> None:
+        self.requested: str | None = None
+        self.previous = {number: signal.signal(number, self.handle) for number in self.SIGNALS}
+
+    def handle(self, number, frame) -> None:
+        name = signal.Signals(number).name
+        if self.requested is not None:
+            print(f"{name} again: exiting now, no checkpoint", flush=True)
+            self.restore()
+            signal.signal(number, signal.SIG_DFL)
+            os.kill(os.getpid(), number)
+            return
+        self.requested = name
+        print(
+            f"{name}: stopping after the update in progress (a checkpoint, then exit); "
+            "a second signal exits now",
+            flush=True,
+        )
+
+    def restore(self) -> None:
+        for number, handler in self.previous.items():
+            signal.signal(number, handler)
 
 
 @dataclasses.dataclass
@@ -222,9 +274,13 @@ def run_stage(
     compiled: bool,
     out: Path | None,
     plan: dict,
-) -> WeightAverages:
+    stop: StopRequest | None = None,
+    log: wandb_log.WandbLog | None = None,
+) -> WeightAverages | None:
     """The stage's remaining updates; saves out/checkpoints/<stage>_<steps>.pt every
-    config.checkpoint_every environment steps and out/<stage>.pt at its end when `out`."""
+    config.checkpoint_every environment steps and out/<stage>.pt at its end when `out`. On a
+    `stop` request, after the update in progress: a checkpoint (if none was just written) and
+    None. `log` gets every update's record (lean.wandb_log.update_record)."""
     device = next(policy.parameters()).device
     ticks = config.segment_ticks
     opponent = Opponent(scripted.ScriptedConfig(), stage.league)
@@ -295,9 +351,10 @@ def run_stage(
         rates = " ".join(f"{value:.2f}" for value in league.win_rates()[league.present].tolist())
         summary = league.summary()
         loaded = " ".join(f"{kind}:{count}" for kind, count in summary["loaded"].items() if count)
-        memory = ""
+        memory, peak = "", None
         if device.type == "cuda":
-            memory = f" peak_allocated_gib {torch.cuda.max_memory_allocated(device) / 2**30:.2f}"
+            peak = torch.cuda.max_memory_allocated(device) / 2**30
+            memory = f" peak_allocated_gib {peak:.2f}"
         print(
             f"{stage.name} update {index} steps {stage.steps} scripted_win_rate {win_rate:.3f} "
             f"league_members {league.present_count()} snapshots {league.snapshots} "
@@ -336,10 +393,32 @@ def run_stage(
                 "(gradient norm not finite)",
                 flush=True,
             )
-        if out is not None and checkpoints.due(before, stage.steps):
-            path = out / CHECKPOINTS / f"{stage.name}_{stage.steps:012d}.pt"
+        if log is not None:
+            log.log(
+                wandb_log.update_record(
+                    stage.name, index, stage.steps, win_rate, league, rate, metrics, peak
+                )
+            )
+        path = None if out is None else out / CHECKPOINTS / f"{stage.name}_{stage.steps:012d}.pt"
+        due = out is not None and checkpoints.due(before, stage.steps)
+        if due:
             save_run(path, stage, policy, config, generator, plan)
             print(f"{stage.name}: checkpoint {path}", flush=True)
+        if stop is not None and stop.requested:
+            if path is None:
+                print(
+                    f"{stage.name}: stopped after update {index} (no --out: nothing saved)",
+                    flush=True,
+                )
+            else:
+                if not due:
+                    save_run(path, stage, policy, config, generator, plan)
+                print(
+                    f"{stage.name}: stopped after update {index} ({stop.requested}), "
+                    f"checkpoint {path}; continue with --resume {out}",
+                    flush=True,
+                )
+            return None
     if out is not None:
         out.mkdir(parents=True, exist_ok=True)
         save_checkpoint(
@@ -459,6 +538,12 @@ def main() -> None:
         default=None,
         help="the gradient decomposition every N updates (LearnConfig.gradient_diagnostics_every)",
     )
+    parser.add_argument(
+        "--wandb",
+        choices=wandb_log.MODES,
+        default="online",
+        help="W&B logging (lean.wandb_log; offline when not logged in; off without --out)",
+    )
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument(
         "--threads", type=int, default=0, help="CPU threads for torch; 0 keeps the default"
@@ -543,18 +628,58 @@ def main() -> None:
             "the objective levels were optional has 5"
         )
 
-    for name in stages:
-        if resumed is not None and name == resumed["stage"]:
-            stage = restored_stage(
-                resumed, config, policy, generator, planned[name], snapshots, out
+    stop = StopRequest()
+    try:
+        for name in stages:
+            if stop.requested:
+                break
+            if resumed is not None and name == resumed["stage"]:
+                stage = restored_stage(
+                    resumed, config, policy, generator, planned[name], snapshots, out
+                )
+            else:
+                stage = new_stage(
+                    name, planned[name], config, game_config, policy, plan["envs"], generator
+                )
+            log = wandb_log.WandbLog(
+                arguments.wandb,
+                out,
+                name,
+                run_config(name, config, policy, game_config, plan, out),
             )
-        else:
-            stage = new_stage(
-                name, planned[name], config, game_config, policy, plan["envs"], generator
-            )
-        averages = run_stage(stage, config, game_config, policy, generator, compiled, out, plan)
-        if name == "bc":
-            policy.load_state_dict(averages.weights(config.handoff, policy))
+            try:
+                averages = run_stage(
+                    stage, config, game_config, policy, generator, compiled, out, plan, stop, log
+                )
+            finally:
+                log.finish()
+            if averages is None:
+                break
+            if name == "bc":
+                policy.load_state_dict(averages.weights(config.handoff, policy))
+    finally:
+        stop.restore()
+
+
+def run_config(stage: str, config: LearnConfig, policy, game_config, plan: dict, out) -> dict:
+    """The W&B run's config: the three configs, the plan (paths as directory names), the
+    stage and the commit."""
+    shown = dict(plan)
+    for key in ("out", "start"):
+        if shown.get(key) is not None:
+            shown[key] = Path(shown[key]).name
+    return wandb_log.as_config(
+        dict(
+            stage=stage,
+            seed=plan["seed"],
+            commit=wandb_log.commit(),
+            run_directory=None if out is None else Path(out).resolve().name,
+            plan=shown,
+            learn=config,
+            model=policy.config,
+            game=game_config,
+        )
+    )
 
 
 if __name__ == "__main__":
