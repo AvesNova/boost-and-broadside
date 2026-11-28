@@ -22,7 +22,7 @@ NO_PENDING = JOINT  # Obs.pending of a row whose pending action is not observed
 LEVEL_NAMES = ("damage", "kill_death", "objective_progress", "objective", "outcome")
 OWN_LEVEL_NAMES = ("damage", "kill_death")  # each ship's own; the rest are team-wide
 OBJECTIVE_LEVEL_NAMES = ("objective_progress", "objective")
-def level_names(objective_levels): ...  # the levels that train: all five, or without the objectives
+level_names(objective_levels)  # -> the levels that train: all five, or without the objectives
 SHIP_FEATURES, GLOBAL_FEATURES, FIELD_FEATURES  # 18 scalars + 4 flags + type one-hot; 3; 3
 BULLET_SLOTS = 12  # also every bullet's life in ticks: the ring (slot tick mod 12) is its clock
 GHOST, REAL, CONTACTED = 0, 1, 2  # State.bullet_state
