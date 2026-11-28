@@ -419,12 +419,58 @@ def test_fires_at_a_tail_in_range_and_never_inside_his_nose_cone():
 def test_the_trigger_weighs_the_hit_chance():
     """Dead astern near the gun's range, nose on: it fires with the default spread; with a wide
     spread (the game's hit widths unchanged) the expected hit is below its fire worth and it
-    holds fire (the hit chance, round 4)."""
+    mostly holds fire (the hit chance, round 4; the worth gate is soft since item 20, so the
+    probability falls smoothly with the spread)."""
     distance = 0.9 * card_values()["gun_range"]
     astern = placed(ship(), ship(x=distance))
     assert float(choice_of(astern).fire[0, 0]) > 0.5
-    wide = astern.replace(constants=core.with_hit_model(astern.constants, bullet_spread=60.0))
-    assert float(choice_of(wide).fire[0, 0]) < 0.05
+    fires = []
+    for spread in (20.0, 40.0, 60.0, 90.0):
+        constants = core.with_hit_model(astern.constants, bullet_spread=spread)
+        fires.append(float(choice_of(astern.replace(constants=constants)).fire[0, 0]))
+    assert all(later < earlier for earlier, later in zip(fires, fires[1:], strict=False))
+    assert fires[-1] < 0.05
+
+
+def test_the_expected_value_trigger_window_grows_with_the_uncertainty():
+    """Item 20: the aim window's half-width is (half the hit width + fire_uncertainty x sigma)
+    x fire_tolerance metres at the target, so an aim error that holds fire at k = 0 fires at a
+    larger k, and the fire probability rises smoothly with k; the gated rule (fire_rule 0)
+    ignores k."""
+    distance = 0.6 * card_values()["gun_range"]
+    off = 0.012  # radians off the lead point (the target's half width is ~4 mrad here)
+    astern = placed(ship(heading=off), ship(x=distance))
+    fires = [
+        float(choice_of(astern, config=ScriptedConfig().replace(fire_uncertainty=k)).fire[0, 0])
+        for k in (0.0, 1.0, 2.0, 4.0)
+    ]
+    assert fires[0] < 0.1 and fires[-1] > 0.5
+    assert all(later > earlier for earlier, later in zip(fires, fires[1:], strict=False))
+    gated = [
+        float(
+            choice_of(
+                astern, config=ScriptedConfig().replace(fire_rule=0.0, fire_uncertainty=k)
+            ).fire[0, 0]
+        )
+        for k in (0.0, 4.0)
+    ]
+    assert gated[0] == gated[1]
+
+
+def test_a_team_mate_near_the_line_blocks_softly():
+    """Item 20: a team-mate ahead of me and nearer than the enemy blocks by his clearance from
+    the line of fire: half at `ally_clearance` hit radii, more on the line, less farther out,
+    smoothly."""
+    distance = 0.6 * card_values()["gun_range"]
+    clearance = ScriptedConfig().values["ally_clearance"] * card_values()["hit_radius"]
+    teams = (0, 0, 1)
+    fires = []
+    for across in (0.5, 1.0, 2.0, 4.0):
+        state = placed(ship(), ship(x=0.5 * distance, y=across * clearance), ship(x=distance),
+                       teams=teams)
+        fires.append(float(choice_of(state).fire[0, 0]))
+    assert all(later > earlier for earlier, later in zip(fires, fires[1:], strict=False))
+    assert fires[0] < 0.1 and fires[-1] > 0.5
 
 
 @pytest.mark.parametrize("fields", [0, 4])
@@ -481,7 +527,7 @@ def test_never_shoots_through_a_team_mate():
     clear = placed(ship(), ship(y=300.0), ship(x=distance), teams=teams)
     assert float(choice_of(clear).fire[0, 0]) > 0.5
     blocked = placed(ship(), ship(x=0.5 * distance), ship(x=distance), teams=teams)
-    assert float(choice_of(blocked).fire[0, 0]) == 0.0
+    assert float(choice_of(blocked).fire[0, 0]) < 1e-6
 
 
 def test_avoids_a_head_on_collision():

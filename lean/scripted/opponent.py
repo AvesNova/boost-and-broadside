@@ -1039,29 +1039,92 @@ def _trigger(state, ahead, enemies, enemy_slot, enemy_weight, read) -> Tensor:
     # target's unpredicted turn, lead_error x his sustained turn acceleration, over the flight)
     # spread the bullet sideways by a normal of that deviation (round 4, 2026-11-27).
     half_width = 0.5 * _at(enemies.constants["hit_width"], enemy_slot)
-    size = maximum(2.0 * torch.atan(half_width / distance), read("target_size_minimum", 1))
-    size = size.clamp_max(math.radians(45.0))
-    aligned = torch.sigmoid(
-        -torch.log(error.abs().clamp_min(TINY) / (size * read("fire_tolerance", 1)))
-        / read("fire_aim_scale", 1)
-    )
     his_speed = _at(enemies.constants["sustained_speed"], enemy_slot)
     his_turn = his_speed * his_speed / _at(enemies.constants["sustained_radius"], enemy_slot)
     lead = read("lead_error", 1) * 0.5 * his_turn * flight
     sideways = flight * torch.sqrt(_lay(c["spread_speed"], 1) ** 2 + lead * lead + TINY)
     chance = torch.erf(half_width / (math.sqrt(2.0) * sideways))
     hit = _lay(c["hit_damage"], 1) * hit_worth(mine, his, distance, hit_cos, hit_sin) * chance
-    worth = read("fire_worth", 1) * _lay(c["shield_rate"] * c["tick_length"], 1)
+    cost = read("fire_worth", 1) * _lay(c["shield_rate"] * c["tick_length"], 1)
     shield = _at(enemies.shield, enemy_slot)
-    worthwhile = (hit >= worth) | ((hit >= shield) & (hit > 0.0))
-    clear = ~_mate_in_line(ahead, distance, read)
-    chance = aligned * in_range * (worthwhile & clear & (enemy_weight > 0.0)).float()
+    scored = (enemy_weight > 0.0).float()
+    expected = _expected_value_trigger(
+        error, distance, half_width, sideways, hit, cost, shield, ahead, read
+    )
+    gated = _gated_trigger(error, distance, half_width, hit, cost, shield, ahead, read)
+    rule = read("fire_rule", 1)  # 1 the expected-value trigger (item 20), 0 the gated one
+    chance = in_range * scored * (rule * expected + (1.0 - rule) * gated)
     # The gun at the shot's tick: the game's count down after the pending tick (the store's
     # block on the pending shot left out).
     pending_shot = (state.pending[..., 2] == 1) & (state.cooldown == 0)
     cooldown = torch.where(pending_shot, c["fire_interval"], state.cooldown)
     ready = cooldown <= 1
     return torch.where(ready, chance.amax(-1), 0.0)
+
+
+def _expected_value_trigger(error, distance, half_width, sideways, hit, cost, shield, ahead, read):
+    """The trigger's aim and gates as one expected value against its cost (item 20, author
+    2026-11-29), every factor smooth: the aim window is centred on the lead point, its
+    half-width in metres (the target's half hit width + `fire_uncertainty` x the sideways
+    uncertainty at the target, sigma) x `fire_tolerance`, as an angle at the distance, with the
+    logistic ramp in log error (`fire_aim_scale`); worth it = sigmoid(log(expected damage /
+    cost) / `fire_gate_scale`), cost `fire_worth` ticks of my shield recharge, or the same
+    against his whole shield (the kill); a team-mate ahead and nearer than the enemy blocks by
+    a logistic in log(his clearance from the line / the line's clearance width)."""
+    window = (half_width + read("fire_uncertainty", 1) * sideways) * read("fire_tolerance", 1)
+    window_angle = torch.atan(window / distance).clamp_max(math.radians(45.0))
+    aligned = torch.sigmoid(
+        -torch.log(error.abs().clamp_min(TINY) / window_angle) / read("fire_aim_scale", 1)
+    )
+    scale = read("fire_gate_scale", 1)
+    damage = hit.clamp_min(TINY)
+    worth = torch.sigmoid(torch.log(damage / cost) / scale)
+    kill = torch.sigmoid(torch.log(damage / shield.clamp_min(1e-3)) / scale)
+    worthwhile = torch.maximum(worth, kill) * (hit > 0.0).float()
+    return aligned * worthwhile * _mate_clear(ahead, distance, read)
+
+
+def _gated_trigger(error, distance, half_width, hit, cost, shield, ahead, read):
+    """The trigger before item 20 (kept for the item's measurement): the aim gate at the lead
+    point in target sizes (the full angular hit width, clamped below by
+    `target_size_minimum`) x `fire_tolerance`; worth it and the team-mate's line hard."""
+    size = maximum(2.0 * torch.atan(half_width / distance), read("target_size_minimum", 1))
+    size = size.clamp_max(math.radians(45.0))
+    aligned = torch.sigmoid(
+        -torch.log(error.abs().clamp_min(TINY) / (size * read("fire_tolerance", 1)))
+        / read("fire_aim_scale", 1)
+    )
+    worthwhile = (hit >= cost) | ((hit >= shield) & (hit > 0.0))
+    clear = ~_mate_in_line(ahead, distance, read)
+    return aligned * (worthwhile & clear).float()
+
+
+def _mate_clear(state, distance: Tensor, read) -> Tensor:
+    """(E, N, ENEMIES) the soft share of the line of fire clear of team-mates: the product over
+    the living team-mates ahead along my nose and nearer than each enemy of sigmoid(log(|his
+    offset from the line| / clearance) / `fire_gate_scale`), the clearance `ally_clearance` hit
+    radii (one half at the clearance; a mate on the line blocks fully)."""
+    c = state.constants
+    slots = state.x.shape[1]
+    index = slot_indices(slots, state.x.device).ship
+    alive = state.exists & state.alive
+    mate = (
+        (state.team[:, :, None] == state.team[:, None, :])
+        & alive[:, None, :]
+        & (index[:, None] != index[None, :])
+    )
+    offset_x = state.x[:, None, :] - state.x[:, :, None]
+    offset_y = state.y[:, None, :] - state.y[:, :, None]
+    along = offset_x * state.heading_cos[..., None] + offset_y * state.heading_sin[..., None]
+    across = offset_x * state.heading_sin[..., None] - offset_y * state.heading_cos[..., None]
+    clearance = read("ally_clearance", 1) * _lay(c["hit_radius"], 1)
+    clear = torch.sigmoid(
+        torch.log(across.abs().clamp_min(TINY) / clearance) / read("fire_gate_scale", 1)
+    )
+    ahead = mate & (along > 0.0)  # (E, N, other)
+    nearer = along[:, :, None, :] < distance[..., None]  # (E, N, ENEMIES, other)
+    blocking = ahead[:, :, None, :] & nearer
+    return torch.where(blocking, clear[:, :, None, :], 1.0).prod(-1)
 
 
 def _mate_in_line(state, distance: Tensor, read) -> Tensor:

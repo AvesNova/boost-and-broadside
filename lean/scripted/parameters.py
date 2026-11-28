@@ -123,6 +123,18 @@ PARAMETERS: dict[str, Parameter] = {
                             meaning="the target's unpredicted sideways acceleration over the "
                                     "flight (the trigger's hit chance, with the bullet spread; "
                                     "round 4, a reasoned choice, not tuned)"),
+    # The expected-value trigger (item 20, author 2026-11-29).
+    "fire_uncertainty": Parameter(1.0, "sideways sigma",
+                                  meaning="the aim window's half-width: the target's half hit "
+                                          "width plus this many sigmas of the shot's sideways "
+                                          "uncertainty at the target (x fire_tolerance)"),
+    "fire_gate_scale": Parameter(0.25, "log units",
+                                 meaning="the softness of the trigger's worth-it gate (log "
+                                         "expected damage / cost) and team-mate gate (log "
+                                         "clearance / ally_clearance)"),
+    "fire_rule": Parameter(1.0, "choice",
+                           meaning="1 the expected-value trigger, 0 the gated one before "
+                                   "item 20 (for item 20's measurement)"),
     # Fixed shapes of the terms (not personality).
     "closeness_range": Parameter(3.0, "gun_range",
                                  meaning="the angles and energy terms halve at this distance"),
