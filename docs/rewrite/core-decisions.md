@@ -1157,3 +1157,43 @@ Bullet deflector and the runtime hit model (PROPOSAL, branch `bullet-deflector`,
   negligible, review); the shield range comment corrected (the -90 range stands).
 - **Not a fix**: the EMA and uniform slots taking new weights mid-game is fine (the live policy
   changes mid-game too, and the averages move more slowly).
+
+## Game rules 2026-11-28 (~16:30): nose armour, the aspect curve on the sine, the circle deflector, the sight egg (decided; branch `rules-12`, queue item 12)
+
+After replays showed duels degenerate into nose-to-nose fire and collisions. lean/game/NOTES.md
+("The aspect curve", "Deflector", "Fog"); measurements docs/rewrite/sections/rules-12-progress.md.
+
+- **Nose armour on for bullets** (`card.NOSE_CONE` 1): no bullet damage when the bullet's path
+  is within 30 deg of the target's nose, full from 45 deg, smooth between. Visuals (an
+  "absorbed" flash) later.
+- **One aspect function on the sine** (`core.aspect_factor(hit_cos, hit_sin, inner_sin,
+  inverse_width)`): t = clamp((sin - sin inner) / (sin outer - sin inner), 0, 1) on |cross(nose,
+  n)|, t = 1 behind the beam (negative cosine), smootherstep(t); two angle pairs on the card
+  (angles stored, sines in the constants): bullet armour `nose_inner_angle` / `nose_outer_angle`
+  30 / 45 deg; collision blame `blame_inner_angle` / `blame_outer_angle` 0 / 45 deg, blame 1 -
+  aspect / 2. Armour factor / blame at 0, 10, 22.5, 30, 37.5, 45, 90 deg: 0 / 1, 0 / 0.951,
+  0 / 0.712, 0 / 0.577, 0.547 / 0.511, 1 / 0.5, 1 / 0.5. The scripted gun and trigger read the
+  same function (the kernel's copy is held to it by the twin test).
+- **Circle deflector** (`core.circle_entry`, `core.circle_turn`; preset "circle", default):
+  radius 24 m, the same early-hump turn (45 deg x hump(b / 24 m)), one deflection per bullet per
+  tick. The egg's card and hit-model rows (`egg_front`, `egg_rear`, `egg_half_width`) are gone;
+  the hit width is one number per ship (`hit_width`, 4.75 m from every aspect; the 17-point
+  table and `core.hit_width` removed).
+- **Sight egg** (`core.sight_pairs`): front half an ellipse of semi-axes (ahead, side), rear
+  half (behind, side), card `vision_ahead` / `vision_side` / `vision_behind` 1,500 / 850 / 850 m
+  (replacing `vision_range_scale` and `vision_eccentricity`); multiplies and a sign check; the
+  tracking circle's radius the longest reach (`tracking_range`); field cores and team sharing
+  unchanged. Replay flags `--vision-ahead/side/behind`.
+- **Measured** (scripted mirrors, fields and fog; trimmed by the author ~17:20 to the yardstick
+  under the new rules and the round-3 centre under core's as the degenerate baseline; table
+  docs/rewrite/sections/rules-12/tables.md): centre 1v1 under core: tail-chase share of
+  bullet hits 4.9%, collision deaths 4.0% of deaths, 6.6% of fatal collisions kill both;
+  yardstick under the new rules 1v1 / 4v4: tail-chase share 75.7% / 53.4%, collision deaths 0.7%
+  / 3.1%, kills per game-minute 0.43 / 5.68, games ending by elimination 37.0% / 63.5%. The
+  centre (tuned without armour) under the new rules collides more (collision deaths 21.0% at
+  1v1, 41.5% of fatal collisions kill both): not re-tuned; a persona re-run is proposed
+  separately.
+- **Cost**: GPU tick (compiled static, E 4096, 4v4, fields and fog, laptop 4070) egg 0.738 ms,
+  circle 0.735 ms (with the armour and the sight egg; off 0.589 / 0.569 ms): the same within
+  noise; CPU eager 22.1 to 16.8 ms. Compile check 11,439 traced operations (baseline 11,511;
+  `advance` 3,306 to 3,261), cold 166.4 s (budget 175 s), within the baseline.

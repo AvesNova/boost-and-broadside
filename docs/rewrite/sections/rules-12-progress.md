@@ -48,3 +48,21 @@ Behaviour tables (old vs new rules), replays, tick timing, the end-of-branch che
   ship-minute. Not re-tuned (a persona re-run is a separate proposal).
 - Next (ETA 18:15, worst 18:45): yardstick replays (1v1, 4v4; running, CPU), tick timing egg
   vs circle on a quiet machine, compile check, tests, docs.
+
+## 17:34 replays, tick timing, compile
+
+- Replays (CPU, `--draw-vision`, the sight eggs drawn), in
+  /home/vizia/avesnova/boost-and-broadside/data/replays-2026-11-28-rules12/: the yardstick
+  `scripted1v1_seed{0,1,2}.mp4` (wipe 35.7 s; clock 1-1; wipe 59.4 s) and
+  `scripted4v4_seed{0,1,2}.mp4` (clock 1-1; clock 3-3; wipe 41.2 s); before the trim also the
+  round-3 centre under the new rules, `scripted{1v1,4v4,16v16}_robust-centre-3_seed*.mp4`
+  (16v16 seeds 0-2; 1v1 seeds 0 and 1 drew at the clock with the ships out of each other's
+  sight).
+- Tick (bench_tick.py, compiled static, E 4096, 4v4, fields and fog, laptop 4070, performance
+  profile, load 1.1-2.2 with the bench itself the only job): core off 0.589 ms, egg 0.738 ms;
+  new off 0.569 ms, circle 0.735 ms (with the armour and the sight egg). The GPU tick is the
+  same within noise; CPU eager (256 envs): egg 22.1 ms, circle 16.8 ms; dispatch calls 2,830
+  egg, 2,788 circle.
+- Compile check (17:30, performance, load 1.5): 6 graphs, 11,439 traced operations (baseline
+  11,511), `advance` 3,261 (baseline 3,306), `scripted_actions` 5,231 (5,258), 0 graph breaks,
+  cold 166.4 s (budget 175 s): within the baseline.

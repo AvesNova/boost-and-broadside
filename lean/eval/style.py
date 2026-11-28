@@ -14,7 +14,7 @@ turns a game's sums into the stored style (per game and seat, small floats):
 - speed: mean speed, in corner speeds.
 - shots: real shots fired per ship-minute.
 - hits: damaging hits on enemies, a real bullet's or a collision's (one per shooter, target
-  and tick; a hit that does no damage, as inside the nose cone when `nose_cone` is on, is not
+  and tick; a hit that does no damage, as inside the nose armour (`nose_cone`, on by default), is not
   counted).
 - bullet_hits, collision_hits: the same count by cause, a real bullet's hit or a collision's
   (a shooter and target with both in one tick count once in each, once in `hits`, so `hits`
