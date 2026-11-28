@@ -13,6 +13,7 @@ See NOTES.md beside this file.
 
 import argparse
 import dataclasses
+import json
 import math
 import subprocess
 import time
@@ -44,13 +45,13 @@ BOLD_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
 
 @torch.no_grad()
-def simulate(config: core.GameConfig, seed: int, sizes=(4, 4)) -> dict:
+def simulate(config: core.GameConfig, seed: int, sizes=(4, 4), persona: dict | None = None) -> dict:
     """One whole game; per frame (the deal, then after each tick) every ship's pose, state and
     the label of the decision taken from that frame. Arrays (T, N) unless noted."""
     generator = torch.Generator().manual_seed(seed)
     slots = sum(sizes)
     state = game.deal(config, 1, slots, torch.tensor([list(sizes)]), generator, "cpu")
-    agent = scripted.ScriptedConfig()
+    agent = scripted.ScriptedConfig().replace(**(persona or {}))
     frames = []
     deaths = []  # (tick, x, y, team)
     collisions = []  # (tick, x, y, damage to the pair's two ships): core.collisions' contacts
@@ -162,8 +163,9 @@ def simulate(config: core.GameConfig, seed: int, sizes=(4, 4)) -> dict:
 
 
 def _real_bullets(state) -> np.ndarray:
-    """(B, 3) x, y, owner team of the real bullets in flight (ghosts are not drawn)."""
-    active = (state.bullet_moves_left[0] > 0) & state.bullet_real[0]  # (N, K)
+    """(B, 3) x, y, owner team of the real bullets in flight that have not hit yet (ghosts and
+    spent bullets are not drawn)."""
+    active = state.bullet_state[0] == core.REAL  # (N, K)
     owner = state.team[0][:, None].expand_as(active)
     return torch.stack(
         [state.bullet_x[0][active], state.bullet_y[0][active], owner[active].float()], -1
@@ -601,12 +603,22 @@ def main() -> None:
         default=4,
         help="ships on each team, this render only (default: 4; files scripted{N}v{N}_...)",
     )
+    parser.add_argument(
+        "--persona",
+        type=Path,
+        default=None,
+        help="a JSON file of ScriptedConfig rows for every ship (e.g. a persona candidate); "
+        "default: the yardstick ScriptedConfig()",
+    )
     arguments = parser.parse_args()
     torch.set_num_threads(4)
+    persona = json.loads(arguments.persona.read_text()) if arguments.persona else None
     arguments.out.mkdir(parents=True, exist_ok=True)
     config = core.GameConfig()  # the core game: map, fields, fog, 1,800-tick clock, P-51D
     size = arguments.ships_per_team
     stem = f"scripted{size}v{size}"
+    if arguments.persona:
+        stem += f"_{arguments.persona.stem}"
     if arguments.no_fields:
         config = dataclasses.replace(config, field_count=0)
         stem += "_nofields"
@@ -632,9 +644,11 @@ def main() -> None:
     )
     for number, seed in enumerate(arguments.seeds, 1):
         started = time.perf_counter()
-        record = simulate(config, seed, (size, size))
+        record = simulate(config, seed, (size, size), persona)
         simulated = time.perf_counter() - started
         title = f"game {number} of {len(arguments.seeds)}, seed {seed}, scripted {size}v{size}"
+        if arguments.persona:
+            title += f", {arguments.persona.stem}"
         if arguments.no_fields:
             title += ", no fields"
         if arguments.no_fog:
