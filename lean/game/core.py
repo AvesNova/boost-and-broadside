@@ -3231,8 +3231,8 @@ def observe(config: GameConfig, state: State, team: int) -> Obs:
         velocity_x, velocity_y = world_velocity(view)  # stored
     # The zone now (the step's boundary damage read the same circle) and at the stage's end.
     centre_x, centre_y, radius = zone_at_tick(c, state.tick)
-    stage_end = zone_stage_end(config)
-    if math.isfinite(stage_end):
+    if config.zone_shrink_speed > 0.0:  # (not math.isfinite: Dynamo breaks the graph on it)
+        stage_end = zone_stage_end(config)
         next_x, next_y, next_radius = zone_circle(c, torch.full_like(radius, stage_end))
         time_left = (stage_end - state.tick.to(torch.float32)[:, None] * h).clamp_min(0.0)
     else:  # a fixed arena: the next circle is this one, no stage end
