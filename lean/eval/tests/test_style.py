@@ -2,6 +2,7 @@
 one-circle or neither; the other measures read the state; the runner's sums start afresh at
 each deal; the store keeps them per game."""
 
+import math
 import sqlite3
 
 import pytest
@@ -27,13 +28,16 @@ def pair(nose_rates):
     return state.replace(nose_rate=torch.tensor([nose_rates]) * sustained)
 
 
-def rows_of(state, power=None, fired=None, hit_damage=None):
+def rows_of(state, power=None, fired=None, hit_damage=None, bullet_damage=None, collision=None):
     shape = state.speed.shape
+    none = torch.zeros(shape + shape[-1:])
     return style.per_ship(
         state,
         torch.zeros(shape, dtype=torch.long) if power is None else power,
         torch.zeros(shape, dtype=torch.bool) if fired is None else fired,
-        torch.zeros(shape + shape[-1:]) if hit_damage is None else hit_damage,
+        none if hit_damage is None else hit_damage,
+        none if bullet_damage is None else bullet_damage,
+        none if collision is None else collision,
     )
 
 
@@ -74,13 +78,16 @@ def test_the_other_measures_read_the_state():
     power = torch.tensor([[style.CLIMB, style.DIVE]])
     hit_damage = torch.zeros(1, 2, 2)
     hit_damage[0, 0, 1] = 3.0  # ship 0 hits ship 1
-    rows = rows_of(state, power, torch.tensor([[True, False]]), hit_damage)
+    rows = rows_of(state, power, torch.tensor([[True, False]]), hit_damage, hit_damage)
     expected = {
         "ticks": (1, 1),
         "store": (0.25, 0.75),
         "speed": (0.5, 2.0),
         "shots": (1, 0),
         "hits": (1, 0),
+        "bullet_hits": (1, 0),
+        "collision_hits": (0, 0),
+        "tail_hits": (1, 0),  # both fly +x, ship 0 behind ship 1: in its rear cone
         "hit_range": (600.0 / float(c["gun_range"]), 0.0),
         "climb": (1, 0),
         "dive": (0, 1),
@@ -95,7 +102,14 @@ def test_the_other_measures_read_the_state():
     # Seats: the tick's sums per seat, nothing for an environment not playing.
     seat_a = torch.tensor([[True, False]])
     sums = style.tick_sums(
-        state, seat_a, torch.tensor([True]), power, torch.tensor([[True, False]]), hit_damage
+        state,
+        seat_a,
+        torch.tensor([True]),
+        power,
+        torch.tensor([[True, False]]),
+        hit_damage,
+        hit_damage,
+        torch.zeros(1, 2, 2),
     )
     torch.testing.assert_close(sums[0], rows[0])
     assert (
@@ -107,6 +121,8 @@ def test_the_other_measures_read_the_state():
                 power,
                 torch.tensor([[True, False]]),
                 hit_damage,
+                hit_damage,
+                torch.zeros(1, 2, 2),
             )
             .abs()
             .sum()
@@ -122,12 +138,15 @@ def test_measures_from_sums():
     sums[0, 0, COLUMN["two_circle"]] = 300
     sums[0, 0, COLUMN["shots"]] = 12
     sums[0, 0, COLUMN["hits"]] = 2
+    sums[0, 0, COLUMN["bullet_hits"]] = 1
+    sums[0, 0, COLUMN["collision_hits"]] = 1
+    sums[0, 0, COLUMN["tail_hits"]] = 1
     sums[0, 0, COLUMN["hit_range"]] = 1.0
     sums[0, 1, COLUMN["ticks"]] = 1800
     (row,) = style.measures(sums, 1.0 / 30.0)
     a, b = (
-        dict(zip(style.MEASURES, row[:10], strict=True)),
-        dict(zip(style.MEASURES, row[10:], strict=True)),
+        dict(zip(style.MEASURES, row[: len(style.MEASURES)], strict=True)),
+        dict(zip(style.MEASURES, row[len(style.MEASURES) :], strict=True)),
     )
     assert (
         a["minutes"] == pytest.approx(1.0)
@@ -135,6 +154,7 @@ def test_measures_from_sums():
         and a["two_circle"] == pytest.approx(1 / 3)
     )
     assert a["shots"] == pytest.approx(12.0) and a["hits"] == 2 and a["hit_range"] == 0.5
+    assert (a["bullet_hits"], a["collision_hits"], a["tail_hits"]) == (1, 1, 1)
     assert b["two_circle"] is None and b["hit_range"] is None and b["hits"] == 0
 
 
@@ -186,3 +206,92 @@ def test_an_older_store_takes_the_style_columns(tmp_path):
     assert row == (None,) * len(STYLE_COLUMNS)
     assert store.styles("c") == []  # no style: not in the view
     assert store.counts("a", "b", "c")["games"] == 1
+
+
+def counters_after(state, fire=(1, 0)):
+    """One real tick of the game from `state` (ship 0 fires with no spread when `fire`), then
+    the style rows of that tick: (out, rows)."""
+    action = torch.zeros(state.exists.shape + (3,), dtype=torch.long)
+    action[0, :, 2] = torch.tensor(fire)
+    state = state.replace(pending=action)
+    config = game.GameConfig(spawn="mixed", field_count=0, fog=False)  # as `placed`
+    new, out = game.step(config, state, action, {"spread": torch.zeros(state.x.shape + (2,))})
+    rows = style.per_ship(
+        state,
+        torch.zeros(state.speed.shape, dtype=torch.long),
+        new.fired,
+        out.hit_damage,
+        out.bullet_damage,
+        out.collision_damage,
+    )
+    return out, rows
+
+
+def target_ahead(target_heading):
+    """Ship 0 at the origin flying +x, ship 1 (the enemy) 40 m ahead nearly still, nose along
+    `target_heading` radians."""
+    return placed(
+        dict(x=0.0, y=0.0, heading=0.0, speed=200.0),
+        dict(x=40.0, y=0.0, heading=target_heading, speed=1.0),
+    )
+
+
+@pytest.mark.parametrize(
+    "heading, tail", [(0.0, 1.0), (math.pi, 0.0)], ids=["from behind", "from the front"]
+)
+def test_a_real_bullet_hit_is_a_bullet_hit_and_a_tail_hit_only_from_behind(heading, tail):
+    """The target flying away from the shooter (the shooter in its rear cone) or facing it (the
+    nose cone is off by default: the bullet still does its damage)."""
+    out, rows = counters_after(target_ahead(heading))
+    assert float(out.bullet_damage[0, 0, 1]) > 0.0
+    assert float(out.collision_damage.abs().sum()) == 0.0
+    assert float(out.hit_damage[0, 0, 1]) == float(out.bullet_damage[0, 0, 1])
+    got = {name: float(rows[0, 0, COLUMN[name]]) for name in style.SUMS}
+    assert (got["hits"], got["bullet_hits"], got["collision_hits"]) == (1.0, 1.0, 0.0)
+    assert got["tail_hits"] == tail
+    assert float(rows[0, 1, COLUMN["bullet_hits"]]) == 0.0  # the target hit nothing
+
+
+def test_the_rear_cone_edge_is_the_named_angle():
+    """The target (nose +x, at the origin) with the shooter on its line of sight 10 degrees
+    either side of the 120 degree edge: a tail hit beyond it, not inside."""
+    edge = math.degrees(style.TAIL_CHASE_ANGLE)
+    assert edge == pytest.approx(120.0)
+    for degrees, tail in ((edge - 10.0, 0.0), (edge + 10.0, 1.0), (-(edge + 10.0), 1.0)):
+        angle = math.radians(degrees)
+        state = placed(
+            dict(x=300.0 * math.cos(angle), y=300.0 * math.sin(angle), heading=0.0, speed=200.0),
+            dict(x=0.0, y=0.0, heading=0.0, speed=200.0),
+        )
+        damage = torch.zeros(1, 2, 2)
+        damage[0, 0, 1] = 1.0
+        rows = rows_of(state, hit_damage=damage, bullet_damage=damage)
+        assert float(rows[0, 0, COLUMN["tail_hits"]]) == tail, degrees
+
+
+def test_a_collision_is_a_collision_hit_for_both_ships_and_no_bullet_hit():
+    """Head-on at cruise: each ship damages the other (credited to it), no bullet flew."""
+    from lean.game.tests.test_collisions import constant, reach, run
+    from lean.game.tests.test_collisions import placed as crash_placed
+
+    cruise = 0.5 / constant("inverse_collision_speed")
+    half = 0.5 * reach() + 0.1 * cruise * GAME.tick_length
+    state = crash_placed([(-half, 0.0), (half, 0.0)], [0.0, math.pi], speeds=[cruise, cruise])
+    _, out = run(state)
+    assert float(out.bullet_damage.abs().sum()) == 0.0
+    rows = style.per_ship(
+        state,
+        torch.zeros(state.speed.shape, dtype=torch.long),
+        torch.zeros(state.speed.shape, dtype=torch.bool),
+        out.hit_damage,
+        out.bullet_damage,
+        out.collision_damage,
+    )
+    for ship in (0, 1):
+        got = {name: float(rows[0, ship, COLUMN[name]]) for name in style.SUMS}
+        assert (got["hits"], got["bullet_hits"], got["collision_hits"], got["tail_hits"]) == (
+            1.0,
+            0.0,
+            1.0,
+            0.0,
+        )

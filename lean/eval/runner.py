@@ -269,7 +269,14 @@ def advance(
     start_state = state
     state, out = game.tick(game_config, state, action, None)
     sums = slots.style + style_counters.tick_sums(
-        start_state, seat_a, playing, start_state.pending[..., 1], state.fired, out.hit_damage
+        start_state,
+        seat_a,
+        playing,
+        start_state.pending[..., 1],
+        state.fired,
+        out.hit_damage,
+        out.bullet_damage,
+        out.collision_damage,
     )
     side = decision.side
     finished = out.done & playing

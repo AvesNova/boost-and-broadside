@@ -173,8 +173,8 @@ def main() -> None:
             conditions, [agent.id for agent in agents] if agents else None, mirrored
         )
         print(
-            "games  ship-min  turning  two-circle  store  speed  shots/min  hits  hit-range  climb "
-            " dive  agent"
+            "games  ship-min  turning  two-circle  store  speed  shots/min  hits  bullet/min  "
+            "collision/min  tail  hit-range  climb  dive  agent"
         )
         for row in rows:
 
@@ -186,6 +186,9 @@ def main() -> None:
                 f"{number('two_circle'):>10}  "
                 f"{number('store'):>5}  {number('speed'):>5}  {number('shots', 2):>9}  "
                 f"{row['hits'] or 0:4.0f}  "
+                f"{(row['bullet_hits'] or 0) / row['minutes']:10.2f}  "
+                f"{(row['collision_hits'] or 0) / row['minutes']:13.3f}  "
+                f"{number('tail_share', 2):>4}  "
                 f"{number('hit_range'):>9}  {number('climb'):>5}  {number('dive'):>5}  "
                 f"{name_of(store.agent(row['agent']))}"
             )

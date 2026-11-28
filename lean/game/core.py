@@ -1600,6 +1600,12 @@ def step(
         tick=tick,
         pending=action,
     )
+    bullet_matrix = (
+        filled((E, N * N), 0.0, bullet_damage.dtype, device)
+        .scatter_add(1, index.pair + contact.target, bullet_damage)
+        .reshape(E, N, N)
+    )
+    collision_matrix = crash.transpose(1, 2)
     out = StepOut(
         damage_taken=total,
         died=died,
@@ -1607,10 +1613,9 @@ def step(
         result=result,
         shot_outcome=shot_outcome,
         shot_tick=(state.tick[:, None] - age)[:, None].expand(E, N, K),
-        hit_damage=filled((E, N * N), 0.0, bullet_damage.dtype, device)
-        .scatter_add(1, index.pair + contact.target, bullet_damage)
-        .reshape(E, N, N)
-        + crash.transpose(1, 2),
+        hit_damage=bullet_matrix + collision_matrix,
+        bullet_damage=bullet_matrix,
+        collision_damage=collision_matrix,
         boundary_damage=boundary,
         shield_restored=torch.where(alive0, restored, 0.0),
     )
@@ -3072,6 +3077,14 @@ def geometry_record(config: GameConfig, state: State) -> Tensor:
     return torch.stack([columns[name].expand_as(state.x) for name in GEOMETRY_COLUMNS], -1)
 
 
+def train_angle(nose_x, nose_y, line_x, line_y):
+    """The antenna train angle: from a nose direction (nose_x, nose_y) to the line of sight
+    (line_x, line_y), radians in (-pi, pi], counter-clockwise positive. `pair_geometry`'s
+    train_angle; seen from the other ship, |train angle| over the rear cone's half-angle is a
+    pursuer behind it (`lean.eval.style.TAIL_CHASE_ANGLE`)."""
+    return torch.atan2(nose_x * line_y - nose_y * line_x, nose_x * line_x + nose_y * line_y)
+
+
 def pair_geometry(first_position, first_heading, first, second_position, second):
     """The relative geometry of ship pairs, first on second, each (...) float32: positions
     (..., 2), headings (...) radians, `first` / `second` (..., GEOMETRY_COLUMNS) rows of
@@ -3117,9 +3130,7 @@ def pair_geometry(first_position, first_heading, first, second_position, second)
         "range_rate": (line_x * relative_x + line_y * relative_y) / distance,
         "line_of_sight_rate": (line_x * relative_y - line_y * relative_x) / squared,
         "energy_difference": read(first, "energy") - read(second, "energy"),
-        "train_angle": torch.atan2(
-            nose_x * line_y - nose_y * line_x, nose_x * line_x + nose_y * line_y
-        ),
+        "train_angle": train_angle(nose_x, nose_y, line_x, line_y),
         "gun_error": torch.atan2(
             launch_x * lead_y - launch_y * lead_x, launch_x * lead_x + launch_y * lead_y
         ),

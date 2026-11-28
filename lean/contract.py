@@ -399,8 +399,11 @@ class StepOut:
     shot_tick: Tensor
     # Damage detail for the rewards (v2's ledger), each before the shield's clamp:
     # (E, N, N) float32 [attacker, target]: real bullets' damage this tick, and collisions' (each
-    # ship's collision damage credited to the other ship of the pair)
+    # ship's collision damage credited to the other ship of the pair). hit_damage is the sum of
+    # the two parts, bullet_damage and collision_damage (the eval counters tell them apart).
     hit_damage: Tensor
+    bullet_damage: Tensor
+    collision_damage: Tensor
     boundary_damage: Tensor  # (E, N) float32: damage from the arena boundary this tick
     shield_restored: Tensor  # (E, N) float32: shield recharged this tick
 
