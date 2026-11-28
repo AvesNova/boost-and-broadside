@@ -89,7 +89,7 @@ port), 3 (docs cleanup), 7 (correctness review): see the Log.
      the last bullet life (12 ticks) before an episode end or before the update's end.
    - Cold-compile budget raised to 175 s (author ~14:00).
 
-11. (author 2026-11-28 ~15:15) One branch:
+11. (author 2026-11-28 ~15:30) One branch:
    - Entropy bonus 0.003 in BC too (the 2026-11-24 decision "on for the whole run").
    - Port v2's gradient decomposition (src/bnb/learn/gradients.py) to lean: per-term gradient
      norm and share of the step, trunk cosines, group agreement, coherent fraction (two
@@ -144,4 +144,4 @@ scripted delay is a bug; next-state and hit on all visible ships; the pairwise h
 - ~14:00 author: compile budget 175 s (item 10 sets it); league K 12 / R 4 kept; fire_tolerance / lead_error re-check not needed now; loss-balance literature check running.
 - ~15:00 item 10 done (`fixes-10` 7c2703d2, merged into core). Option C on the outcome only (dead ships' damage / kill_death values 0 again); objective levels off by default (LearnConfig.objective_levels; value head 3 levels; pre-item-10 checkpoints need value_levels=5 + objective_levels=True); hit labels of the last 11 rows before an episode or update end masked (exact rule; core's RL hit share was +2.3 / +8.5 / +5.4% high, the branch's equal near and away from the ends); compile budget 175 s. Back-to-back BC (both at load ~4.5-6, the author's browser open): core 108.7 / 110.9 s per update (8,756 / 8,612 steps/s), branch 106.4 / 106.5 s (8,967 / 8,946); store 2,601.5 -> 2,409.4 MiB; peak 1.16 -> 1.06 GiB; end_segment +0.1 ms. An earlier +8-11% branch slowdown was the busy machine. Cold compile 189.6 s at load 7.0 (fails 175 s; core 170.3 s at load 6.8): to re-measure quiet. Quick tier 222 passed, slow learn 6 passed, ruff clean.
 - ~15:06 item 10 follow-up (`fixes-10` 9ccd4e7a merged: notes): cold compile on the branch 164.8 s at load 2.9 (passes 175 s), 189.6 s at load 7.0; core 170.3 / 174.7 s at load 6.8 / 7.0. Little headroom on a loaded machine.
-- ~15:15 author: entropy 0.003 in BC too; port v2's gradient tools to lean and run the gradient diagnostic. Item 11 started (`gradients-11`).
+- ~15:30 author: entropy 0.003 in BC too; port v2's gradient tools to lean and run the gradient diagnostic. Item 11 started (`gradients-11`).
