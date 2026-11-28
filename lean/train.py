@@ -39,6 +39,7 @@ into one RolloutStore (streamed to pinned host memory on a GPU), then learns fro
 
 import argparse
 import dataclasses
+import json
 import time
 from pathlib import Path
 
@@ -266,6 +267,7 @@ def run_stage(
             options = dict(cloning=True)
         else:
             options = dict(teacher_weight=stage.teacher.weight(config, win_rate))
+        every = config.gradient_diagnostics_every
         metrics = update(
             config,
             policy,
@@ -274,6 +276,7 @@ def run_stage(
             step_index=stage.adam_steps,
             generator=generator,
             compiled=compiled,
+            gradients=every > 0 and index % every == 0,
             **options,
         )
         stage.adam_steps += metrics["adam_steps"]
@@ -304,6 +307,8 @@ def run_stage(
             f"advantage_shares [{shares}]",
             flush=True,
         )
+        if "gradient/actor_share" in metrics:
+            print_gradients(stage.name, index, metrics)
         warnings = [
             name.removeprefix("range_warning_")
             for name, value in metrics.items()
@@ -350,6 +355,41 @@ def run_stage(
         )
         print(f"{stage.name}: saved {out / f'{stage.name}.pt'}", flush=True)
     return stage.averages
+
+
+def print_gradients(stage: str, index: int, metrics: dict) -> None:
+    """The gradient decomposition's line (lean.learn.gradients): per top-level term its trunk
+    share, trunk norm, trunk cosine with the policy term (bc in the BC stage, surrogate in RL)
+    and coherent fraction, then every measure as JSON."""
+    policy_term = "bc" if stage == "bc" else "surrogate"
+    terms = [
+        name.removeprefix("gradient/share/trunk/")
+        for name in metrics
+        if name.startswith("gradient/share/trunk/")
+    ]
+
+    def cosine(term: str) -> float:
+        for key in (
+            f"gradient/cosine/trunk/{policy_term}/{term}",
+            f"gradient/cosine/trunk/{term}/{policy_term}",
+        ):
+            if key in metrics:
+                return metrics[key]
+        return 1.0
+
+    table = " ".join(
+        f"{term}=[{metrics[f'gradient/share/trunk/{term}']:.3g} "
+        f"{metrics[f'gradient/norm/trunk/{term}']:.3g} {cosine(term):.3g} "
+        f"{metrics[f'gradient/coherent_fraction/{term}']:.3g}]"
+        for term in terms
+    )
+    print(
+        f"{stage} update {index} gradients [trunk share, norm, cosine with {policy_term}, "
+        f"coherent] {table} actor_share={metrics['gradient/actor_share']:.3g}",
+        flush=True,
+    )
+    everything = {name: value for name, value in metrics.items() if name.startswith("gradient/")}
+    print(f"{stage} update {index} gradients_json {json.dumps(everything)}", flush=True)
 
 
 def latest_checkpoint(path: Path) -> Path:
@@ -413,6 +453,12 @@ def main() -> None:
     parser.add_argument(
         "--resume", type=Path, default=None, help="a checkpoint, or a run directory (its latest)"
     )
+    parser.add_argument(
+        "--gradient-diagnostics-every",
+        type=int,
+        default=None,
+        help="the gradient decomposition every N updates (LearnConfig.gradient_diagnostics_every)",
+    )
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument(
         "--threads", type=int, default=0, help="CPU threads for torch; 0 keeps the default"
@@ -455,6 +501,10 @@ def main() -> None:
         )
     else:
         config = smoke_config() if arguments.smoke else LearnConfig()
+        if arguments.gradient_diagnostics_every is not None:
+            config = dataclasses.replace(
+                config, gradient_diagnostics_every=arguments.gradient_diagnostics_every
+            )
         envs = arguments.envs or (4 if arguments.smoke else config.environments)
         updates = config.rl_updates if arguments.updates is None else arguments.updates
         bc_updates = config.bc_updates if arguments.bc_updates is None else arguments.bc_updates

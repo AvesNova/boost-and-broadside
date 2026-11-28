@@ -111,7 +111,9 @@ class LearnConfig:
     gradient_clip: float = 1.0
     # Loss coefficients, fixed: every term is scale-free (the surrogate on normalised
     # advantages, every other term a cross-entropy or entropy in nats).
-    entropy_coefficient: float = 0.003  # on the joint 42-way entropy (RL only)
+    # On the joint 42-way entropy, in both stages (author 2026-11-24, "on for the whole run,
+    # teacher phase included", core-decisions.md; applied in BC since 2026-11-28).
+    entropy_coefficient: float = 0.003
     value_coefficient: float = 0.05
     next_state_coefficient: float = 0.1
     hit_coefficient: float = 0.05  # cross-entropy of the hit head, nats per labelled row
@@ -129,15 +131,19 @@ class LearnConfig:
     # A warning when an epoch's mean approximate KL to the collecting policy exceeds this
     # (a monitor: no early stop, docs/rewrite/literature-recipe-1.md section 3).
     kl_warning: float = 0.02
+    # The gradient decomposition (lean.learn.gradients: each loss term's share of the step,
+    # cosines, coherence) on every this many updates of a stage (from its first), one
+    # minibatch, eager; 0 (the default) never. A diagnostic: the training's results are the
+    # same with it on.
+    gradient_diagnostics_every: int = 0
 
     # The BC stage (lean.train --stage bc): the student plays its own games (the same
     # rollouts as RL, the league holding only the scripted agent) and every head learns:
     # the policy by the cross-entropy to the scripted teacher's full distribution
     # (lean.scripted.decide's joint over the 42 actions) with weight bc_coefficient, no
-    # surrogate and no entropy
-    # bonus; the critics, next-state and hit heads as in RL. 96 updates at parity
-    # (2,048 x 4 x 128) is 100.7M environment ticks: v2's 100M-tick BC stage, and the
-    # v1/v2 target of BC within 100M.
+    # surrogate; the entropy bonus, the critics, next-state, hit and geometry heads as in RL.
+    # 96 updates at parity (2,048 x 4 x 128) is 100.7M environment ticks: v2's 100M-tick BC
+    # stage, and the v1/v2 target of BC within 100M.
     bc_updates: int = 96
     bc_coefficient: float = 1.0
     # The averaged weights the BC stage hands to RL: "ema", "uniform" or "live".
